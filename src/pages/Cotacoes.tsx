@@ -331,12 +331,23 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
   // Carregar leads do banco
   const carregarLeads = async () => {
     try {
+      // Verificar se o usuário tem empresa_id
+      const empresaId = user?.user_metadata?.empresa_id;
+      
+      if (!empresaId) {
+        console.error('❌ Empresa ID não encontrado para carregar leads');
+        return;
+      }
+      
+      console.log('🔍 Buscando leads para empresa:', empresaId);
+      
       const { data, error } = await supabase
         .from('leads')
         .select(`
           *,
           cliente:clientes(*)
         `)
+        .eq('empresa_id', empresaId) // 🔑 FILTRO POR EMPRESA ADICIONADO
         .order('created_at', { ascending: false })
 
       if (error) {
@@ -344,7 +355,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         return
       }
 
-      console.log('Leads carregados do Supabase:', data)
+      console.log('✅ Leads carregados do Supabase:', data?.length || 0)
       setLeads(data || [])
     } catch (err) {
       console.error('Erro inesperado ao carregar leads:', err)
@@ -358,13 +369,21 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
       return
     }
 
+    // Verificar se o usuário tem empresa_id
+    const empresaId = user?.user_metadata?.empresa_id;
+    if (!empresaId) {
+      alert('Erro: empresa_id não encontrado. Faça login novamente.');
+      return;
+    }
+
     setLoading(true)
     try {
       const { data, error } = await supabase
         .from('leads')
         .insert([{
           cliente_id: clienteSelecionado.id,
-          observacao: observacaoLead
+          observacao: observacaoLead,
+          empresa_id: empresaId // 🔑 EMPRESA_ID ADICIONADO
         }])
         .select()
 
@@ -374,7 +393,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         return
       }
 
-      console.log('Lead salvo com sucesso:', data)
+      console.log('✅ Lead salvo com sucesso:', data)
       await carregarLeads()
       setShowModalLead(false)
       setClienteSelecionado(null)
@@ -402,6 +421,13 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
       const nomeCompleto = `${lead.cliente.nome}${lead.cliente.sobrenome ? ' ' + lead.cliente.sobrenome : ''}`
       const titulo = `${nomeCompleto} - ${dataAtual}`
 
+      // Verificar se o usuário tem empresa_id
+      const empresaId = user?.user_metadata?.empresa_id;
+      if (!empresaId) {
+        alert('Erro: empresa_id não encontrado. Faça login novamente.');
+        return;
+      }
+
       // Criar cotação
       const cotacaoData = {
         titulo: titulo,
@@ -414,7 +440,8 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         data_viagem: null,
         data_criacao: new Date().toISOString(),
         destino: '',
-        observacoes: lead.observacao
+        observacoes: lead.observacao,
+        empresa_id: empresaId // 🔑 EMPRESA_ID ADICIONADO
       }
 
       const { data: cotacao, error: errorCotacao } = await supabase
@@ -523,10 +550,21 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
   const carregarClientes = async () => {
     setLoadingClientes(true)
     try {
-      console.log('Iniciando carregamento de clientes...')
+      // Verificar se o usuário tem empresa_id
+      const empresaId = user?.user_metadata?.empresa_id;
+      
+      if (!empresaId) {
+        console.error('❌ Empresa ID não encontrado para carregar clientes');
+        alert('Erro: empresa_id não encontrado. Faça login novamente.');
+        return;
+      }
+      
+      console.log('🔍 Buscando clientes para empresa:', empresaId);
+      
       const { data, error } = await supabase
         .from('clientes')
         .select('*')
+        .eq('empresa_id', empresaId) // 🔑 FILTRO POR EMPRESA ADICIONADO
         .order('nome')
       
       if (error) {
@@ -535,7 +573,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         return
       }
       
-      console.log('Clientes carregados com sucesso:', data?.length || 0, 'clientes')
+      console.log('✅ Clientes carregados com sucesso:', data?.length || 0, 'clientes')
       setClientes(data || [])
     } catch (error) {
       console.error('Erro inesperado ao carregar clientes:', error)
@@ -3755,6 +3793,17 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
 
   const carregarCotacoes = async () => {
     try {
+      // Verificar se o usuário tem empresa_id
+      const empresaId = user?.user_metadata?.empresa_id;
+      
+      if (!empresaId) {
+        console.error('❌ Empresa ID não encontrado para carregar cotações');
+        alert('Erro: empresa_id não encontrado. Faça login novamente.');
+        return;
+      }
+      
+      console.log('🔍 Buscando cotações para empresa:', empresaId);
+      
       const { data, error } = await supabase
         .from('cotacoes')
         .select(`
@@ -3766,6 +3815,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
             email
           )
         `)
+        .eq('empresa_id', empresaId) // 🔑 FILTRO POR EMPRESA ADICIONADO
         .order('data_criacao', { ascending: false });
       
       if (error) {
@@ -3773,7 +3823,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         return;
       }
       
-      console.log('Cotações carregadas do Supabase com clientes:', data);
+      console.log('✅ Cotações carregadas do Supabase com clientes:', data?.length || 0);
       
       // Converter dados do Supabase para o formato esperado pelo componente
       const cotacoesFormatadas = data?.map(cotacao => {
@@ -3801,7 +3851,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         };
       }) || [];
       
-      console.log('Cotações formatadas com nomes completos:', cotacoesFormatadas);
+      console.log('✅ Cotações formatadas com nomes completos:', cotacoesFormatadas.length);
       setCotacoes(cotacoesFormatadas);
     } catch (err) {
       console.error('Erro inesperado ao carregar cotações:', err);
@@ -3965,10 +4015,21 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
   // Funções para gerenciar tarefas
   const carregarTarefas = async (leadId: number) => {
     try {
+      // Verificar se o usuário tem empresa_id
+      const empresaId = user?.user_metadata?.empresa_id;
+      
+      if (!empresaId) {
+        console.error('❌ Empresa ID não encontrado para carregar tarefas');
+        return;
+      }
+      
+      console.log('🔍 Buscando tarefas para empresa:', empresaId);
+      
       const { data, error } = await supabase
         .from('tarefas')
         .select('*')
         .eq('lead_id', leadId)
+        .eq('empresa_id', empresaId) // 🔑 FILTRO POR EMPRESA ADICIONADO
         .order('created_at', { ascending: false })
       
       if (error) {
@@ -3976,6 +4037,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         return
       }
       
+      console.log('✅ Tarefas carregadas:', data?.length || 0)
       setTarefas(data || [])
     } catch (error) {
       console.error('Erro ao carregar tarefas:', error)
@@ -4034,10 +4096,21 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
   // Funções para gerenciar compromissos
   const carregarCompromissos = async (leadId: number) => {
     try {
+      // Verificar se o usuário tem empresa_id
+      const empresaId = user?.user_metadata?.empresa_id;
+      
+      if (!empresaId) {
+        console.error('❌ Empresa ID não encontrado para carregar compromissos');
+        return;
+      }
+      
+      console.log('🔍 Buscando compromissos para empresa:', empresaId);
+      
       const { data, error } = await supabase
         .from('compromissos')
         .select('*')
         .eq('lead_id', leadId)
+        .eq('empresa_id', empresaId) // 🔑 FILTRO POR EMPRESA ADICIONADO
         .order('data_hora', { ascending: true })
       
       if (error) {
@@ -4045,6 +4118,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         return
       }
       
+      console.log('✅ Compromissos carregados:', data?.length || 0)
       setCompromissos(data || [])
     } catch (error) {
       console.error('Erro ao carregar compromissos:', error)
@@ -4057,12 +4131,20 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
       return
     }
 
+    // Verificar se o usuário tem empresa_id
+    const empresaId = user?.user_metadata?.empresa_id;
+    if (!empresaId) {
+      alert('Erro: empresa_id não encontrado. Faça login novamente.');
+      return;
+    }
+
     try {
       const { data, error } = await supabase
         .from('compromissos')
         .insert([{
           ...novoCompromisso,
-          lead_id: leadSelecionado.id
+          lead_id: leadSelecionado.id,
+          empresa_id: empresaId // 🔑 EMPRESA_ID ADICIONADO
         }])
         .select()
         .single()
@@ -4072,6 +4154,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         return
       }
 
+      console.log('✅ Compromisso salvo com sucesso:', data)
       setCompromissos(prev => [data, ...prev])
       setNovoCompromisso({
         titulo: '',
