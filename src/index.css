@@ -1,0 +1,160 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+}
+
+/* Estilos específicos para impressão - Página CotacaoPrint */
+@media print {
+  @page {
+    size: A4;
+    margin: 1cm;
+  }
+  
+  * {
+    -webkit-print-color-adjust: exact !important;
+    color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  
+  body {
+    font-family: 'Times New Roman', Times, serif !important;
+    font-size: 12pt !important;
+    line-height: 1.4 !important;
+    color: #000 !important;
+    background: white !important;
+    margin: 0 !important;
+  }
+  
+  /* Ocultar elementos desnecessários na impressão */
+  .print\\:hidden,
+  .no-print,
+  button,
+  nav,
+  .fixed {
+    display: none !important;
+  }
+  
+  /* Container principal otimizado para impressão */
+  .max-w-5xl {
+    max-width: none !important;
+    width: 100% !important;
+  }
+  
+  .shadow-xl,
+  .shadow-lg,
+  .shadow {
+    box-shadow: none !important;
+  }
+  
+  .rounded-lg,
+  .rounded {
+    border-radius: 0 !important;
+  }
+  
+  /* Melhorar contraste e legibilidade */
+  .text-gray-600,
+  .text-gray-700 {
+    color: #374151 !important;
+  }
+  
+  .text-gray-500 {
+    color: #6b7280 !important;
+  }
+  
+  .bg-gray-50,
+  .bg-blue-50,
+  .bg-green-50,
+  .bg-yellow-50 {
+    background-color: #f9f9f9 !important;
+  }
+  
+  /* Preservar cores importantes */
+  .bg-teal-600,
+  .bg-blue-600,
+  .bg-green-600 {
+    background-color: currentColor !important;
+    color: white !important;
+  }
+  
+  /* Seções bem definidas */
+  .grid {
+    display: block !important;
+  }
+  
+  .grid > div {
+    margin-bottom: 15pt !important;
+    page-break-inside: avoid !important;
+  }
+  
+  /* Evitar quebras de página em elementos importantes */
+  .bg-white.border {
+    page-break-inside: avoid !important;
+    border: 1pt solid #ddd !important;
+    margin-bottom: 10pt !important;
+  }
+  
+  /* Títulos e seções */
+  h1, h2, h3, h4 {
+    page-break-after: avoid !important;
+    color: #000 !important;
+  }
+  
+  h1 {
+    font-size: 18pt !important;
+  }
+  
+  h2 {
+    font-size: 16pt !important;
+  }
+  
+  h3 {
+    font-size: 14pt !important;
+  }
+  
+  /* Espaçamento entre seções */
+  .mb-6 {
+    margin-bottom: 20pt !important;
+  }
+  
+  .p-4,
+  .p-6 {
+    padding: 12pt !important;
+  }
+  
+  .px-6 {
+    padding-left: 12pt !important;
+    padding-right: 12pt !important;
+  }
+  
+  .py-4 {
+    padding-top: 8pt !important;
+    padding-bottom: 8pt !important;
+  }
+  
+  /* Rodapé na parte inferior */
+  .border-t {
+    border-top: 1pt solid #ccc !important;
+    margin-top: 20pt !important;
+  }
+} 
