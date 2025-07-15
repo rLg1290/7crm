@@ -20,10 +20,10 @@ const LoginPage = () => {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
     
-    // Aplicar máscara apenas numérica para código de agência
+    // Permitir letras e números para código de agência (até 9 caracteres)
     if (name === 'codigoAgencia') {
-      const numericValue = value.replace(/\D/g, '').slice(0, 7)
-      setFormData(prev => ({ ...prev, [name]: numericValue }))
+      const alphanumericValue = value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 9)
+      setFormData(prev => ({ ...prev, [name]: alphanumericValue }))
     } else {
       setFormData(prev => ({ ...prev, [name]: value }))
     }
@@ -272,7 +272,7 @@ const LoginPage = () => {
                     />
                   </div>
                   <p className="text-xs text-white/60 mt-1">
-                    Código numérico fornecido pelo administrador (até 9 dígitos)
+                    Código alfanumérico fornecido pelo administrador (letras e números, até 9 caracteres)
                   </p>
                 </div>
               )}
