@@ -4664,18 +4664,27 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
       const clienteIdToSave = formVenda.cliente ? Number(formVenda.cliente) : null;
       console.log('cliente_id sendo salvo:', clienteIdToSave);
       
+      // Buscar empresa_id do usuário
+      const empresa_id = user?.user_metadata?.empresa_id || null;
+      
+      // Buscar nome do cliente
+      const clienteNome = getNomeCompletoCliente(clienteIdToSave?.toString()) || 'Cliente não identificado';
+      
       await supabase.from('contas_receber').insert({
         descricao: item.descricao,
         valor: item.valor,
         cliente_id: clienteIdToSave,
+        cliente_nome: clienteNome,
+        servico: item.conta || 'Venda', // Campo obrigatório
         categoria_id: item.categoria || null,
-        forma_recebimento_id: getIdFormaPagamento(item.forma) || null,
+        forma_recebimento_id: item.forma || null, // Usar o ID diretamente
         parcelas: item.parcelas,
         vencimento: item.vencimento,
         status: 'PENDENTE',
         origem: 'COTACAO',
         origem_id: editingCotacao?.id || null,
         user_id: user.id,
+        empresa_id: empresa_id,
         created_at: dataCriacao
       });
     }
@@ -4778,7 +4787,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
             status: 'pendente',
             prioridade: 'media', // Voltando para 'media' após corrigir a constraint
             responsavel: 'Sistema',
-            categoria: 'viagem',
+            categoria: 'checkin',
             empresa_id,
             usuario_id: user?.id,
             cliente: clienteNome,
@@ -6776,22 +6785,14 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Vencimento</label>
                   <input type="date" value={formVenda.vencimento} onChange={e => setFormVenda(prev => ({ ...prev, vencimento: e.target.value }))} className="w-full border rounded px-3 py-2" />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Forma de Recebimento</label>
-                  <select value={formVenda.forma} onChange={e => setFormVenda(prev => ({ ...prev, forma: e.target.value }))} className="w-full border rounded px-3 py-2">
-                    <option value="">Selecione</option>
-                    {formasPagamento.map(fp => (
-                      <option key={fp.id} value={fp.nome}>{fp.nome}</option>
-                    ))}
-                  </select>
-                </div>
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Parcelas</label>
                   <input type="text" value={formVenda.parcelas} onChange={e => setFormVenda(prev => ({ ...prev, parcelas: e.target.value }))} className="w-full border rounded px-3 py-2" placeholder="" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Forma de Pagamento</label>
-                  <select value={formVenda.formapagid || ''} onChange={e => setFormVenda(prev => ({ ...prev, formapagid: e.target.value }))} className="w-full border rounded px-3 py-2">
+                  <select value={formVenda.forma} onChange={e => setFormVenda(prev => ({ ...prev, forma: e.target.value }))} className="w-full border rounded px-3 py-2">
                     <option value="">Selecione</option>
                     {formasPagamento.map(fp => (
                       <option key={fp.id} value={fp.id}>{fp.nome}</option>

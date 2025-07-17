@@ -99,6 +99,8 @@ const SolicitacaoOrcamento = () => {
       }
 
       try {
+        console.log('🔍 Buscando empresa:', nomeEmpresa)
+        
         // Buscar empresa por slug primeiro, depois por código como fallback
         const { data, error } = await supabase
           .from('empresas')
@@ -107,17 +109,26 @@ const SolicitacaoOrcamento = () => {
           .eq('ativo', true)
           .single()
 
-        if (error || !data) {
+        if (error) {
+          console.error('❌ Erro na consulta Supabase:', error)
+          setError(`Erro ao buscar empresa: ${error.message}`)
+          setLoading(false)
+          return
+        }
+
+        if (!data) {
+          console.log('❌ Empresa não encontrada:', nomeEmpresa)
           setError('Empresa não encontrada ou inativa')
           setLoading(false)
           return
         }
 
+        console.log('✅ Empresa encontrada:', data.nome)
         setEmpresa(data)
         setLoading(false)
       } catch (err) {
-        console.error('Erro ao carregar empresa:', err)
-        setError('Erro ao carregar dados da empresa')
+        console.error('❌ Erro ao carregar empresa:', err)
+        setError('Erro ao carregar dados da empresa. Tente novamente.')
         setLoading(false)
       }
     }
@@ -198,29 +209,40 @@ ${formData.observacoes || 'Nenhuma observação adicional'}`
     setError('')
 
     try {
+      console.log('📝 Iniciando envio do formulário...')
+      
       // Validação básica
       if (!formData.nome || !formData.sobrenome || !formData.email || !formData.celular || !formData.origem || !formData.destino) {
         throw new Error('Por favor, preencha todos os campos obrigatórios')
       }
 
+      // Verificar se temos dados da empresa
+      if (!empresa) {
+        throw new Error('Dados da empresa não carregados. Recarregue a página e tente novamente.')
+      }
+
+      console.log('🔍 Verificando cliente existente...')
+      
       // 1. Primeiro, verificar se o cliente já existe
-      let { data: clienteExistente } = await supabase
+      let { data: clienteExistente, error: errorClienteExistente } = await supabase
         .from('clientes')
         .select('*')
         .eq('email', formData.email)
         .single()
 
+      if (errorClienteExistente && errorClienteExistente.code !== 'PGRST116') {
+        console.error('❌ Erro ao verificar cliente existente:', errorClienteExistente)
+        throw new Error('Erro ao verificar dados do cliente')
+      }
+
       let clienteId
 
       if (clienteExistente) {
-        // Cliente já existe, usar o ID existente
+        console.log('✅ Cliente existente encontrado:', clienteExistente.id)
         clienteId = clienteExistente.id
       } else {
-        // Verificar se temos dados da empresa
-        if (!empresa) {
-          throw new Error('Dados da empresa não carregados')
-        }
-
+        console.log('🆕 Criando novo cliente...')
+        
         // Criar novo cliente
         const { data: novoCliente, error: errorCliente } = await supabase
           .from('clientes')
@@ -229,7 +251,7 @@ ${formData.observacoes || 'Nenhuma observação adicional'}`
             sobrenome: formData.sobrenome,
             email: formData.email,
             telefone: formData.celular,
-            empresa_id: empresa.id, // UUID da empresa obtido via URL
+            empresa_id: empresa.id,
             data_nascimento: null,
             cpf: null
           }])
@@ -237,14 +259,16 @@ ${formData.observacoes || 'Nenhuma observação adicional'}`
           .single()
 
         if (errorCliente) {
-          console.error('Erro ao criar cliente:', errorCliente)
+          console.error('❌ Erro ao criar cliente:', errorCliente)
           throw new Error('Erro ao cadastrar cliente: ' + errorCliente.message)
         }
 
+        console.log('✅ Novo cliente criado:', novoCliente.id)
         clienteId = novoCliente.id
       }
 
       // 2. Criar o lead com as informações formatadas
+      console.log('📋 Criando lead...')
       const observacaoFormatada = formatarObservacao()
 
       const { error: errorLead } = await supabase
@@ -255,14 +279,15 @@ ${formData.observacoes || 'Nenhuma observação adicional'}`
         }])
 
       if (errorLead) {
-        console.error('Erro ao criar lead:', errorLead)
+        console.error('❌ Erro ao criar lead:', errorLead)
         throw new Error('Erro ao enviar solicitação: ' + errorLead.message)
       }
 
+      console.log('✅ Lead criado com sucesso!')
       setSubmitted(true)
     } catch (err: any) {
-      console.error('Erro ao enviar solicitação:', err)
-      setError(err.message || 'Erro inesperado ao enviar solicitação')
+      console.error('❌ Erro ao enviar solicitação:', err)
+      setError(err.message || 'Erro inesperado ao enviar solicitação. Tente novamente.')
     } finally {
       setIsSubmitting(false)
     }
@@ -288,7 +313,33 @@ ${formData.observacoes || 'Nenhuma observação adicional'}`
               borderBottomColor: empresa?.cor_personalizada || '#0891b2' 
             }}
           ></div>
-          <p className="text-gray-600">Carregando...</p>
+          <p className="text-gray-600">Carregando página de solicitação...</p>
+          <p className="text-sm text-gray-500 mt-2">Empresa: {nomeEmpresa}</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Estado de erro
+  if (error && !empresa) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-red-50 to-pink-100">
+        <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 text-center">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <AlertCircle className="w-8 h-8 text-red-600" />
+          </div>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">Erro ao Carregar</h2>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <div className="space-y-2 text-sm text-gray-500">
+            <p>URL: {window.location.href}</p>
+            <p>Empresa: {nomeEmpresa}</p>
+          </div>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Tentar Novamente
+          </button>
         </div>
       </div>
     )

@@ -20,9 +20,9 @@ export interface Transacao {
 
 export interface ContasPagar {
   id: string
-  categoria: string
+  categoria_id: number
   fornecedor_id?: number
-  forma_pagamento?: string | number | null;
+  forma_pagamento_id?: number | null;
   valor: number
   parcelas: string
   vencimento: string
@@ -38,7 +38,9 @@ export interface ContasReceber {
   id: string
   empresa_id?: string
   cliente_id?: string
+  fornecedor_id?: number
   cliente_nome: string
+  categoria_id?: number
   descricao: string
   servico: string
   valor: number
@@ -87,9 +89,9 @@ export interface NovaTransacao {
 }
 
 export interface NovaContaPagar {
-  categoria: string
+  categoria_id: number
   fornecedor_id?: number
-  forma_pagamento: string
+  forma_pagamento_id: number
   valor: number
   parcelas: string
   vencimento: string
@@ -101,7 +103,9 @@ export interface NovaContaPagar {
 
 export interface NovaContaReceber {
   cliente_id?: string
+  fornecedor_id?: number
   cliente_nome: string
+  categoria_id?: number
   descricao: string
   servico: string
   valor: number
@@ -255,24 +259,32 @@ class FinanceiroService {
   async criarContaPagar(userId: string, conta: NovaContaPagar): Promise<ContasPagar> {
     try {
       console.log('Criando conta a pagar:', { userId, conta })
+      console.log('Status recebido:', conta.status)
+      console.log('Status após fallback:', conta.status || 'PENDENTE')
       
-      const { data, error } = await supabase
-        .from('contas_pagar')
-        .insert({
+      const dadosParaInserir = {
           user_id: userId,
           ...conta,
           status: conta.status || 'PENDENTE',
           origem: conta.origem || 'MANUAL'
-        })
+      }
+      
+      console.log('Dados que serão inseridos no banco:', dadosParaInserir)
+      
+      const { data, error } = await supabase
+        .from('contas_pagar')
+        .insert(dadosParaInserir)
         .select()
         .single()
 
       if (error) {
         console.error('Erro do Supabase ao criar conta a pagar:', error)
+        console.error('Detalhes do erro:', error.message, error.details, error.hint)
         throw error
       }
       
       console.log('Conta a pagar criada com sucesso:', data)
+      console.log('Status salvo no banco:', data.status)
       return data
     } catch (error) {
       console.error('Erro ao criar conta a pagar:', error)
@@ -496,6 +508,57 @@ class FinanceiroService {
     }
   }
 
+  async getCategoriasVenda(userId: string): Promise<{ id: number; nome: string; tipo: string; descricao?: string }[]> {
+    try {
+      const { data, error } = await supabase
+        .from('categorias')
+        .select('id, nome, tipo, descricao')
+        .or(`user_id.is.null,user_id.eq.${userId}`)
+        .eq('tipo', 'VENDA')
+        .order('nome')
+
+      if (error) throw error
+      return data || []
+    } catch (error) {
+      console.error('Erro ao buscar categorias de venda:', error)
+      throw error
+    }
+  }
+
+  async getCategoriasComissaoVenda(userId: string): Promise<{ id: number; nome: string; tipo: string; descricao?: string }[]> {
+    try {
+      const { data, error } = await supabase
+        .from('categorias')
+        .select('id, nome, tipo, descricao')
+        .or(`user_id.is.null,user_id.eq.${userId}`)
+        .eq('tipo', 'COMISSAOVENDA')
+        .order('nome')
+
+      if (error) throw error
+      return data || []
+    } catch (error) {
+      console.error('Erro ao buscar categorias de comissão de venda:', error)
+      throw error
+    }
+  }
+
+  async getCategoriasComissaoCusto(userId: string): Promise<{ id: number; nome: string; tipo: string; descricao?: string }[]> {
+    try {
+      const { data, error } = await supabase
+        .from('categorias')
+        .select('id, nome, tipo, descricao')
+        .or(`user_id.is.null,user_id.eq.${userId}`)
+        .eq('tipo', 'COMISSAOCUSTO')
+        .order('nome')
+
+      if (error) throw error
+      return data || []
+    } catch (error) {
+      console.error('Erro ao buscar categorias de comissão de custo:', error)
+      throw error
+    }
+  }
+
   async getFormasPagamento(userId: string): Promise<{ id: number; nome: string; user_id?: string }[]> {
     try {
       console.log('Buscando formas de pagamento para usuário:', userId)
@@ -558,38 +621,70 @@ class FinanceiroService {
     }
   }
 
-  async getFornecedores(userId: string): Promise<{ id: number; nome: string; cnpj?: string; email?: string; telefone?: string; cidade?: string; estado?: string; user_id?: string }[]> {
+  async getFornecedores(userId: string): Promise<{ id: number; nome: string; cnpj?: string; email?: string; telefone?: string; empresa_id?: string }[]> {
     try {
-      console.log('Buscando fornecedores para usuário:', userId)
+      console.log('🔍 [SERVICE] Iniciando busca de fornecedores para usuário:', userId)
       
-      // Busca fornecedores globais (user_id IS NULL) e do usuário
+      // Primeiro, buscar a empresa do usuário
+      console.log('🔍 [SERVICE] Buscando empresa do usuário...')
+      const { data: userEmpresa, error: errorEmpresa } = await supabase
+        .from('usuarios_empresas')
+        .select('empresa_id')
+        .eq('usuario_id', userId)
+        .single()
+      
+      if (errorEmpresa) {
+        console.error('❌ [SERVICE] Erro ao buscar empresa do usuário:', errorEmpresa)
+        throw errorEmpresa
+      }
+      
+      const empresaId = userEmpresa?.empresa_id
+      console.log('✅ [SERVICE] Empresa do usuário:', empresaId)
+      
+      // Busca fornecedores globais (empresa_id IS NULL)
+      console.log('🔍 [SERVICE] Buscando fornecedores globais...')
       const { data: globais, error: errorGlobais } = await supabase
         .from('fornecedores')
-        .select('id, nome, cnpj, email, telefone, cidade, estado, user_id')
-        .is('user_id', null)
+        .select('id, nome, cnpj, email, telefone, empresa_id')
+        .is('empresa_id', null)
         .order('nome')
       
       if (errorGlobais) {
-        console.error('Erro ao buscar fornecedores globais:', errorGlobais)
+        console.error('❌ [SERVICE] Erro ao buscar fornecedores globais:', errorGlobais)
         throw errorGlobais
       }
+      
+      console.log('✅ [SERVICE] Fornecedores globais encontrados:', globais?.length || 0)
+      console.log('✅ [SERVICE] Detalhes globais:', globais)
 
-      const { data: proprios, error: errorProprios } = await supabase
+      // Busca fornecedores da empresa do usuário
+      console.log('🔍 [SERVICE] Buscando fornecedores da empresa...')
+      const { data: daEmpresa, error: errorFornecedoresEmpresa } = await supabase
         .from('fornecedores')
-        .select('id, nome, cnpj, email, telefone, cidade, estado, user_id')
-        .eq('user_id', userId)
+        .select('id, nome, cnpj, email, telefone, empresa_id')
+        .eq('empresa_id', empresaId)
         .order('nome')
       
-      if (errorProprios) {
-        console.error('Erro ao buscar fornecedores próprios:', errorProprios)
-        throw errorProprios
+      if (errorFornecedoresEmpresa) {
+        console.error('❌ [SERVICE] Erro ao buscar fornecedores da empresa:', errorFornecedoresEmpresa)
+        throw errorFornecedoresEmpresa
       }
+      
+      console.log('✅ [SERVICE] Fornecedores da empresa encontrados:', daEmpresa?.length || 0)
+      console.log('✅ [SERVICE] Detalhes da empresa:', daEmpresa)
 
-      const resultado = [...(globais || []), ...(proprios || [])]
-      console.log('Fornecedores encontrados:', resultado)
+      // Combina os resultados
+      const resultado = [...(globais || []), ...(daEmpresa || [])]
+      console.log('✅ [SERVICE] Total de fornecedores combinados:', resultado.length)
+      console.log('✅ [SERVICE] Resultado final:', resultado)
+      
       return resultado
     } catch (error) {
-      console.error('Erro ao buscar fornecedores:', error)
+      console.error('❌ [SERVICE] Erro ao buscar fornecedores:', error)
+      console.error('❌ [SERVICE] Detalhes do erro:', {
+        message: error instanceof Error ? error.message : 'Erro desconhecido',
+        stack: error instanceof Error ? error.stack : undefined
+      })
       throw error
     }
   }
@@ -599,33 +694,62 @@ class FinanceiroService {
     cnpj?: string
     email?: string
     telefone?: string
-    endereco?: string
-    cidade?: string
-    estado?: string
-    cep?: string
-    observacoes?: string
-  }, userId: string): Promise<{ id: number; nome: string; cnpj?: string; email?: string; telefone?: string; cidade?: string; estado?: string; user_id: string }> {
+  }, userId: string): Promise<{ id: number; nome: string; cnpj?: string; email?: string; telefone?: string; empresa_id: string }> {
     try {
-      console.log('Adicionando fornecedor:', { fornecedor, userId })
+      console.log('🔧 [SERVICE] Adicionando fornecedor:', { fornecedor, userId })
+      
+      // Validar dados obrigatórios
+      if (!fornecedor.nome || fornecedor.nome.trim() === '') {
+        throw new Error('Nome do fornecedor é obrigatório')
+      }
+      
+      // Buscar a empresa do usuário
+      console.log('🔧 [SERVICE] Buscando empresa do usuário...')
+      const { data: userEmpresa, error: errorEmpresa } = await supabase
+        .from('usuarios_empresas')
+        .select('empresa_id')
+        .eq('usuario_id', userId)
+        .single()
+      
+      if (errorEmpresa || !userEmpresa?.empresa_id) {
+        console.error('❌ [SERVICE] Erro ao buscar empresa do usuário:', errorEmpresa)
+        throw new Error('Não foi possível identificar a empresa do usuário')
+      }
+      
+      const empresaId = userEmpresa.empresa_id
+      console.log('✅ [SERVICE] Empresa do usuário:', empresaId)
+      
+      const dadosFornecedor = {
+        nome: fornecedor.nome.trim(),
+        cnpj: fornecedor.cnpj?.trim() || null,
+        email: fornecedor.email?.trim() || null,
+        telefone: fornecedor.telefone?.trim() || null,
+        empresa_id: empresaId
+      }
+      
+      console.log('🔧 [SERVICE] Dados a serem inseridos:', dadosFornecedor)
       
       const { data, error } = await supabase
         .from('fornecedores')
-        .insert({ 
-          ...fornecedor,
-          user_id: userId 
-        })
-        .select()
+        .insert(dadosFornecedor)
+        .select('id, nome, cnpj, email, telefone, empresa_id')
         .single()
       
       if (error) {
-        console.error('Erro do Supabase ao adicionar fornecedor:', error)
+        console.error('❌ [SERVICE] Erro do Supabase ao adicionar fornecedor:', error)
+        console.error('❌ [SERVICE] Detalhes do erro:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        })
         throw error
       }
       
-      console.log('Fornecedor adicionado com sucesso:', data)
+      console.log('✅ [SERVICE] Fornecedor adicionado com sucesso:', data)
       return data
     } catch (error) {
-      console.error('Erro ao adicionar fornecedor:', error)
+      console.error('❌ [SERVICE] Erro ao adicionar fornecedor:', error)
       throw error
     }
   }

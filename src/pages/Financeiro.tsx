@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { 
   DollarSign, 
   TrendingUp, 
@@ -53,14 +53,16 @@ interface ContasReceber {
   id: string
   empresa_id?: string
   cliente_id?: string
+  fornecedor_id?: number
   cliente_nome: string
+  categoria_id?: number
   descricao: string
   servico: string
   valor: number
   vencimento: string
   status: 'recebida' | 'pendente' | 'vencida'
   recebido_em?: string
-  forma_recebimento?: string
+  forma_recebimento_id?: number
   observacoes?: string
   comprovante_url?: string
   created_at: string
@@ -98,6 +100,9 @@ const Financeiro = () => {
   
   // Estados para categorias
   const [categoriasCusto, setCategoriasCusto] = useState<{ id: number; nome: string; tipo: string; descricao?: string }[]>([])
+  const [categoriasVenda, setCategoriasVenda] = useState<{ id: number; nome: string; tipo: string; descricao?: string }[]>([])
+  const [categoriasComissaoVenda, setCategoriasComissaoVenda] = useState<{ id: number; nome: string; tipo: string; descricao?: string }[]>([])
+  const [categoriasComissaoCusto, setCategoriasComissaoCusto] = useState<{ id: number; nome: string; tipo: string; descricao?: string }[]>([])
   const [loadingCategorias, setLoadingCategorias] = useState(false)
   
   // Estados para formas de pagamento
@@ -105,8 +110,12 @@ const Financeiro = () => {
   const [loadingFormasPagamento, setLoadingFormasPagamento] = useState(false)
   
   // Estados para fornecedores
-  const [fornecedores, setFornecedores] = useState<{ id: number; nome: string; cnpj?: string; email?: string; telefone?: string; cidade?: string; estado?: string; user_id?: string; empresa_id?: string }[]>([])
+  const [fornecedores, setFornecedores] = useState<{ id: number; nome: string; cnpj?: string; email?: string; telefone?: string; endereco?: string; observacoes?: string; user_id?: string }[]>([])
   const [loadingFornecedores, setLoadingFornecedores] = useState(false)
+  
+  // Estados para clientes
+  const [clientes, setClientes] = useState<{ id: number; nome: string; sobrenome?: string; email: string; telefone: string; cpf?: string; rg?: string; passaporte?: string; data_nascimento?: string; data_expedicao?: string; data_expiracao?: string; nacionalidade?: string; rede_social?: string; observacoes?: string; endereco?: string; cidade?: string; estado?: string; cep?: string; created_at: string }[]>([])
+  const [loadingClientes, setLoadingClientes] = useState(false)
   
   // Estados para filtros e busca
   const [filtroStatus, setFiltroStatus] = useState<string>('todos')
@@ -117,6 +126,8 @@ const Financeiro = () => {
   const [modalNovaTransacao, setModalNovaTransacao] = useState(false)
   const [modalNovaContaPagar, setModalNovaContaPagar] = useState(false)
   const [modalNovaContaReceber, setModalNovaContaReceber] = useState(false)
+  const [modalSelecaoTipoReceber, setModalSelecaoTipoReceber] = useState(false)
+  const [tipoReceberSelecionado, setTipoReceberSelecionado] = useState<'conta' | 'comissao' | null>(null)
   const [modalNovaCategoria, setModalNovaCategoria] = useState(false)
   const [modalNovaFormaPagamento, setModalNovaFormaPagamento] = useState(false)
   const [modalNovoFornecedor, setModalNovoFornecedor] = useState(false)
@@ -143,13 +154,13 @@ const Financeiro = () => {
   
   // Estados para formulário de nova conta a pagar
   const [novaContaPagar, setNovaContaPagar] = useState({
-    categoria: '',
+    categoria_id: 0,
     fornecedor_id: null as number | null,
-    forma_pagamento: '',
+    forma_pagamento_id: 0,
     valor: 0,
     parcelas: 1,
     vencimento: '',
-    status: 'PENDENTE' as 'PENDENTE' | 'PAGA' | 'VENCIDA',
+    status: 'PENDENTE' as 'PENDENTE' | 'PAGA' | 'PAGO' | 'VENCIDA',
     observacoes: '',
     origem: 'MANUAL',
     origem_id: null
@@ -158,13 +169,15 @@ const Financeiro = () => {
   
   // Estados para formulário de nova conta a receber
   const [novaContaReceber, setNovaContaReceber] = useState({
-    categoria: '',
+    categoria_id: 0,
+    cliente_id: null as number | null,
+    fornecedor_id: null as number | null,
     cliente_nome: '',
     descricao: '',
-    servico: '',
     valor: 0,
     vencimento: '',
     status: 'pendente' as 'pendente' | 'recebida' | 'vencida',
+    forma_recebimento_id: null as number | null,
     observacoes: ''
   })
   const [salvandoContaReceber, setSalvandoContaReceber] = useState(false)
@@ -183,20 +196,14 @@ const Financeiro = () => {
     nome: '',
     cnpj: '',
     email: '',
-    telefone: '',
-    endereco: '',
-    cidade: '',
-    estado: '',
-    cep: '',
-    observacoes: ''
+    telefone: ''
   })
   const [salvandoCategoria, setSalvandoCategoria] = useState(false)
   const [salvandoFormaPagamento, setSalvandoFormaPagamento] = useState(false)
   const [salvandoFornecedor, setSalvandoFornecedor] = useState(false)
 
   // Estados para dados dos gráficos
-  const [dadosReceitasMensais, setDadosReceitasMensais] = useState<any[]>([])
-  const [dadosPorCategoria, setDadosPorCategoria] = useState<any[]>([])
+
 
   // Estado para filtro de período
   const [filtroPeriodo, setFiltroPeriodo] = useState<'mes' | '3meses' | '6meses' | 'ano' | 'total' | 'personalizado'>('mes')
@@ -222,7 +229,12 @@ const Financeiro = () => {
       if (user) {
         setUser(user)
         await carregarContasPagar(user.id)
-        await carregarCategoriasCusto(user.id)
+        await Promise.all([
+          carregarCategoriasCusto(user.id),
+          carregarCategoriasVenda(user.id),
+          carregarCategoriasComissaoVenda(user.id),
+          carregarCategoriasComissaoCusto(user.id)
+        ])
         await carregarFormasPagamento(user.id)
         await carregarFornecedores(user.id)
         // Buscar empresa_id do usuário
@@ -233,6 +245,7 @@ const Financeiro = () => {
           .single()
         
         if (userEmpresa?.empresa_id) {
+          await carregarClientes(userEmpresa.empresa_id)
           await carregarContasReceber(userEmpresa.empresa_id)
         }
       }
@@ -268,6 +281,33 @@ const Financeiro = () => {
     }
   }
 
+  const carregarCategoriasVenda = async (userId: string) => {
+    try {
+      const categorias = await financeiroService.getCategoriasVenda(userId)
+      setCategoriasVenda(categorias)
+    } catch (error) {
+      console.error('Erro ao carregar categorias de venda:', error)
+    }
+  }
+
+  const carregarCategoriasComissaoVenda = async (userId: string) => {
+    try {
+      const categorias = await financeiroService.getCategoriasComissaoVenda(userId)
+      setCategoriasComissaoVenda(categorias)
+    } catch (error) {
+      console.error('Erro ao carregar categorias de comissão de venda:', error)
+    }
+  }
+
+  const carregarCategoriasComissaoCusto = async (userId: string) => {
+    try {
+      const categorias = await financeiroService.getCategoriasComissaoCusto(userId)
+      setCategoriasComissaoCusto(categorias)
+    } catch (error) {
+      console.error('Erro ao carregar categorias de comissão de custo:', error)
+    }
+  }
+
   const carregarFormasPagamento = async (userId: string) => {
     setLoadingFormasPagamento(true)
     try {
@@ -285,18 +325,60 @@ const Financeiro = () => {
   const carregarFornecedores = async (userId: string) => {
     setLoadingFornecedores(true)
     try {
-      console.log('Carregando fornecedores para usuário:', userId, 'empresa:', user?.empresa_id)
+      console.log('🔍 [DEBUG] Iniciando carregamento de fornecedores')
+      console.log('🔍 [DEBUG] User ID:', userId)
+      console.log('🔍 [DEBUG] User empresa_id:', user?.empresa_id)
+      
       const fornecedores = await financeiroService.getFornecedores(userId)
-      console.log('Fornecedores carregados no frontend:', fornecedores)
-      console.log('Quantidade de fornecedores:', fornecedores.length)
-      setFornecedores(fornecedores)
-      console.log('Estado fornecedores atualizado com:', fornecedores.length, 'fornecedores')
+      
+      console.log('✅ [DEBUG] Fornecedores retornados do service:', fornecedores)
+      console.log('✅ [DEBUG] Tipo do retorno:', typeof fornecedores)
+      console.log('✅ [DEBUG] É array?', Array.isArray(fornecedores))
+      console.log('✅ [DEBUG] Quantidade de fornecedores:', fornecedores?.length || 0)
+      
+      if (fornecedores && Array.isArray(fornecedores)) {
+        setFornecedores(fornecedores)
+        console.log('✅ [DEBUG] Estado fornecedores atualizado com:', fornecedores.length, 'fornecedores')
+      } else {
+        console.warn('⚠️ [DEBUG] Fornecedores não é um array válido:', fornecedores)
+        setFornecedores([])
+      }
     } catch (error) {
-      console.error('Erro ao carregar fornecedores:', error)
+      console.error('❌ [DEBUG] Erro ao carregar fornecedores:', error)
+      console.error('❌ [DEBUG] Detalhes do erro:', {
+        message: error instanceof Error ? error.message : 'Erro desconhecido',
+        stack: error instanceof Error ? error.stack : undefined
+      })
       // Em caso de erro, definir array vazio para evitar problemas
       setFornecedores([])
     } finally {
       setLoadingFornecedores(false)
+      console.log('🔍 [DEBUG] Carregamento de fornecedores finalizado')
+    }
+  }
+
+  const carregarClientes = async (empresaId: string) => {
+    setLoadingClientes(true)
+    try {
+      console.log('🔍 Carregando clientes para empresa:', empresaId)
+      
+      const { data, error } = await supabase
+        .from('clientes')
+        .select('*')
+        .eq('empresa_id', empresaId)
+        .order('nome')
+      
+      if (error) {
+        console.error('❌ Erro ao carregar clientes:', error)
+        return
+      }
+      
+      console.log('✅ Clientes carregados:', data?.length || 0)
+      setClientes(data || [])
+    } catch (error) {
+      console.error('❌ Erro inesperado ao carregar clientes:', error)
+    } finally {
+      setLoadingClientes(false)
     }
   }
 
@@ -347,11 +429,17 @@ const Financeiro = () => {
   }
 
   const formatarData = (data: string) => {
-    return new Date(data).toLocaleDateString('pt-BR')
+    // Criar a data no fuso horário local para evitar problemas de conversão
+    const [ano, mes, dia] = data.split('-');
+    const dataLocal = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia));
+    return dataLocal.toLocaleDateString('pt-BR');
   }
 
   const formatarDataLocal = (data: string) => {
-    return new Date(data).toLocaleDateString('pt-BR', { timeZone: 'UTC' })
+    // Criar a data no fuso horário local para evitar problemas de conversão
+    const [ano, mes, dia] = data.split('-');
+    const dataLocal = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia));
+    return dataLocal.toLocaleDateString('pt-BR');
   }
 
   const getStatusColor = (status: string, tipo: 'conta' | 'transacao' = 'conta') => {
@@ -364,7 +452,7 @@ const Financeiro = () => {
       }
     } else {
       switch (status) {
-        case 'PAGA': case 'recebida': return 'text-green-600 bg-green-50 border-green-200'
+        case 'PAGA': case 'PAGO': case 'recebida': return 'text-green-600 bg-green-50 border-green-200'
         case 'PENDENTE': case 'pendente': return 'text-yellow-600 bg-yellow-50 border-yellow-200'
         case 'VENCIDA': case 'vencida': return 'text-red-600 bg-red-50 border-red-200'
         default: return 'text-gray-600 bg-gray-50 border-gray-200'
@@ -381,16 +469,28 @@ const Financeiro = () => {
   }
 
   const handleNovaContaReceber = () => {
+    setModalSelecaoTipoReceber(true)
+  }
+
+  const handleSelecionarTipoReceber = (tipo: 'conta' | 'comissao') => {
+    setTipoReceberSelecionado(tipo)
+    setModalSelecaoTipoReceber(false)
     setModalNovaContaReceber(true)
+  }
+
+  const handleCancelarSelecaoTipoReceber = () => {
+    setModalSelecaoTipoReceber(false)
+    setTipoReceberSelecionado(null)
   }
 
   const handleSalvarContaPagar = async () => {
     if (!user) return
     
     console.log('Iniciando salvamento de conta a pagar:', novaContaPagar)
+    console.log('Status atual:', novaContaPagar.status)
     
     // Validação básica
-    if (!novaContaPagar.categoria || !novaContaPagar.forma_pagamento || !novaContaPagar.vencimento || novaContaPagar.valor <= 0) {
+    if (novaContaPagar.categoria_id <= 0 || novaContaPagar.forma_pagamento_id <= 0 || !novaContaPagar.vencimento || novaContaPagar.valor <= 0) {
       alert('Por favor, preencha todos os campos obrigatórios (categoria, forma de pagamento, valor e vencimento).')
       return
     }
@@ -398,9 +498,9 @@ const Financeiro = () => {
     setSalvandoContaPagar(true)
     try {
       const dadosConta = {
-        categoria: novaContaPagar.categoria,
+        categoria_id: novaContaPagar.categoria_id,
         fornecedor_id: novaContaPagar.fornecedor_id || undefined,
-        forma_pagamento: novaContaPagar.forma_pagamento,
+        forma_pagamento_id: novaContaPagar.forma_pagamento_id,
         valor: novaContaPagar.valor,
         parcelas: novaContaPagar.parcelas.toString(),
         vencimento: novaContaPagar.vencimento,
@@ -411,6 +511,7 @@ const Financeiro = () => {
       }
       
       console.log('Dados da conta a ser salva:', dadosConta)
+      console.log('Status sendo enviado:', dadosConta.status)
       
       await financeiroService.criarContaPagar(user.id, dadosConta)
       
@@ -421,9 +522,9 @@ const Financeiro = () => {
       
       // Limpar formulário e fechar modal
       setNovaContaPagar({
-        categoria: '',
+        categoria_id: 0,
         fornecedor_id: null,
-        forma_pagamento: '',
+        forma_pagamento_id: 0,
         valor: 0,
         parcelas: 1,
         vencimento: '',
@@ -444,9 +545,9 @@ const Financeiro = () => {
 
   const handleCancelarContaPagar = () => {
     setNovaContaPagar({
-      categoria: '',
+      categoria_id: 0,
       fornecedor_id: null,
-      forma_pagamento: '',
+              forma_pagamento_id: 0,
       valor: 0,
       parcelas: 1,
       vencimento: '',
@@ -460,16 +561,19 @@ const Financeiro = () => {
 
   const handleCancelarContaReceber = () => {
     setNovaContaReceber({
-      categoria: '',
+      categoria_id: 0,
+      cliente_id: null,
+      fornecedor_id: null,
       cliente_nome: '',
       descricao: '',
-      servico: '',
       valor: 0,
       vencimento: '',
       status: 'pendente',
+      forma_recebimento_id: null,
       observacoes: ''
     })
     setModalNovaContaReceber(false)
+    setTipoReceberSelecionado(null)
   }
 
   const handleSalvarNovaCategoria = async () => {
@@ -553,12 +657,7 @@ const Financeiro = () => {
         nome: '',
         cnpj: '',
         email: '',
-        telefone: '',
-        endereco: '',
-        cidade: '',
-        estado: '',
-        cep: '',
-        observacoes: ''
+        telefone: ''
       })
       setModalNovoFornecedor(false)
     } catch (error) {
@@ -615,10 +714,22 @@ const Financeiro = () => {
   const contasPagarOrdenadas = [
     ...contasPagar
       .filter(c => c.status === 'VENCIDA')
-      .sort((a, b) => new Date(a.vencimento).getTime() - new Date(b.vencimento).getTime()),
+      .sort((a, b) => {
+        const [anoA, mesA, diaA] = a.vencimento.split('-');
+        const [anoB, mesB, diaB] = b.vencimento.split('-');
+        const dataA = new Date(parseInt(anoA), parseInt(mesA) - 1, parseInt(diaA));
+        const dataB = new Date(parseInt(anoB), parseInt(mesB) - 1, parseInt(diaB));
+        return dataA.getTime() - dataB.getTime();
+      }),
     ...contasPagar
       .filter(c => c.status === 'PENDENTE')
-      .sort((a, b) => new Date(a.vencimento).getTime() - new Date(b.vencimento).getTime()),
+      .sort((a, b) => {
+        const [anoA, mesA, diaA] = a.vencimento.split('-');
+        const [anoB, mesB, diaB] = b.vencimento.split('-');
+        const dataA = new Date(parseInt(anoA), parseInt(mesA) - 1, parseInt(diaA));
+        const dataB = new Date(parseInt(anoB), parseInt(mesB) - 1, parseInt(diaB));
+        return dataA.getTime() - dataB.getTime();
+      }),
     ...contasPagar
       .filter(c => c.status === 'PAGO')
   ];
@@ -641,9 +752,26 @@ const Financeiro = () => {
       return;
     }
     
+    console.log('Iniciando salvamento de conta a receber:', novaContaReceber);
+    console.log('Status atual:', novaContaReceber.status);
+    
     // Validação básica
-    if (!novaContaReceber.categoria || !novaContaReceber.cliente_nome || !novaContaReceber.servico || !novaContaReceber.valor || !novaContaReceber.vencimento) {
-      alert('Por favor, preencha todos os campos obrigatórios.');
+    if (!novaContaReceber.categoria_id || !novaContaReceber.valor || !novaContaReceber.vencimento) {
+      alert('Por favor, preencha todos os campos obrigatórios (categoria, valor e vencimento).');
+      return;
+    }
+    
+    // Validação específica por tipo
+    if (tipoReceberSelecionado === 'conta' && !novaContaReceber.cliente_id) {
+      alert('Por favor, selecione um cliente para a conta a receber.');
+      return;
+    }
+    
+    if (tipoReceberSelecionado === 'comissao' && !novaContaReceber.fornecedor_id) {
+      console.log('Debug - Tipo selecionado:', tipoReceberSelecionado);
+      console.log('Debug - Fornecedor ID:', novaContaReceber.fornecedor_id);
+      console.log('Debug - Estado completo:', novaContaReceber);
+      alert('Por favor, selecione um fornecedor para a comissão.');
       return;
     }
     
@@ -662,16 +790,30 @@ const Financeiro = () => {
       
       // Montar objeto para inserir
       const novaConta = {
-        categoria: novaContaReceber.categoria,
-        cliente_nome: novaContaReceber.cliente_nome,
-        descricao: novaContaReceber.descricao || novaContaReceber.servico, // Usar serviço como descrição se não houver descrição
-        servico: novaContaReceber.servico,
+        categoria_id: novaContaReceber.categoria_id,
+        cliente_id: tipoReceberSelecionado === 'conta' ? novaContaReceber.cliente_id : null,
+        fornecedor_id: tipoReceberSelecionado === 'comissao' ? novaContaReceber.fornecedor_id : null,
+        descricao: novaContaReceber.descricao,
         valor: novaContaReceber.valor,
         vencimento: novaContaReceber.vencimento,
         status: novaContaReceber.status,
+        forma_recebimento_id: novaContaReceber.forma_recebimento_id,
         observacoes: novaContaReceber.observacoes,
         empresa_id: userEmpresa.empresa_id,
       };
+      
+      // Garantir que apenas um dos campos seja preenchido
+      if (tipoReceberSelecionado === 'conta') {
+        novaConta.fornecedor_id = null;
+      } else if (tipoReceberSelecionado === 'comissao') {
+        novaConta.cliente_id = null;
+      }
+      
+      console.log('Tipo selecionado:', tipoReceberSelecionado);
+      console.log('Dados da nova conta:', novaConta);
+      console.log('cliente_id:', novaConta.cliente_id);
+      console.log('fornecedor_id:', novaConta.fornecedor_id);
+      console.log('Status sendo enviado:', novaConta.status);
       
       // Inserir no banco
       const { error } = await supabase
@@ -687,13 +829,15 @@ const Financeiro = () => {
       
       // Limpar formulário e fechar modal
       setNovaContaReceber({
-        categoria: '',
+        categoria_id: 0,
+        cliente_id: null,
+        fornecedor_id: null,
         cliente_nome: '',
         descricao: '',
-        servico: '',
         valor: 0,
         vencimento: '',
         status: 'pendente',
+        forma_recebimento_id: null,
         observacoes: ''
       });
       setModalNovaContaReceber(false);
@@ -785,10 +929,22 @@ const Financeiro = () => {
   const contasReceberOrdenadas = [
     ...contasReceber
       .filter(c => c.status?.toLowerCase() === 'vencida')
-      .sort((a, b) => new Date(a.vencimento).getTime() - new Date(b.vencimento).getTime()),
+      .sort((a, b) => {
+        const [anoA, mesA, diaA] = a.vencimento.split('-');
+        const [anoB, mesB, diaB] = b.vencimento.split('-');
+        const dataA = new Date(parseInt(anoA), parseInt(mesA) - 1, parseInt(diaA));
+        const dataB = new Date(parseInt(anoB), parseInt(mesB) - 1, parseInt(diaB));
+        return dataA.getTime() - dataB.getTime();
+      }),
     ...contasReceber
       .filter(c => c.status?.toLowerCase() === 'pendente')
-      .sort((a, b) => new Date(a.vencimento).getTime() - new Date(b.vencimento).getTime()),
+      .sort((a, b) => {
+        const [anoA, mesA, diaA] = a.vencimento.split('-');
+        const [anoB, mesB, diaB] = b.vencimento.split('-');
+        const dataA = new Date(parseInt(anoA), parseInt(mesA) - 1, parseInt(diaA));
+        const dataB = new Date(parseInt(anoB), parseInt(mesB) - 1, parseInt(diaB));
+        return dataA.getTime() - dataB.getTime();
+      }),
     ...contasReceber
       .filter(c => c.status?.toLowerCase() === 'recebida')
   ];
@@ -815,6 +971,9 @@ const Financeiro = () => {
         .eq('id', contaSelecionada.id);
       
       if (error) throw error;
+      
+      // Remover conta da lista local imediatamente
+      setContasPagar(prev => prev.filter(conta => conta.id !== contaSelecionada.id));
       
       setModalExcluirContaPagar(false);
       setContaSelecionada(null);
@@ -843,11 +1002,24 @@ const Financeiro = () => {
       
       if (error) throw error;
       
+      // Remover conta da lista local imediatamente
+      setContasReceber(prev => prev.filter(conta => conta.id !== contaReceberSelecionada.id));
+      
       setModalExcluirContaReceber(false);
       setContaReceberSelecionada(null);
       
-      // Recarregar contas
-      if (user) await carregarContasReceber(user.empresa_id || '');
+      // Recarregar contas - buscar empresa_id primeiro
+      if (user) {
+        const { data: userEmpresa } = await supabase
+          .from('usuarios_empresas')
+          .select('empresa_id')
+          .eq('usuario_id', user.id)
+          .single()
+        
+        if (userEmpresa?.empresa_id) {
+          await carregarContasReceber(userEmpresa.empresa_id);
+        }
+      }
       
       alert('Conta a receber excluída com sucesso!');
     } catch (error) {
@@ -892,26 +1064,29 @@ const Financeiro = () => {
     if (!dataInicio && !dataFim) return lista;
     
     return lista.filter(item => {
-      const data = new Date(item.vencimento);
+      // Criar a data no fuso horário local para evitar problemas de conversão
+      const [ano, mes, dia] = item.vencimento.split('-');
+      const data = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia));
+      
       if (dataInicio && data < dataInicio) return false;
       if (dataFim && data > dataFim) return false;
       return true;
     });
   }
 
-  // Aplicar filtro nas contas exibidas
-  const contasReceberFiltradas = filtrarPorPeriodo(contasReceber);
-  const contasPagarFiltradas = filtrarPorPeriodo(contasPagar);
+  // Aplicar filtro nas contas exibidas usando useMemo para evitar recálculos desnecessários
+  const contasReceberFiltradas = useMemo(() => filtrarPorPeriodo(contasReceber), [contasReceber, filtroPeriodo, dataInicioPersonalizado, dataFimPersonalizado]);
+  const contasPagarFiltradas = useMemo(() => filtrarPorPeriodo(contasPagar), [contasPagar, filtroPeriodo, dataInicioPersonalizado, dataFimPersonalizado]);
 
   // Usar contasReceberFiltradas e contasPagarFiltradas nos cálculos e tabelas
 
   // Cálculo dinâmico do lucro do mês
-  const receitasMes = contasReceberFiltradas.reduce((total, c) => total + (c.valor || 0), 0)
-  const despesasMes = contasPagarFiltradas.reduce((total, c) => total + (c.valor || 0), 0)
-  const lucroMes = receitasMes - despesasMes
+  const receitasMes = useMemo(() => contasReceberFiltradas.reduce((total, c) => total + (c.valor || 0), 0), [contasReceberFiltradas]);
+  const despesasMes = useMemo(() => contasPagarFiltradas.reduce((total, c) => total + (c.valor || 0), 0), [contasPagarFiltradas]);
+  const lucroMes = useMemo(() => receitasMes - despesasMes, [receitasMes, despesasMes]);
 
-  // Funções para gerar dados dos gráficos
-  const gerarDadosReceitasMensais = () => {
+  // Funções para gerar dados dos gráficos usando useMemo para evitar recálculos
+  const dadosMensais = useMemo(() => {
     const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
     const hoje = new Date();
     const dados = [];
@@ -922,58 +1097,166 @@ const Financeiro = () => {
       const mesIndex = mes.getMonth();
       const mesNome = meses[mesIndex];
       
-      // Simular dados baseados no período atual
-      let valor = 0;
-      if (i === 0) {
-        // Mês atual - usar dados reais
-        valor = receitasMes;
-      } else {
-        // Meses anteriores - simular dados
-        valor = Math.floor(Math.random() * 150000) + 50000; // Entre 50k e 200k
-      }
+      // Buscar dados reais para este mês
+      const receitasMesAtual = contasReceberFiltradas
+        .filter(conta => {
+          const [ano, mesConta, dia] = conta.vencimento.split('-');
+          const dataConta = new Date(parseInt(ano), parseInt(mesConta) - 1, parseInt(dia));
+          return dataConta.getMonth() === mesIndex && dataConta.getFullYear() === mes.getFullYear();
+        })
+        .reduce((total, conta) => total + (conta.valor || 0), 0);
+      
+      const despesasMesAtual = contasPagarFiltradas
+        .filter(conta => {
+          const [ano, mesConta, dia] = conta.vencimento.split('-');
+          const dataConta = new Date(parseInt(ano), parseInt(mesConta) - 1, parseInt(dia));
+          return dataConta.getMonth() === mesIndex && dataConta.getFullYear() === mes.getFullYear();
+        })
+        .reduce((total, conta) => total + (conta.valor || 0), 0);
+      
+      // Usar apenas dados reais - se não há dados, usar 0
+      let receitas = receitasMesAtual || 0;
+      let despesas = despesasMesAtual || 0;
       
       dados.push({
         mes: mesNome,
-        receitas: valor,
-        ano: mes.getFullYear()
+        receitas,
+        despesas,
+        ano: mes.getFullYear(),
+        temDados: receitasMesAtual > 0 || despesasMesAtual > 0
       });
     }
     
     return dados;
-  };
-
-  const gerarDadosPorCategoria = () => {
-    const categorias = [
-      { nome: 'Passagens Aéreas', valor: Math.floor(Math.random() * 80000) + 40000, cor: '#3B82F6' },
-      { nome: 'Hotéis', valor: Math.floor(Math.random() * 60000) + 30000, cor: '#10B981' },
-      { nome: 'Pacotes Turísticos', valor: Math.floor(Math.random() * 50000) + 25000, cor: '#F59E0B' },
-      { nome: 'Seguros', valor: Math.floor(Math.random() * 20000) + 10000, cor: '#EF4444' },
-      { nome: 'Outros Serviços', valor: Math.floor(Math.random() * 30000) + 15000, cor: '#8B5CF6' }
-    ];
-    
-    // Se temos dados reais de contas a receber, usar eles
-    if (contasReceberFiltradas.length > 0) {
-      const categoriasReais = contasReceberFiltradas.reduce((acc, conta) => {
-        const categoria = conta.servico || 'Outros';
-        acc[categoria] = (acc[categoria] || 0) + (conta.valor || 0);
-        return acc;
-      }, {} as Record<string, number>);
-      
-      return Object.entries(categoriasReais).map(([nome, valor], index) => ({
-        nome,
-        valor,
-        cor: ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4', '#84CC16'][index % 7]
-      }));
-    }
-    
-    return categorias;
-  };
-
-  // Atualizar dados dos gráficos quando as contas mudarem
-  useEffect(() => {
-    setDadosReceitasMensais(gerarDadosReceitasMensais());
-    setDadosPorCategoria(gerarDadosPorCategoria());
   }, [contasReceberFiltradas, contasPagarFiltradas]);
+
+  // Estado para dados do gráfico por categoria
+  const [dadosPorCategoria, setDadosPorCategoria] = useState([
+    { nome: 'Passagens Aéreas', valor: 60000, cor: '#3B82F6' },
+    { nome: 'Hotéis', valor: 45000, cor: '#10B981' },
+    { nome: 'Pacotes Turísticos', valor: 37500, cor: '#F59E0B' },
+    { nome: 'Seguros', valor: 15000, cor: '#EF4444' },
+    { nome: 'Outros Serviços', valor: 22500, cor: '#8B5CF6' }
+  ]);
+
+  // Estado para controlar se mostra receitas ou despesas no gráfico
+  const [tipoGraficoCategoria, setTipoGraficoCategoria] = useState<'receitas' | 'despesas'>('receitas');
+  
+  // Estado para controlar se mostra receitas ou despesas no gráfico mensal
+  const [tipoGraficoMensal, setTipoGraficoMensal] = useState<'receitas' | 'despesas'>('receitas');
+
+  // useEffect para buscar dados das categorias
+  useEffect(() => {
+    const buscarDadosCategoria = async () => {
+      if (tipoGraficoCategoria === 'receitas' && contasReceberFiltradas.length > 0) {
+        console.log('Contas a receber filtradas:', contasReceberFiltradas);
+        
+        // Buscar todos os categoria_ids únicos
+        const categoriaIds = [...new Set(contasReceberFiltradas.map(conta => conta.categoria_id).filter(Boolean))];
+        console.log('Categoria IDs únicos:', categoriaIds);
+        
+        // Buscar os nomes das categorias diretamente da tabela
+        const nomesCategorias: Record<number, string> = {};
+        
+        if (categoriaIds.length > 0) {
+          try {
+            const { data: categoriasData, error } = await supabase
+              .from('categorias')
+              .select('id, nome')
+              .in('id', categoriaIds);
+            
+            console.log('Dados das categorias:', categoriasData);
+            
+            if (!error && categoriasData) {
+              categoriasData.forEach(cat => {
+                nomesCategorias[cat.id] = cat.nome;
+              });
+            }
+          } catch (error) {
+            console.error('Erro ao buscar categorias:', error);
+          }
+        }
+        
+        console.log('Mapeamento de categorias:', nomesCategorias);
+        
+        const categoriasReais = contasReceberFiltradas.reduce((acc, conta) => {
+          // Buscar o nome da categoria usando o categoria_id
+          const nomeCategoria = conta.categoria_id && nomesCategorias[conta.categoria_id] 
+            ? nomesCategorias[conta.categoria_id] 
+            : 'Outros';
+          
+          acc[nomeCategoria] = (acc[nomeCategoria] || 0) + (conta.valor || 0);
+          return acc;
+        }, {} as Record<string, number>);
+        
+        console.log('Categorias reais:', categoriasReais);
+        
+        const dadosFormatados = Object.entries(categoriasReais).map(([nome, valor], index) => ({
+          nome,
+          valor,
+          cor: ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4', '#84CC16'][index % 7]
+        }));
+        
+        console.log('Dados formatados para o gráfico:', dadosFormatados);
+        setDadosPorCategoria(dadosFormatados);
+      } else if (tipoGraficoCategoria === 'despesas' && contasPagarFiltradas.length > 0) {
+        console.log('Contas a pagar filtradas:', contasPagarFiltradas);
+        
+        // Buscar todos os categoria_ids únicos das contas a pagar
+        const categoriaIds = [...new Set(contasPagarFiltradas.map(conta => conta.categoria_id).filter(Boolean))];
+        console.log('Categoria IDs únicos (despesas):', categoriaIds);
+        
+        // Buscar os nomes das categorias diretamente da tabela
+        const nomesCategorias: Record<number, string> = {};
+        
+        if (categoriaIds.length > 0) {
+          try {
+            const { data: categoriasData, error } = await supabase
+              .from('categorias')
+              .select('id, nome')
+              .in('id', categoriaIds);
+            
+            console.log('Dados das categorias (despesas):', categoriasData);
+            
+            if (!error && categoriasData) {
+              categoriasData.forEach(cat => {
+                nomesCategorias[cat.id] = cat.nome;
+              });
+            }
+          } catch (error) {
+            console.error('Erro ao buscar categorias:', error);
+          }
+        }
+        
+        console.log('Mapeamento de categorias (despesas):', nomesCategorias);
+        
+        const categoriasReais = contasPagarFiltradas.reduce((acc, conta) => {
+          // Buscar o nome da categoria usando o categoria_id
+          const nomeCategoria = conta.categoria_id && nomesCategorias[conta.categoria_id] 
+            ? nomesCategorias[conta.categoria_id] 
+            : 'Outros';
+          
+          acc[nomeCategoria] = (acc[nomeCategoria] || 0) + (conta.valor || 0);
+          return acc;
+        }, {} as Record<string, number>);
+        
+        console.log('Categorias reais (despesas):', categoriasReais);
+        
+        const dadosFormatados = Object.entries(categoriasReais).map(([nome, valor], index) => ({
+          nome,
+          valor,
+          cor: ['#EF4444', '#F59E0B', '#8B5CF6', '#06B6D4', '#84CC16', '#3B82F6', '#10B981'][index % 7]
+        }));
+        
+        console.log('Dados formatados para o gráfico (despesas):', dadosFormatados);
+        setDadosPorCategoria(dadosFormatados);
+      }
+    };
+
+    buscarDadosCategoria();
+  }, [contasReceberFiltradas, contasPagarFiltradas, tipoGraficoCategoria]);
+
+
 
   if (loading) {
     return (
@@ -1153,19 +1436,46 @@ const Financeiro = () => {
           <div className="space-y-6">
             {/* Gráficos e Análises */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-              {/* Gráfico Receitas Mensais */}
+              {/* Gráfico Receitas/Despesas Mensais */}
               <div className="lg:col-span-2 bg-white rounded-xl shadow-lg p-6 border border-gray-200">
                 <div className="flex items-center justify-between mb-6">
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-900">Receitas Mensais</h3>
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      {tipoGraficoMensal === 'receitas' ? 'Receitas' : 'Despesas'} Mensais
+                    </h3>
                     <p className="text-sm text-gray-600">Evolução dos últimos 7 meses</p>
                   </div>
-                  <BarChart3 className="h-6 w-6 text-blue-600" />
+                  <div className="flex items-center space-x-2">
+                    {/* Botão de alternância */}
+                    <div className="flex bg-gray-100 rounded-lg p-1">
+                      <button
+                        onClick={() => setTipoGraficoMensal('receitas')}
+                        className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
+                          tipoGraficoMensal === 'receitas'
+                            ? 'bg-green-500 text-white'
+                            : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        Receitas
+                      </button>
+                      <button
+                        onClick={() => setTipoGraficoMensal('despesas')}
+                        className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
+                          tipoGraficoMensal === 'despesas'
+                            ? 'bg-red-500 text-white'
+                            : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        Despesas
+                      </button>
+                    </div>
+                    <BarChart3 className="h-6 w-6 text-blue-600" />
+                  </div>
                 </div>
                 
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={dadosReceitasMensais}>
+                    <BarChart data={dadosMensais}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                       <XAxis 
                         dataKey="mes" 
@@ -1180,8 +1490,24 @@ const Financeiro = () => {
                         tickLine={false}
                       />
                       <Tooltip 
-                        formatter={(value: any) => [`R$ ${formatarMoeda(value)}`, 'Receitas']}
-                        labelFormatter={(label) => `${label} ${dadosReceitasMensais.find(d => d.mes === label)?.ano || ''}`}
+                        formatter={(value: any) => {
+                          if (value === 0) {
+                            return ['Sem dados', tipoGraficoMensal === 'receitas' ? 'Receitas' : 'Despesas'];
+                          }
+                          return [`R$ ${formatarMoeda(value)}`, tipoGraficoMensal === 'receitas' ? 'Receitas' : 'Despesas'];
+                        }}
+                        labelFormatter={(label) => {
+                          const dadosMes = dadosMensais.find((d: any) => d.mes === label);
+                          const temDados = dadosMes?.temDados;
+                          const ano = dadosMes?.ano || '';
+                          const valor = tipoGraficoMensal === 'receitas' ? dadosMes?.receitas : dadosMes?.despesas;
+                          
+                          if (temDados && valor && valor > 0) {
+                            return `${label} ${ano}`;
+                          } else {
+                            return `${label} ${ano} - Sem informações`;
+                          }
+                        }}
                         contentStyle={{
                           backgroundColor: 'white',
                           border: '1px solid #e5e7eb',
@@ -1190,24 +1516,49 @@ const Financeiro = () => {
                         }}
                       />
                       <Bar 
-                        dataKey="receitas" 
-                        fill="#3B82F6" 
+                        dataKey={tipoGraficoMensal === 'receitas' ? 'receitas' : 'despesas'} 
+                        fill={tipoGraficoMensal === 'receitas' ? '#3B82F6' : '#EF4444'} 
                         radius={[4, 4, 0, 0]}
-                        name="Receitas"
+                        name={tipoGraficoMensal === 'receitas' ? 'Receitas' : 'Despesas'}
                       />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
               </div>
 
-              {/* Receitas por Categoria */}
+              {/* Receitas/Despesas por Categoria */}
               <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-200">
                 <div className="flex items-center justify-between mb-6">
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900">Por Categoria</h3>
                     <p className="text-sm text-gray-600">Este mês</p>
                   </div>
-                  <PieChart className="h-6 w-6 text-purple-600" />
+                  <div className="flex items-center space-x-2">
+                    {/* Botão de alternância */}
+                    <div className="flex bg-gray-100 rounded-lg p-1">
+                      <button
+                        onClick={() => setTipoGraficoCategoria('receitas')}
+                        className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
+                          tipoGraficoCategoria === 'receitas'
+                            ? 'bg-green-500 text-white'
+                            : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        Receitas
+                      </button>
+                      <button
+                        onClick={() => setTipoGraficoCategoria('despesas')}
+                        className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
+                          tipoGraficoCategoria === 'despesas'
+                            ? 'bg-red-500 text-white'
+                            : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        Despesas
+                      </button>
+                    </div>
+                    <PieChart className="h-6 w-6 text-purple-600" />
+                  </div>
                 </div>
                 
                 <div className="h-64">
@@ -1222,13 +1573,15 @@ const Financeiro = () => {
                         outerRadius={80}
                         fill="#8884d8"
                         dataKey="valor"
+                        nameKey="nome"
                       >
                         {dadosPorCategoria.map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={entry.cor} />
                         ))}
                       </Pie>
                       <Tooltip 
-                        formatter={(value: any) => [`R$ ${formatarMoeda(value)}`, 'Valor']}
+                        formatter={(value: any, name: any) => [`R$ ${formatarMoeda(value)}`, name]}
+                        labelFormatter={(label) => `${tipoGraficoCategoria === 'receitas' ? 'Receitas' : 'Despesas'} - ${label}`}
                         contentStyle={{
                           backgroundColor: 'white',
                           border: '1px solid #e5e7eb',
@@ -1247,100 +1600,149 @@ const Financeiro = () => {
               </div>
             </div>
 
-            {/* Transações Recentes */}
+            {/* Próximos Vencimentos */}
             <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-200">
               <div className="flex items-center justify-between mb-6">
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Transações Recentes</h3>
-                  <p className="text-sm text-gray-600">Últimas movimentações financeiras</p>
+                  <h3 className="text-lg font-semibold text-gray-900">Próximos</h3>
+                  <p className="text-sm text-gray-600">Contas a pagar e receber com vencimento próximo</p>
                 </div>
-                <div className="flex space-x-2">
-                  <button 
-                    onClick={handleNovaTransacao}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center"
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Nova Transação
-                  </button>
-                </div>
+                <Calendar className="h-6 w-6 text-blue-600" />
               </div>
 
-              {transacoes.length === 0 ? (
-                <div className="text-center py-12 text-gray-500">
-                  <Receipt className="h-16 w-16 mx-auto mb-4 text-gray-300" />
-                  <h3 className="text-lg font-medium mb-2">Nenhuma transação encontrada</h3>
-                  <p>Adicione sua primeira transação para começar</p>
-                  <button 
-                    onClick={handleNovaTransacao}
-                    className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                  >
-                    Adicionar Transação
-                  </button>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-gray-200">
-                        <th className="text-left py-3 px-4 font-medium text-gray-600">Tipo</th>
-                        <th className="text-left py-3 px-4 font-medium text-gray-600">Descrição</th>
-                        <th className="text-left py-3 px-4 font-medium text-gray-600">Categoria</th>
-                        <th className="text-left py-3 px-4 font-medium text-gray-600">Valor</th>
-                        <th className="text-left py-3 px-4 font-medium text-gray-600">Data</th>
-                        <th className="text-left py-3 px-4 font-medium text-gray-600">Status</th>
-                        <th className="text-left py-3 px-4 font-medium text-gray-600">Ações</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {transacoes.map((transacao) => (
-                        <tr key={transacao.id} className="border-b border-gray-100 hover:bg-gray-50">
-                          <td className="py-3 px-4">
-                            <div className="flex items-center">
-                              {transacao.tipo === 'receita' ? (
-                                <ArrowUpCircle className="h-5 w-5 text-green-600 mr-2" />
-                              ) : (
-                                <ArrowDownCircle className="h-5 w-5 text-red-600 mr-2" />
-                              )}
-                              <span className={`text-sm font-medium ${
-                                transacao.tipo === 'receita' ? 'text-green-600' : 'text-red-600'
-                              }`}>
-                                {transacao.tipo === 'receita' ? 'Receita' : 'Despesa'}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="py-3 px-4">
-                            <div>
-                              <div className="font-medium text-gray-900">{transacao.descricao}</div>
-                              {transacao.cliente && (
-                                <div className="text-sm text-gray-500">{transacao.cliente}</div>
-                              )}
-                            </div>
-                          </td>
-                          <td className="py-3 px-4 text-gray-600">{transacao.categoria}</td>
-                          <td className="py-3 px-4">
-                            <span className={`font-semibold ${
-                              transacao.tipo === 'receita' ? 'text-green-600' : 'text-red-600'
-                            }`}>
-                              {transacao.tipo === 'receita' ? '+' : '-'}{formatarMoeda(transacao.valor)}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4 text-gray-600">{formatarData(transacao.data)}</td>
-                          <td className="py-3 px-4">
-                            <span className={`text-xs px-2 py-1 rounded-full font-medium ${getStatusColor(transacao.status, 'transacao')}`}>
-                              {transacao.status}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4">
-                            <button className="p-1 text-gray-400 hover:text-gray-600 rounded">
-                              <Eye className="h-4 w-4" />
-                            </button>
-                          </td>
+              {(() => {
+                // Combinar contas a pagar e receber pendentes
+                const contasPendentes = [
+                  ...contasPagarFiltradas
+                    .filter(conta => conta.status === 'PENDENTE' || conta.status === 'VENCIDA')
+                    .map(conta => ({
+                      ...conta,
+                      tipo: 'pagar' as const,
+                      categoria: categoriasCusto.find(cat => cat.id === conta.categoria_id)?.nome || 'Sem categoria',
+                      entidade: fornecedores.find(f => f.id === conta.fornecedor_id)?.nome || 'Fornecedor'
+                    })),
+                  ...contasReceberFiltradas
+                    .filter(conta => conta.status === 'pendente' || conta.status === 'vencida')
+                    .map(conta => ({
+                      ...conta,
+                      tipo: 'receber' as const,
+                      categoria: categoriasVenda.find(cat => cat.id === conta.categoria_id)?.nome || 
+                                categoriasComissaoVenda.find(cat => cat.id === conta.categoria_id)?.nome || 'Sem categoria',
+                      entidade: conta.cliente_nome || 'Cliente'
+                    }))
+                ];
+
+                // Ordenar por data de vencimento (mais próximos primeiro)
+                const proximosOrdenados = contasPendentes
+                  .sort((a, b) => {
+                    const [anoA, mesA, diaA] = a.vencimento.split('-');
+                    const [anoB, mesB, diaB] = b.vencimento.split('-');
+                    const dataA = new Date(parseInt(anoA), parseInt(mesA) - 1, parseInt(diaA));
+                    const dataB = new Date(parseInt(anoB), parseInt(mesB) - 1, parseInt(diaB));
+                    return dataA.getTime() - dataB.getTime();
+                  })
+                  .slice(0, 10); // Limitar a 10 itens
+
+                if (proximosOrdenados.length === 0) {
+                  return (
+                    <div className="text-center py-12 text-gray-500">
+                      <Calendar className="h-16 w-16 mx-auto mb-4 text-gray-300" />
+                      <h3 className="text-lg font-medium mb-2">Nenhum vencimento próximo</h3>
+                      <p>Todas as contas estão em dia</p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-gray-200">
+                          <th className="text-left py-3 px-4 font-medium text-gray-600">Tipo</th>
+                          <th className="text-left py-3 px-4 font-medium text-gray-600">Categoria</th>
+                          <th className="text-left py-3 px-4 font-medium text-gray-600">Entidade</th>
+                          <th className="text-left py-3 px-4 font-medium text-gray-600">Valor</th>
+                          <th className="text-left py-3 px-4 font-medium text-gray-600">Vencimento</th>
+                          <th className="text-left py-3 px-4 font-medium text-gray-600">Status</th>
+                          <th className="text-left py-3 px-4 font-medium text-gray-600">Ações</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                      </thead>
+                      <tbody>
+                        {proximosOrdenados.map((conta) => (
+                          <tr key={`${conta.tipo}-${conta.id}`} className="border-b border-gray-100 hover:bg-gray-50">
+                            <td className="py-3 px-4">
+                              <div className="flex items-center">
+                                {conta.tipo === 'receber' ? (
+                                  <ArrowUpCircle className="h-5 w-5 text-green-600 mr-2" />
+                                ) : (
+                                  <ArrowDownCircle className="h-5 w-5 text-red-600 mr-2" />
+                                )}
+                                <span className={`text-sm font-medium ${
+                                  conta.tipo === 'receber' ? 'text-green-600' : 'text-red-600'
+                                }`}>
+                                  {conta.tipo === 'receber' ? 'A Receber' : 'A Pagar'}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="font-medium text-gray-900">{conta.categoria}</div>
+                            </td>
+                            <td className="py-3 px-4 text-gray-600">{conta.entidade}</td>
+                            <td className="py-3 px-4">
+                              <span className={`font-semibold ${
+                                conta.tipo === 'receber' ? 'text-green-600' : 'text-red-600'
+                              }`}>
+                                {formatarMoeda(conta.valor)}
+                              </span>
+                            </td>
+                                                          <td className="py-3 px-4">
+                                <div className="text-gray-600">{formatarDataLocal(conta.vencimento)}</div>
+                              <div className="text-xs text-gray-500">
+                                {(() => {
+                                  const hoje = new Date();
+                                  // Criar a data de vencimento no fuso horário local
+                                  const [ano, mes, dia] = conta.vencimento.split('-');
+                                  const vencimentoData = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia));
+                                  
+                                  // Resetar as horas para comparar apenas as datas
+                                  const hojeData = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+                                  const vencimentoDataNormalizada = new Date(vencimentoData.getFullYear(), vencimentoData.getMonth(), vencimentoData.getDate());
+                                  
+                                  const diffTime = vencimentoDataNormalizada.getTime() - hojeData.getTime();
+                                  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+                                  
+                                  if (diffDays < 0) {
+                                    return `${Math.abs(diffDays)} dia(s) atrasado`;
+                                  } else if (diffDays === 0) {
+                                    return 'Vence hoje';
+                                  } else if (diffDays === 1) {
+                                    return 'Vence amanhã';
+                                  } else {
+                                    return `Em ${diffDays} dias`;
+                                  }
+                                })()}
+                              </div>
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className={`text-xs px-2 py-1 rounded-full font-medium ${getStatusColor(conta.status, 'conta')}`}>
+                                {conta.status === 'VENCIDA' || conta.status === 'vencida' ? 'Vencida' : 'Pendente'}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4">
+                              <button 
+                                onClick={() => conta.tipo === 'pagar' ? handleVisualizarConta(conta as any) : handleVisualizarContaReceber(conta as any)}
+                                className="p-1 text-gray-400 hover:text-gray-600 rounded"
+                              >
+                                <Eye className="h-4 w-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         )}
@@ -1426,7 +1828,8 @@ const Financeiro = () => {
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-gray-200">
-                        <th className="text-left py-3 px-4 font-medium text-gray-600">Descrição</th>
+                        <th className="text-left py-3 px-4 font-medium text-gray-600">Fornecedor</th>
+                        <th className="text-left py-3 px-4 font-medium text-gray-600">Categoria</th>
                         <th className="text-left py-3 px-4 font-medium text-gray-600">Forma Pagamento</th>
                         <th className="text-left py-3 px-4 font-medium text-gray-600">Vencimento</th>
                         <th className="text-left py-3 px-4 font-medium text-gray-600">Valor</th>
@@ -1436,13 +1839,41 @@ const Financeiro = () => {
                     </thead>
                     <tbody>
                       {contasPagarOrdenadas.map((conta) => {
-                        console.log('FormasPagamento:', formasPagamento, 'conta.forma_pagamento:', conta.forma_pagamento);
+                        // Verificar se é da 7C Turismo & Consultoria (ID 3)
+                        const is7CTurismo = conta.fornecedor_id === 3
+                        
                         return (
-                          <tr key={conta.id} className="border-b border-gray-100 hover:bg-gray-50">
-                            <td className="py-3 px-4 font-medium text-gray-900">{conta.categoria || '-'}</td>
+                          <tr key={conta.id} className={`border-b border-gray-100 hover:bg-gray-50 ${
+                            is7CTurismo ? 'bg-red-50 border-l-4 border-l-red-500' : ''
+                          }`}>
+                            <td className="py-3 px-4 font-medium text-gray-900">
+                              <div className="flex items-center">
+                                {is7CTurismo && (
+                                  <div className="bg-green-800 rounded p-1 mr-2">
+                                    <img 
+                                      src="https://ethmgnxyrgpkzgmkocwk.supabase.co/storage/v1/object/public/logos//avatar_mono2.png"
+                                      alt="Logo 7C Turismo"
+                                      className="h-6 w-6 object-contain"
+                                    />
+                                  </div>
+                                )}
+                                {
+                                  (() => {
+                                    const fornecedor = fornecedores.find(f => f.id === conta.fornecedor_id);
+                                    return fornecedor ? fornecedor.nome : '-';
+                                  })()
+                                }
+                              </div>
+                            </td>
+        <td className="py-3 px-4 font-medium text-gray-900">{
+          (() => {
+            const categoria = categoriasCusto.find(c => c.id === conta.categoria_id);
+            return categoria ? categoria.nome : '-';
+          })()
+        }</td>
                             <td className="py-3 px-4 text-gray-600">{
                               (() => {
-                                const idForma = conta.forma_pagamento ? String(conta.forma_pagamento) : '';
+                                const idForma = conta.forma_pagamento_id ? String(conta.forma_pagamento_id) : '';
                                 const forma = formasPagamento.find(f => String(f.id) === idForma);
                                 return forma ? forma.nome : '-';
                               })()
@@ -1573,51 +2004,95 @@ const Financeiro = () => {
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-gray-200">
-                        <th className="text-left py-3 px-4 font-medium text-gray-600">Cliente</th>
-                        <th className="text-left py-3 px-4 font-medium text-gray-600">Descrição</th>
-                        <th className="text-left py-3 px-4 font-medium text-gray-600">Serviço</th>
-                        <th className="text-left py-3 px-4 font-medium text-gray-600">Valor</th>
+                        <th className="text-left py-3 px-4 font-medium text-gray-600">Cliente/Fornecedor</th>
+                        <th className="text-left py-3 px-4 font-medium text-gray-600">Categoria</th>
+                        <th className="text-left py-3 px-4 font-medium text-gray-600">Forma Pagamento</th>
                         <th className="text-left py-3 px-4 font-medium text-gray-600">Vencimento</th>
+                        <th className="text-left py-3 px-4 font-medium text-gray-600">Valor</th>
                         <th className="text-left py-3 px-4 font-medium text-gray-600">Status</th>
                         <th className="text-left py-3 px-4 font-medium text-gray-600">Ações</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filtrarPorPeriodo(contasReceberOrdenadas).map((conta) => (
-                        <tr key={conta.id} className="border-b border-gray-100 hover:bg-gray-50">
-                          <td className="py-3 px-4 font-medium text-gray-900">{conta.cliente_nome}</td>
-                          <td className="py-3 px-4 text-gray-600">{conta.descricao}</td>
-                          <td className="py-3 px-4 text-gray-600">{conta.servico}</td>
-                          <td className="py-3 px-4 font-semibold text-green-600">
-                            {formatarMoeda(conta.valor)}
-                          </td>
-                          <td className="py-3 px-4 text-gray-600">{formatarDataLocal(conta.vencimento)}</td>
-                          <td className="py-3 px-4">
-                            <span className={`text-xs px-2 py-1 rounded-full font-medium ${getStatusColor(conta.status)}`}>
-                              {conta.status}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4">
-                            <div className="flex space-x-2">
-                              {conta.status === 'recebida' ? (
-                                <button className="p-1 text-yellow-600 hover:text-yellow-800 rounded" onClick={() => handleDesfazerRecebimento(conta)} title="Desfazer recebimento">
-                                  <ArrowLeft className="h-4 w-4" />
+                      {filtrarPorPeriodo(contasReceberOrdenadas).map((conta) => {
+                        // Buscar nome da entidade baseado nos campos cliente_id ou fornecedor_id
+                        let nomeEntidade = 'Entidade não encontrada'
+                        
+                        if (conta.cliente_id) {
+                          const cliente = clientes.find(c => c.id === parseInt(conta.cliente_id || '0'))
+                          nomeEntidade = cliente ? `${cliente.nome}${cliente.sobrenome ? ` ${cliente.sobrenome}` : ''}` : `Cliente ID: ${conta.cliente_id}`
+                        } else if (conta.fornecedor_id) {
+                          const fornecedor = fornecedores.find(f => f.id === conta.fornecedor_id)
+                          nomeEntidade = fornecedor ? fornecedor.nome : `Fornecedor ID: ${conta.fornecedor_id}`
+                        }
+                        
+                        // Buscar nome da categoria
+                        let categoria = categoriasVenda.find(c => c.id === conta.categoria_id)
+                        if (!categoria) {
+                          categoria = categoriasComissaoVenda.find(c => c.id === conta.categoria_id)
+                        }
+                        const nomeCategoria = categoria ? categoria.nome : `ID: ${conta.categoria_id}`
+                        
+                        // Verificar se é da 7C Turismo & Consultoria (ID 3)
+                        const is7CTurismo = conta.fornecedor_id === 3
+                        
+                        return (
+                          <tr key={conta.id} className={`border-b border-gray-100 hover:bg-gray-50 ${
+                            is7CTurismo ? 'bg-green-50 border-l-4 border-l-green-500' : ''
+                          }`}>
+                            <td className="py-3 px-4 font-medium text-gray-900">
+                              <div className="flex items-center">
+                                {is7CTurismo && (
+                                  <div className="bg-green-800 rounded p-1 mr-2">
+                                    <img 
+                                      src="https://ethmgnxyrgpkzgmkocwk.supabase.co/storage/v1/object/public/logos//avatar_mono2.png"
+                                      alt="Logo 7C Turismo"
+                                      className="h-6 w-6 object-contain"
+                                    />
+                                  </div>
+                                )}
+                                {nomeEntidade}
+                              </div>
+                            </td>
+                            <td className="py-3 px-4 font-medium text-gray-900">{nomeCategoria}</td>
+                            <td className="py-3 px-4 text-gray-600">{
+                              (() => {
+                                const idForma = conta.forma_recebimento_id ? String(conta.forma_recebimento_id) : '';
+                                const forma = formasPagamento.find(f => String(f.id) === idForma);
+                                return forma ? forma.nome : '-';
+                              })()
+                            }</td>
+                            <td className="py-3 px-4 text-gray-600">{formatarDataLocal(conta.vencimento)}</td>
+                            <td className="py-3 px-4 font-semibold text-green-600">
+                              {formatarMoeda(conta.valor)}
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className={`text-xs px-2 py-1 rounded-full font-medium ${getStatusColor(conta.status)}`}>
+                                {conta.status}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="flex space-x-2">
+                                {conta.status === 'recebida' ? (
+                                  <button className="p-1 text-yellow-600 hover:text-yellow-800 rounded" onClick={() => handleDesfazerRecebimento(conta)} title="Desfazer recebimento">
+                                    <ArrowLeft className="h-4 w-4" />
+                                  </button>
+                                ) : (
+                                  <button className="p-1 text-green-600 hover:text-green-800 rounded" onClick={() => handleConfirmarRecebimento(conta)} title="Confirmar recebimento">
+                                    <CheckCircle className="h-4 w-4" />
+                                  </button>
+                                )}
+                                <button className="p-1 text-gray-400 hover:text-gray-600 rounded" onClick={() => handleVisualizarContaReceber(conta)} title="Visualizar detalhes">
+                                  <Eye className="h-4 w-4" />
                                 </button>
-                              ) : (
-                                <button className="p-1 text-green-600 hover:text-green-800 rounded" onClick={() => handleConfirmarRecebimento(conta)} title="Confirmar recebimento">
-                                  <CheckCircle className="h-4 w-4" />
+                                <button className="p-1 text-red-600 hover:text-red-800 rounded" onClick={() => handleExcluirContaReceber(conta)} title="Excluir conta">
+                                  <Trash2 className="h-4 w-4" />
                                 </button>
-                              )}
-                              <button className="p-1 text-gray-400 hover:text-gray-600 rounded" onClick={() => handleVisualizarContaReceber(conta)} title="Visualizar detalhes">
-                                <Eye className="h-4 w-4" />
-                              </button>
-                              <button className="p-1 text-red-600 hover:text-red-800 rounded" onClick={() => handleExcluirContaReceber(conta)} title="Excluir conta">
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -1687,8 +2162,8 @@ const Financeiro = () => {
                           </div>
                         ) : (
                           <select
-                            value={novaContaPagar.categoria}
-                            onChange={(e) => setNovaContaPagar(prev => ({ ...prev, categoria: e.target.value }))}
+                            value={novaContaPagar.categoria_id || ''}
+                            onChange={(e) => setNovaContaPagar(prev => ({ ...prev, categoria_id: parseInt(e.target.value) || 0 }))}
                             className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200 bg-white hover:border-gray-300"
                             required
                           >
@@ -1696,7 +2171,7 @@ const Financeiro = () => {
                             {categoriasCusto
                               .filter(categoria => categoria.tipo === 'CUSTO')
                               .map((categoria) => (
-                                <option key={categoria.id} value={categoria.nome}>
+                                <option key={categoria.id} value={categoria.id}>
                                   📋 {categoria.nome}
                                 </option>
                               ))}
@@ -1734,21 +2209,11 @@ const Financeiro = () => {
                             onFocus={() => console.log('Select de fornecedores focado. Estado atual:', fornecedores.length, 'fornecedores')}
                           >
                             <option value="">Selecione um fornecedor (opcional)</option>
-                            {fornecedores.map((fornecedor) => {
-                              // Determinar a origem do fornecedor
-                              let origem = '🌐 Global'
-                              if (fornecedor.user_id) {
-                                origem = '👤 Usuário'
-                              } else if (fornecedor.empresa_id) {
-                                origem = '🏢 Empresa'
-                              }
-                              
-                              return (
-                                <option key={fornecedor.id} value={fornecedor.id}>
-                                  {origem} - {fornecedor.nome} {fornecedor.cidade && `- ${fornecedor.cidade}/${fornecedor.estado}`}
-                                </option>
-                              )
-                            })}
+                            {fornecedores.map((fornecedor) => (
+                              <option key={fornecedor.id} value={fornecedor.id}>
+                                {fornecedor.nome}
+                              </option>
+                            ))}
                             {fornecedores.length === 0 && (
                               <option value="" disabled>
                                 Nenhum fornecedor encontrado
@@ -1810,8 +2275,8 @@ const Financeiro = () => {
                           </div>
                         ) : (
                           <select
-                            value={novaContaPagar.forma_pagamento}
-                            onChange={(e) => setNovaContaPagar(prev => ({ ...prev, forma_pagamento: e.target.value }))}
+                            value={novaContaPagar.forma_pagamento_id || ''}
+                            onChange={(e) => setNovaContaPagar(prev => ({ ...prev, forma_pagamento_id: parseInt(e.target.value) || 0 }))}
                             className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200 bg-white hover:border-gray-300"
                             required
                           >
@@ -1898,15 +2363,15 @@ const Financeiro = () => {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setNovaContaPagar(prev => ({ ...prev, status: 'PAGA' }))}
+                      onClick={() => setNovaContaPagar(prev => ({ ...prev, status: 'PAGO' }))}
                       className={`p-3 rounded-xl border-2 transition-all duration-200 flex items-center justify-center space-x-2 ${
-                        novaContaPagar.status === 'PAGA'
+                        novaContaPagar.status === 'PAGO'
                           ? 'border-green-500 bg-green-50 text-green-700'
                           : 'border-gray-200 hover:border-green-300 hover:bg-green-50'
                       }`}
                     >
                       <CheckCircle className="h-4 w-4" />
-                      <span className="font-medium">Paga</span>
+                      <span className="font-medium">Pago</span>
                     </button>
                     <button
                       type="button"
@@ -1954,7 +2419,7 @@ const Financeiro = () => {
                     </button>
                     <button
                       onClick={handleSalvarContaPagar}
-                      disabled={!novaContaPagar.categoria || !novaContaPagar.forma_pagamento || !novaContaPagar.vencimento || novaContaPagar.valor <= 0 || salvandoContaPagar}
+                      disabled={novaContaPagar.categoria_id <= 0 || novaContaPagar.forma_pagamento_id <= 0 || !novaContaPagar.vencimento || novaContaPagar.valor <= 0 || salvandoContaPagar}
                       className="px-6 py-2.5 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl hover:from-red-600 hover:to-red-700 transition-all duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2 shadow-lg hover:shadow-xl transform hover:scale-105"
                     >
                       {salvandoContaPagar ? (
@@ -1988,8 +2453,15 @@ const Financeiro = () => {
                       <DollarSign className="h-6 w-6" />
                     </div>
                     <div>
-                      <h3 className="text-xl font-bold">Nova Conta a Receber</h3>
-                      <p className="text-green-100 text-sm">Adicione uma nova receita ao sistema</p>
+                      <h3 className="text-xl font-bold">
+                        {tipoReceberSelecionado === 'comissao' ? 'Nova Comissão' : 'Nova Conta a Receber'}
+                      </h3>
+                      <p className="text-green-100 text-sm">
+                        {tipoReceberSelecionado === 'comissao' 
+                          ? 'Adicione uma nova comissão ao sistema' 
+                          : 'Adicione uma nova receita ao sistema'
+                        }
+                      </p>
                     </div>
                   </div>
                   <button 
@@ -2019,19 +2491,17 @@ const Financeiro = () => {
                           </div>
                         ) : (
                           <select
-                            value={novaContaReceber.categoria || ''}
-                            onChange={(e) => setNovaContaReceber(prev => ({ ...prev, categoria: e.target.value }))}
+                            value={novaContaReceber.categoria_id || ''}
+                            onChange={(e) => setNovaContaReceber(prev => ({ ...prev, categoria_id: parseInt(e.target.value) || 0 }))}
                             className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 bg-white hover:border-gray-300"
                             required
                           >
                             <option value="">Selecione uma categoria</option>
-                            {categoriasCusto
-                              .filter(categoria => categoria.tipo === 'VENDA')
-                              .map((categoria) => (
-                                <option key={categoria.id} value={categoria.nome}>
-                                  📋 {categoria.nome}
-                                </option>
-                              ))}
+                            {(tipoReceberSelecionado === 'comissao' ? categoriasComissaoVenda : categoriasVenda).map((categoria) => (
+                              <option key={categoria.id} value={categoria.id}>
+                                📋 {categoria.nome}
+                              </option>
+                            ))}
                           </select>
                         )}
                       </div>
@@ -2046,38 +2516,84 @@ const Financeiro = () => {
                     </div>
                   </div>
 
-                  {/* Cliente */}
+                  {/* Cliente/Fornecedor */}
                   <div className="space-y-2">
                     <label className="block text-sm font-semibold text-gray-700">
-                      Cliente <span className="text-red-500">*</span>
+                      {tipoReceberSelecionado === 'comissao' ? 'Fornecedor' : 'Cliente'} <span className="text-red-500">*</span>
                     </label>
-                    <input
-                      type="text"
-                      value={novaContaReceber.cliente_nome || ''}
-                      onChange={(e) => setNovaContaReceber(prev => ({ ...prev, cliente_nome: e.target.value }))}
-                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 bg-white hover:border-gray-300"
-                      placeholder="Nome do cliente"
-                      required
-                    />
+                    <div className="relative">
+                      {tipoReceberSelecionado === 'comissao' ? (
+                        // Para comissão, usar fornecedores
+                        loadingFornecedores ? (
+                          <div className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 flex items-center justify-center">
+                            <div className="animate-spin rounded-full h-4 w-4 border-2 border-green-500 border-t-transparent"></div>
+                            <span className="ml-2 text-gray-500">Carregando fornecedores...</span>
+                          </div>
+                        ) : (
+                          <select
+                            value={novaContaReceber.fornecedor_id || ''}
+                            onChange={(e) => {
+                              const fornecedorId = e.target.value ? parseInt(e.target.value) : null;
+                              const fornecedorSelecionado = fornecedores.find(f => f.id === fornecedorId);
+                              console.log('Debug - Fornecedor selecionado:', fornecedorSelecionado);
+                              console.log('Debug - Fornecedor ID:', fornecedorId);
+                              setNovaContaReceber(prev => {
+                                const newState = { 
+                                  ...prev, 
+                                  fornecedor_id: fornecedorId,
+                                  cliente_nome: fornecedorSelecionado ? fornecedorSelecionado.nome : ''
+                                };
+                                console.log('Debug - Novo estado:', newState);
+                                return newState;
+                              });
+                            }}
+                            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 bg-white hover:border-gray-300"
+                            required
+                          >
+                            <option value="">Selecione um fornecedor</option>
+                            {fornecedores.map((fornecedor) => (
+                              <option key={fornecedor.id} value={fornecedor.id}>
+                              🏢 {fornecedor.nome} {fornecedor.cnpj ? `- ${fornecedor.cnpj}` : ''}
+                              </option>
+                            ))}
+                          </select>
+                        )
+                      ) : (
+                        // Para conta normal, usar clientes
+                        loadingClientes ? (
+                          <div className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 flex items-center justify-center">
+                            <div className="animate-spin rounded-full h-4 w-4 border-2 border-green-500 border-t-transparent"></div>
+                            <span className="ml-2 text-gray-500">Carregando clientes...</span>
+                          </div>
+                        ) : (
+                          <select
+                            value={novaContaReceber.cliente_id || ''}
+                            onChange={(e) => {
+                              const clienteId = e.target.value ? parseInt(e.target.value) : null;
+                              const clienteSelecionado = clientes.find(c => c.id === clienteId);
+                              setNovaContaReceber(prev => ({ 
+                                ...prev, 
+                                cliente_id: clienteId,
+                                cliente_nome: clienteSelecionado ? `${clienteSelecionado.nome}${clienteSelecionado.sobrenome ? ` ${clienteSelecionado.sobrenome}` : ''}` : ''
+                              }));
+                            }}
+                            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 bg-white hover:border-gray-300"
+                            required
+                          >
+                            <option value="">Selecione um cliente</option>
+                            {clientes.map((cliente) => (
+                              <option key={cliente.id} value={cliente.id}>
+                                👤 {cliente.nome}{cliente.sobrenome ? ` ${cliente.sobrenome}` : ''} - {cliente.email}
+                              </option>
+                            ))}
+                          </select>
+                        )
+                      )}
+                    </div>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Serviço */}
-                  <div className="space-y-2">
-                    <label className="block text-sm font-semibold text-gray-700">
-                      Serviço <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={novaContaReceber.servico || ''}
-                      onChange={(e) => setNovaContaReceber(prev => ({ ...prev, servico: e.target.value }))}
-                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 bg-white hover:border-gray-300"
-                      placeholder="Descrição do serviço"
-                      required
-                    />
-                  </div>
-
                   {/* Valor */}
                   <div className="space-y-2">
                     <label className="block text-sm font-semibold text-gray-700">
@@ -2114,20 +2630,89 @@ const Financeiro = () => {
                     />
                   </div>
 
+                  {/* Forma de Recebimento */}
+                  <div className="space-y-2">
+                    <label className="block text-sm font-semibold text-gray-700">
+                      Forma de Recebimento
+                    </label>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        {loadingFormasPagamento ? (
+                          <div className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 flex items-center justify-center">
+                            <div className="animate-spin rounded-full h-4 w-4 border-2 border-green-500 border-t-transparent"></div>
+                            <span className="ml-2 text-gray-500">Carregando formas...</span>
+                          </div>
+                        ) : (
+                          <select
+                            value={novaContaReceber.forma_recebimento_id || ''}
+                            onChange={(e) => setNovaContaReceber(prev => ({ ...prev, forma_recebimento_id: e.target.value ? parseInt(e.target.value) : null }))}
+                            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 bg-white hover:border-gray-300"
+                          >
+                            <option value="">Selecione uma forma de recebimento</option>
+                            {formasPagamento.map((forma) => (
+                              <option key={forma.id} value={forma.id}>
+                                💳 {forma.nome}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setModalNovaFormaPagamento(true)}
+                        className="px-4 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all duration-200 flex items-center justify-center"
+                        title="Adicionar nova forma de pagamento"
+                      >
+                        <Plus className="h-5 w-5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Status */}
                   <div className="space-y-2">
                     <label className="block text-sm font-semibold text-gray-700">
                       Status
                     </label>
-                    <select
-                      value={novaContaReceber.status || 'pendente'}
-                      onChange={(e) => setNovaContaReceber(prev => ({ ...prev, status: e.target.value as 'pendente' | 'recebida' | 'vencida' }))}
-                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 bg-white hover:border-gray-300"
-                    >
-                      <option value="pendente">Pendente</option>
-                      <option value="recebida">Recebida</option>
-                      <option value="vencida">Vencida</option>
-                    </select>
+                    <div className="grid grid-cols-3 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setNovaContaReceber(prev => ({ ...prev, status: 'pendente' }))}
+                        className={`p-3 rounded-xl border-2 transition-all duration-200 flex items-center justify-center space-x-2 ${
+                          novaContaReceber.status === 'pendente'
+                            ? 'border-yellow-500 bg-yellow-50 text-yellow-700'
+                            : 'border-gray-200 hover:border-yellow-300 hover:bg-yellow-50'
+                        }`}
+                      >
+                        <Clock className="h-4 w-4" />
+                        <span className="font-medium">Pendente</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setNovaContaReceber(prev => ({ ...prev, status: 'recebida' }))}
+                        className={`p-3 rounded-xl border-2 transition-all duration-200 flex items-center justify-center space-x-2 ${
+                          novaContaReceber.status === 'recebida'
+                            ? 'border-green-500 bg-green-50 text-green-700'
+                            : 'border-gray-200 hover:border-green-300 hover:bg-green-50'
+                        }`}
+                      >
+                        <CheckCircle className="h-4 w-4" />
+                        <span className="font-medium">Recebida</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setNovaContaReceber(prev => ({ ...prev, status: 'vencida' }))}
+                        className={`p-3 rounded-xl border-2 transition-all duration-200 flex items-center justify-center space-x-2 ${
+                          novaContaReceber.status === 'vencida'
+                            ? 'border-red-500 bg-red-50 text-red-700'
+                            : 'border-gray-200 hover:border-red-300 hover:bg-red-50'
+                        }`}
+                      >
+                        <XCircle className="h-4 w-4" />
+                        <span className="font-medium">Vencida</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -2158,7 +2743,16 @@ const Financeiro = () => {
                   </button>
                   <button
                     onClick={handleSalvarContaReceber}
-                    disabled={!novaContaReceber.categoria || !novaContaReceber.cliente_nome || !novaContaReceber.servico || !novaContaReceber.valor || !novaContaReceber.vencimento || salvandoContaReceber}
+                    disabled={
+                      !novaContaReceber.categoria_id ||
+                      (tipoReceberSelecionado === 'comissao'
+                        ? !novaContaReceber.fornecedor_id
+                        : !novaContaReceber.cliente_id
+                      ) ||
+                      !novaContaReceber.valor ||
+                      !novaContaReceber.vencimento ||
+                      salvandoContaReceber
+                    }
                     className="px-6 py-2.5 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl hover:from-green-600 hover:to-green-700 transition-all duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
                   >
                     {salvandoContaReceber ? (
@@ -2169,7 +2763,9 @@ const Financeiro = () => {
                     ) : (
                       <>
                         <Check className="h-4 w-4" />
-                        <span>Salvar Conta a Receber</span>
+                        <span>
+                          {tipoReceberSelecionado === 'comissao' ? 'Salvar Comissão' : 'Salvar Conta a Receber'}
+                        </span>
                       </>
                     )}
                   </button>
@@ -2363,7 +2959,12 @@ const Financeiro = () => {
           <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-md">
               <h3 className="text-lg font-bold mb-4">Detalhes da Conta</h3>
-              <div className="mb-2"><b>Descrição:</b> {contaSelecionada.categoria}</div>
+                              <div className="mb-2"><b>Descrição:</b> {
+                  (() => {
+                    const categoria = categoriasCusto.find(c => c.id === contaSelecionada.categoria_id);
+                    return categoria ? categoria.nome : contaSelecionada.categoria_id || '-';
+                  })()
+                }</div>
               <div className="mb-2"><b>Valor:</b> {formatarMoeda(contaSelecionada.valor)}</div>
               <div className="mb-2"><b>Vencimento:</b> {formatarDataLocal(contaSelecionada.vencimento)}</div>
               <div className="mb-2"><b>Status:</b> {contaSelecionada.status}</div>
@@ -2400,7 +3001,13 @@ const Financeiro = () => {
               <div className="mb-2"><b>Vencimento:</b> {formatarDataLocal(contaReceberSelecionada.vencimento)}</div>
               <div className="mb-2"><b>Status:</b> {contaReceberSelecionada.status}</div>
                <div className="mb-2"><b>Data de Recebimento:</b> {contaReceberSelecionada.recebido_em ? formatarDataLocal(contaReceberSelecionada.recebido_em) : '-'}</div>
-              <div className="mb-2"><b>Forma de Recebimento:</b> {contaReceberSelecionada.forma_recebimento}</div>
+              <div className="mb-2"><b>Forma de Recebimento:</b> {
+                (() => {
+                  const idForma = contaReceberSelecionada.forma_recebimento_id ? String(contaReceberSelecionada.forma_recebimento_id) : '';
+                  const forma = formasPagamento.find(f => String(f.id) === idForma);
+                  return forma ? forma.nome : '-';
+                })()
+              }</div>
               <div className="mb-2"><b>Observações:</b> {contaReceberSelecionada.observacoes || '-'}</div>
               <div className="mb-2"><b>Comprovante URL:</b> {contaReceberSelecionada.comprovante_url || '-'}</div>
               <button onClick={() => setModalVisualizarContaReceber(false)} className="mt-4 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700">Fechar</button>
@@ -2526,75 +3133,16 @@ const Financeiro = () => {
                   </div>
 
                   {/* Cidade */}
-                  <div className="space-y-2">
-                    <label className="block text-sm font-semibold text-gray-700">
-                      Cidade
-                    </label>
-                    <input
-                      type="text"
-                      value={novoFornecedor.cidade}
-                      onChange={(e) => setNovoFornecedor(prev => ({ ...prev, cidade: e.target.value }))}
-                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200"
-                      placeholder="São Paulo"
-                    />
-                  </div>
 
-                  {/* Estado */}
-                  <div className="space-y-2">
-                    <label className="block text-sm font-semibold text-gray-700">
-                      Estado
-                    </label>
-                    <input
-                      type="text"
-                      value={novoFornecedor.estado}
-                      onChange={(e) => setNovoFornecedor(prev => ({ ...prev, estado: e.target.value }))}
-                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200"
-                      placeholder="SP"
-                    />
-                  </div>
+
+
                 </div>
 
-                {/* CEP */}
-                <div className="space-y-2">
-                  <label className="block text-sm font-semibold text-gray-700">
-                    CEP
-                  </label>
-                  <input
-                    type="text"
-                    value={novoFornecedor.cep}
-                    onChange={(e) => setNovoFornecedor(prev => ({ ...prev, cep: e.target.value }))}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200"
-                    placeholder="00000-000"
-                  />
-                </div>
 
-                {/* Endereço */}
-                <div className="space-y-2">
-                  <label className="block text-sm font-semibold text-gray-700">
-                    Endereço Completo
-                  </label>
-                  <input
-                    type="text"
-                    value={novoFornecedor.endereco}
-                    onChange={(e) => setNovoFornecedor(prev => ({ ...prev, endereco: e.target.value }))}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200"
-                    placeholder="Rua, número, bairro, complemento"
-                  />
-                </div>
 
-                {/* Observações */}
-                <div className="space-y-2">
-                  <label className="block text-sm font-semibold text-gray-700">
-                    Observações
-                  </label>
-                  <textarea
-                    value={novoFornecedor.observacoes}
-                    onChange={(e) => setNovoFornecedor(prev => ({ ...prev, observacoes: e.target.value }))}
-                    rows={3}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200 resize-none"
-                    placeholder="Observações adicionais sobre o fornecedor..."
-                  />
-                </div>
+
+
+
               </div>
 
               {/* Footer */}
@@ -2630,6 +3178,72 @@ const Financeiro = () => {
           </div>
         )}
 
+        {/* Modal de Seleção de Tipo - Contas a Receber */}
+        {modalSelecaoTipoReceber && (
+          <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md transform animate-in slide-in-from-bottom-4 duration-300">
+              {/* Header com gradiente */}
+              <div className="relative bg-gradient-to-r from-green-500 via-green-600 to-green-700 p-6 text-white rounded-t-2xl">
+                <div className="absolute inset-0 bg-black/10 rounded-t-2xl"></div>
+                <div className="relative flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
+                      <Receipt className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold">Nova Receita</h3>
+                      <p className="text-green-100 text-sm">Escolha o tipo de receita</p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={handleCancelarSelecaoTipoReceber}
+                    className="p-2 hover:bg-white/20 rounded-lg transition-all duration-200 group"
+                  >
+                    <X className="h-5 w-5 group-hover:scale-110 transition-transform" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Conteúdo */}
+              <div className="p-6">
+                <div className="grid grid-cols-1 gap-4">
+                  {/* Opção Conta a Receber */}
+                  <button
+                    onClick={() => handleSelecionarTipoReceber('conta')}
+                    className="p-6 border-2 border-gray-200 rounded-xl hover:border-green-300 hover:bg-green-50 transition-all duration-200 group text-left"
+                  >
+                    <div className="flex items-center space-x-4">
+                      <div className="p-3 bg-green-100 rounded-lg group-hover:bg-green-200 transition-colors">
+                        <Receipt className="h-6 w-6 text-green-600" />
+                      </div>
+                      <div>
+                        <h4 className="text-lg font-semibold text-gray-900 group-hover:text-green-700">Conta a Receber</h4>
+                        <p className="text-gray-600 text-sm">Receita de serviços ou produtos vendidos</p>
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* Opção Comissão */}
+                  <button
+                    onClick={() => handleSelecionarTipoReceber('comissao')}
+                    className="p-6 border-2 border-gray-200 rounded-xl hover:border-blue-300 hover:bg-blue-50 transition-all duration-200 group text-left"
+                  >
+                    <div className="flex items-center space-x-4">
+                      <div className="p-3 bg-blue-100 rounded-lg group-hover:bg-blue-200 transition-colors">
+                        <TrendingUp className="h-6 w-6 text-blue-600" />
+                      </div>
+                      <div>
+                        <h4 className="text-lg font-semibold text-gray-900 group-hover:text-blue-700">Comissão</h4>
+                        <p className="text-gray-600 text-sm">Comissão de vendas ou parcerias</p>
+                      </div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Modal de Confirmação de Exclusão - Contas a Pagar */}
         {modalExcluirContaPagar && contaSelecionada && (
           <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
@@ -2643,7 +3257,12 @@ const Financeiro = () => {
               <div className="mb-4">
                 <p className="text-gray-700 mb-2">Tem certeza que deseja excluir esta conta a pagar?</p>
                 <div className="bg-gray-50 p-3 rounded-lg">
-                  <p className="font-medium">{contaSelecionada.categoria}</p>
+                  <p className="font-medium">{
+                    (() => {
+                      const categoria = categoriasCusto.find(c => c.id === contaSelecionada.categoria_id);
+                      return categoria ? categoria.nome : contaSelecionada.categoria_id || '-';
+                    })()
+                  }</p>
                   <p className="text-sm text-gray-600">{formatarMoeda(contaSelecionada.valor)} - Vencimento: {formatarDataLocal(contaSelecionada.vencimento)}</p>
                 </div>
                 <p className="text-sm text-red-600 mt-2 font-medium">⚠️ Esta ação não pode ser desfeita!</p>

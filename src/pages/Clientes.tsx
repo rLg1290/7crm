@@ -361,6 +361,33 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
 
     try {
       setLoading(true)
+      console.log('🗑️ Verificando dependências do cliente:', cliente.id)
+
+      // Verificar se o cliente tem contas a receber
+      const { data: contasReceber, error: contasError } = await supabase
+        .from('contas_receber')
+        .select('id, valor, vencimento, status')
+        .eq('cliente_id', cliente.id)
+
+      if (contasError) {
+        console.error('❌ Erro ao verificar contas a receber:', contasError)
+        alert('Erro ao verificar dependências do cliente.')
+        return
+      }
+
+      // Se tem contas a receber, mostrar aviso
+      if (contasReceber && contasReceber.length > 0) {
+        const totalContas = contasReceber.length
+        const valorTotal = contasReceber.reduce((total, conta) => total + (conta.valor || 0), 0)
+        
+        const mensagem = `Este cliente possui ${totalContas} conta(s) a receber no valor total de ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorTotal)}.\n\nPara excluir o cliente, você precisa primeiro:\n1. Excluir todas as contas a receber vinculadas, ou\n2. Alterar o cliente das contas a receber para outro cliente.\n\nDeseja continuar mesmo assim?`
+        
+        if (!confirm(mensagem)) {
+          setLoading(false)
+          return
+        }
+      }
+
       console.log('🗑️ Excluindo cliente:', cliente.id)
 
       const { error } = await supabase
@@ -370,7 +397,15 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
 
       if (error) {
         console.error('❌ Erro ao excluir cliente:', error)
-        alert('Erro ao excluir cliente. Tente novamente.')
+        
+        if (error.code === '23503') {
+          const opcao = confirm('Não é possível excluir este cliente porque ele possui contas a receber vinculadas.\n\nDeseja visualizar as contas a receber deste cliente?')
+          if (opcao) {
+            visualizarContasReceber(cliente.id, `${cliente.nome} ${cliente.sobrenome}`)
+          }
+        } else {
+          alert('Erro ao excluir cliente. Tente novamente.')
+        }
         return
       }
 
@@ -385,6 +420,47 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
       alert('Erro inesperado ao excluir cliente.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Função para visualizar contas a receber do cliente
+  const visualizarContasReceber = async (clienteId: number, nomeCliente: string) => {
+    try {
+      const { data: contasReceber, error } = await supabase
+        .from('contas_receber')
+        .select('*')
+        .eq('cliente_id', clienteId)
+        .order('vencimento', { ascending: true })
+
+      if (error) {
+        console.error('❌ Erro ao buscar contas a receber:', error)
+        alert('Erro ao buscar contas a receber.')
+        return
+      }
+
+      if (!contasReceber || contasReceber.length === 0) {
+        alert('Este cliente não possui contas a receber.')
+        return
+      }
+
+      const totalContas = contasReceber.length
+      const valorTotal = contasReceber.reduce((total, conta) => total + (conta.valor || 0), 0)
+      
+      let mensagem = `Contas a receber do cliente "${nomeCliente}":\n\n`
+      mensagem += `Total: ${totalContas} conta(s) - Valor total: ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorTotal)}\n\n`
+      
+      contasReceber.forEach((conta, index) => {
+        const dataVencimento = new Date(conta.vencimento).toLocaleDateString('pt-BR')
+        const valor = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(conta.valor || 0)
+        mensagem += `${index + 1}. Vencimento: ${dataVencimento} - Valor: ${valor} - Status: ${conta.status || 'Pendente'}\n`
+      })
+      
+      mensagem += '\nPara excluir o cliente, você precisa primeiro remover ou alterar estas contas a receber.'
+      
+      alert(mensagem)
+    } catch (error) {
+      console.error('💥 Erro ao visualizar contas a receber:', error)
+      alert('Erro ao visualizar contas a receber.')
     }
   }
 

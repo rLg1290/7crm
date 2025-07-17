@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS fornecedores (
   cep VARCHAR(10),
   observacoes TEXT,
   user_id UUID,
+  empresa_id UUID,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -31,22 +32,12 @@ FROM information_schema.columns
 WHERE table_name = 'fornecedores'
 ORDER BY ordinal_position;
 
--- Inserir alguns fornecedores de exemplo
-INSERT INTO fornecedores (nome, cnpj, email, telefone, cidade, estado, user_id) VALUES
-('Fornecedor Exemplo 1', '12.345.678/0001-90', 'contato@fornecedor1.com', '(11) 99999-9999', 'São Paulo', 'SP', NULL),
-('Fornecedor Exemplo 2', '98.765.432/0001-10', 'contato@fornecedor2.com', '(11) 88888-8888', 'Rio de Janeiro', 'RJ', NULL),
-('Fornecedor Exemplo 3', '11.222.333/0001-44', 'contato@fornecedor3.com', '(11) 77777-7777', 'Belo Horizonte', 'MG', NULL)
-ON CONFLICT DO NOTHING;
-
--- Verificar se há dados na tabela
-SELECT * FROM fornecedores ORDER BY nome;
-
 -- Habilitar RLS se não estiver habilitado
 ALTER TABLE fornecedores ENABLE ROW LEVEL SECURITY;
 
 -- Criar políticas RLS se não existirem
-DROP POLICY IF EXISTS "Usuários podem ver fornecedores" ON fornecedores;
-CREATE POLICY "Usuários podem ver fornecedores" ON fornecedores
+DROP POLICY IF EXISTS "Usuários podem ver fornecedores globais e próprios" ON fornecedores;
+CREATE POLICY "Usuários podem ver fornecedores globais e próprios" ON fornecedores
   FOR SELECT USING (
     user_id IS NULL OR user_id = auth.uid()
   );
@@ -67,4 +58,35 @@ DROP POLICY IF EXISTS "Usuários podem deletar seus próprios fornecedores" ON f
 CREATE POLICY "Usuários podem deletar seus próprios fornecedores" ON fornecedores
   FOR DELETE USING (
     user_id = auth.uid()
-  ); 
+  );
+
+-- Inserir alguns fornecedores de exemplo (globais)
+INSERT INTO fornecedores (nome, cnpj, email, telefone, cidade, estado, user_id) VALUES
+('Fornecedor Global 1', '12.345.678/0001-90', 'contato@fornecedor1.com', '(11) 99999-9999', 'São Paulo', 'SP', NULL),
+('Fornecedor Global 2', '98.765.432/0001-10', 'contato@fornecedor2.com', '(11) 88888-8888', 'Rio de Janeiro', 'RJ', NULL),
+('Fornecedor Global 3', '11.222.333/0001-44', 'contato@fornecedor3.com', '(11) 77777-7777', 'Belo Horizonte', 'MG', NULL)
+ON CONFLICT (id) DO NOTHING;
+
+-- Verificar dados inseridos
+SELECT 
+  id, 
+  nome, 
+  cnpj, 
+  email, 
+  telefone, 
+  cidade, 
+  estado, 
+  user_id,
+  CASE 
+    WHEN user_id IS NULL THEN 'Global'
+    ELSE 'Usuário'
+  END as tipo
+FROM fornecedores 
+ORDER BY nome;
+
+-- Verificar total de fornecedores
+SELECT 
+  COUNT(*) as total_fornecedores,
+  COUNT(CASE WHEN user_id IS NULL THEN 1 END) as fornecedores_globais,
+  COUNT(CASE WHEN user_id IS NOT NULL THEN 1 END) as fornecedores_usuarios
+FROM fornecedores; 
