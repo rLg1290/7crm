@@ -28,7 +28,7 @@ interface Cliente {
 
 interface Lead {
   id: number
-  cliente_id: string  // Alterado de number para string
+  cliente_id: number  // Corrigido para number (BIGINT no banco)
   observacao: string
   created_at: string
   cliente?: Cliente // Para join com dados do cliente
@@ -36,7 +36,6 @@ interface Lead {
 
 interface Tarefa {
   id?: number
-  lead_id: number
   titulo: string
   descricao: string
   tipo: 'CALL' | 'EMAIL' | 'LEMBRETE' | 'OUTRO'
@@ -49,7 +48,6 @@ interface Tarefa {
 
 interface Compromisso {
   id?: number
-  lead_id: number
   titulo: string
   descricao: string
   data_hora: string
@@ -66,12 +64,14 @@ interface Cotacao {
   cliente_id?: string
   codigo: string
   valor: number | null
+  custo?: number // 🔧 CAMPO CUSTO ADICIONADO
   dataViagem: string
   dataCriacao: string
   status: 'LEAD' | 'COTAR' | 'AGUARDANDO_CLIENTE' | 'APROVADO' | 'REPROVADO' | 'EMITIDO'
   destino: string
   observacoes?: string
   formapagid?: string // <-- adicionado para corrigir erro de linter
+  parcelamento?: string // 🔧 CAMPO PARCELAMENTO ADICIONADO
 }
 
 interface Passageiro {
@@ -139,6 +139,7 @@ interface FormularioCotacao {
   formaPagamento: string;
   observacoesVenda: string;
   formapagid: string;
+  parcelamento: string;
 }
 
 interface CotacoesProps {
@@ -177,7 +178,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
   const [clienteSelecionado, setClienteSelecionado] = useState<Cliente | null>(null)
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [buscaCliente, setBuscaCliente] = useState('')
-  const [abaAtiva, setAbaAtiva] = useState<'VOOS' | 'HOTEIS' | 'SERVICOS' | 'PASSAGEIROS' | 'VENDA'>('VOOS')
+  const [abaAtiva, setAbaAtiva] = useState<'VOOS' | 'HOTEIS' | 'SERVICOS' | 'PASSAGEIROS' | 'COTACAO' | 'VENDA'>('VOOS')
 
   // Estados para a aba de VENDA
   const [dataVenda, setDataVenda] = useState('')
@@ -227,7 +228,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
   const [editingCotacao, setEditingCotacao] = useState<Cotacao | null>(null)
   const [showViewModal, setShowViewModal] = useState(false)
   const [viewingCotacao, setViewingCotacao] = useState<Cotacao | null>(null)
-  const [filtroData, setFiltroData] = useState<'mes' | '3meses' | '6meses' | 'ano' | 'total'>('total')
+  const [filtroData, setFiltroData] = useState<'mes_atual' | 'mes' | '3meses' | '6meses' | 'ano' | 'total'>('total')
   const [voosSalvos, setVoosSalvos] = useState<Voo[]>([])
   const [passageirosSalvos, setPassageirosSalvos] = useState<Passageiro[]>([])
   const [abaVooAtiva, setAbaVooAtiva] = useState<'IDA' | 'VOLTA' | 'INTERNO'>('IDA')
@@ -243,7 +244,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
   const [observacaoLead, setObservacaoLead] = useState('')
   const [showModalTarefas, setShowModalTarefas] = useState(false)
   const [showModalCompromissos, setShowModalCompromissos] = useState(false)
-  const [leadSelecionado, setLeadSelecionado] = useState<Lead | null>(null)
+  const [leadSelecionado, setLeadSelecionado] = useState<Lead & { leadData?: any } | null>(null)
   const [tarefas, setTarefas] = useState<Tarefa[]>([])
   const [compromissos, setCompromissos] = useState<Compromisso[]>([])
   const [showDropdown, setShowDropdown] = useState(false)
@@ -303,7 +304,8 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
     valorEntrada: 0,
     formaPagamento: 'À vista',
     observacoesVenda: '',
-    formapagid: ''
+    formapagid: '',
+    parcelamento: '1'
   })
 
   // Carregar dados iniciais
@@ -457,19 +459,10 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
       }
 
       // Remover tarefas vinculadas ao lead primeiro
-      console.log('Removendo tarefas do lead com ID:', lead.id)
-      const { error: errorTarefas } = await supabase
-        .from('tarefas')
-        .delete()
-        .eq('lead_id', lead.id)
-
-      if (errorTarefas) {
-        console.error('Erro ao remover tarefas do lead:', errorTarefas)
-        alert(`Erro ao remover tarefas do lead: ${errorTarefas.message}`)
-        return
-      } else {
-        console.log('Tarefas do lead removidas com sucesso')
-      }
+      // Remover tarefas do lead (se existirem)
+      console.log('Verificando se há tarefas para remover do lead com ID:', lead.id)
+      // Como não há mais lead_id, não precisamos remover tarefas específicas
+      console.log('Tarefas não precisam ser removidas (não há lead_id)')
 
       // Remover lead
       console.log('Removendo lead com ID:', lead.id)
@@ -813,10 +806,49 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
     }
   ]
 
+  // Função para filtrar cotações por data de criação
+  const filtrarCotacoesPorData = (cotacoes: Cotacao[]) => {
+    if (filtroData === 'total') return cotacoes
+
+    const hoje = new Date()
+    const dataLimite = new Date()
+    let dataFim: Date | null = null
+
+    switch (filtroData) {
+      case 'mes_atual':
+        // Filtro para o mês atual (do dia 1 até o último dia do mês)
+        const inicioMesAtual = new Date(hoje.getFullYear(), hoje.getMonth(), 1)
+        const fimMesAtual = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0)
+        return cotacoes.filter(cotacao => {
+          const dataCotacao = new Date(cotacao.dataCriacao)
+          return dataCotacao >= inicioMesAtual && dataCotacao <= fimMesAtual
+        })
+      case 'mes':
+        dataLimite.setMonth(hoje.getMonth() - 1)
+        break
+      case '3meses':
+        dataLimite.setMonth(hoje.getMonth() - 3)
+        break
+      case '6meses':
+        dataLimite.setMonth(hoje.getMonth() - 6)
+        break
+      case 'ano':
+        dataLimite.setFullYear(hoje.getFullYear() - 1)
+        break
+      default:
+        return cotacoes
+    }
+
+    return cotacoes.filter(cotacao => {
+      const dataCotacao = new Date(cotacao.dataCriacao)
+      return dataCotacao >= dataLimite
+    })
+  }
+
   const getCotacoesPorStatus = (status: string) => {
     if (status === 'LEAD') {
       // Para a coluna LEAD, retornar leads formatados como cotações
-      return leads.map(lead => {
+      const leadsFormatados = leads.map(lead => {
         const nomeCompleto = lead.cliente ? 
           `${lead.cliente.nome}${lead.cliente.sobrenome ? ' ' + lead.cliente.sobrenome : ''}` : 
           'Cliente não encontrado';
@@ -836,12 +868,16 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         leadData: lead
         }
       })
+      // Aplicar filtro de data também aos leads
+      return filtrarCotacoesPorData(leadsFormatados)
     } else if (status === 'APROVADO') {
       // Exibir cotações APROVADO e LANÇADO na coluna APROVADO
-      return cotacoes.filter(cotacao => cotacao.status === 'APROVADO' || cotacao.status === 'EMITIDO')
+      const cotacoesFiltradas = filtrarCotacoesPorData(cotacoes)
+      return cotacoesFiltradas.filter(cotacao => cotacao.status === 'APROVADO' || cotacao.status === 'EMITIDO')
     } else {
       // Para outras colunas, retornar cotações normais
-      return cotacoes.filter(cotacao => cotacao.status === status)
+      const cotacoesFiltradas = filtrarCotacoesPorData(cotacoes)
+      return cotacoesFiltradas.filter(cotacao => cotacao.status === status)
     }
   }
 
@@ -1049,15 +1085,29 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
     setFormData(prev => ({
       ...prev,
       titulo: cotacao.titulo || '',
-      cliente: cotacao.cliente || '',
+      cliente: cotacao.cliente_id || '', // Usar cliente_id em vez do nome
       status: cotacao.status || 'LEAD',
       dataViagem: cotacao.dataViagem || '',
       destino: cotacao.destino || '',
       observacoes: cotacao.observacoes || '',
       valorTotal: cotacao.valor || 0,
       formapagid: (cotacao as any).formapagid || '',
+      parcelamento: (cotacao as any).parcelamento || '1',
       // Adicione outros campos do formulário conforme necessário
     }));
+    
+    // Definir o cliente selecionado baseado no cliente_id da cotação
+    if (cotacao.cliente_id) {
+      const clienteEncontrado = clientes.find(c => String(c.id) === String(cotacao.cliente_id));
+      if (clienteEncontrado) {
+        setClienteSelecionado(clienteEncontrado);
+      }
+    }
+    
+    // Carregar valores de custo e venda para o modo simplificado
+    setValorVendaSimples(cotacao.valor ? cotacao.valor.toString() : '');
+    setValorCustoSimples(cotacao.custo ? cotacao.custo.toString() : '');
+    
     setShowModal(true);
     setCurrentStep(2);
     // Carregar voos da cotação
@@ -1142,7 +1192,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
           const cliente = item.clientes
           return {
             id: item.id.toString(),
-            nome: cliente.nome,
+            nome: `${cliente.nome} ${cliente.sobrenome || ''}`.trim(),
             tipo: item.tipo as 'adulto' | 'crianca' | 'bebe',
             cliente_id: cliente.id.toString(),
             isNovoCliente: false,
@@ -1322,6 +1372,21 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                 >
                   <Edit className="w-3 h-3 text-yellow-500" />
                 </button>
+                {cotacao.status !== 'EMITIDO' && (
+                  <button 
+                    onClick={(e) => { 
+                      e.stopPropagation(); 
+                      console.log('Abrindo modal de tarefas para cotação:', cotacao);
+                      setLeadSelecionado({ id: parseInt(cotacao.id), cliente_id: parseInt(cotacao.cliente_id || '0'), observacao: cotacao.observacoes || '', created_at: cotacao.dataCriacao, leadData: cotacao });
+                      setShowModalTarefas(true);
+                      carregarTarefas(parseInt(cotacao.id));
+                    }} 
+                    className="p-1 hover:bg-green-50 rounded"
+                    title="Gerenciar Tarefas"
+                  >
+                    <Calendar className="w-3 h-3 text-green-500" />
+                  </button>
+                )}
                 <button 
                   onClick={(e) => { e.stopPropagation(); onDelete(); }} 
                   className="p-1 hover:bg-red-50 rounded"
@@ -2184,7 +2249,8 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                   { id: 'HOTEIS', label: 'Hotéis', icon: Building },
                   { id: 'SERVICOS', label: 'Serviços', icon: Route },
                   { id: 'PASSAGEIROS', label: 'Passageiros', icon: Users },
-                  { id: 'VENDA', label: 'Venda', icon: DollarSign }
+                  { id: 'COTACAO', label: 'Cotação', icon: DollarSign },
+                  ...(formData.status === 'EMITIDO' || formData.status === 'APROVADO' ? [{ id: 'VENDA', label: 'VENDA', icon: CheckCircle }] : [])
                 ].map((aba) => (
                   <button
                     key={aba.id}
@@ -2826,63 +2892,91 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
               </div>
             )}
 
-            {abaAtiva === 'VENDA' && (
-              <>
-                {(formData.status === 'COTAR' || formData.status === 'AGUARDANDO_CLIENTE') && (
-                  // MODO SIMPLIFICADO
-                  <div className="space-y-6">
-                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-200">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                          <label className="block text-lg font-medium text-gray-700 mb-2">Valor de Custo (R$)</label>
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={valorCustoSimples}
-                            onChange={e => setValorCustoSimples(e.target.value)}
-                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent text-2xl font-bold text-red-600"
-                            placeholder="0,00"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-lg font-medium text-gray-700 mb-2">Valor de Venda (R$)</label>
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={valorVendaSimples}
-                            onChange={e => setValorVendaSimples(e.target.value)}
-                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-2xl font-bold text-blue-600"
-                            placeholder="0,00"
-                          />
+            {abaAtiva === 'COTACAO' && (
+              // MODO SIMPLIFICADO - SEMPRE VISÍVEL
+              <div className="space-y-6">
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-200">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-lg font-medium text-gray-700 mb-2">Valor de Custo (R$)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={valorCustoSimples}
+                        onChange={e => setValorCustoSimples(e.target.value)}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent text-2xl font-bold text-red-600"
+                        placeholder="0,00"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-lg font-medium text-gray-700 mb-2">Valor de Venda (R$)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={valorVendaSimples}
+                        onChange={e => setValorVendaSimples(e.target.value)}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-2xl font-bold text-blue-600"
+                        placeholder="0,00"
+                      />
 
-<div className="mt-4">
-  <label className="block text-sm font-medium text-gray-700 mb-1">Forma de Pagamento</label>
-  <select
-    value={formData.formapagid || ''}
-    onChange={e => setFormData(prev => ({ ...prev, formapagid: e.target.value }))}
-    className="w-full border rounded px-3 py-2"
-  >
-    <option value="">Selecione</option>
-    {formasPagamento.map(fp => (
-      <option key={fp.id} value={fp.id}>{fp.nome}</option>
-    ))}
-  </select>
+<div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+  <div>
+    <label className="block text-sm font-medium text-gray-700 mb-1">Forma de Pagamento</label>
+    <select
+      value={formData.formapagid || ''}
+      onChange={e => setFormData(prev => ({ ...prev, formapagid: e.target.value }))}
+      className="w-full border rounded px-3 py-2"
+    >
+      <option value="">Selecione</option>
+      {formasPagamento.map(fp => (
+        <option key={fp.id} value={fp.id}>{fp.nome}</option>
+      ))}
+    </select>
+  </div>
+  <div>
+    <label className="block text-sm font-medium text-gray-700 mb-1">Numero de Vezes</label>
+    <input
+      type="number"
+      min="1"
+      max="24"
+      value={formData.parcelamento}
+      onChange={e => setFormData(prev => ({ ...prev, parcelamento: e.target.value }))}
+      className="w-full border rounded px-3 py-2"
+      placeholder="1"
+    />
+  </div>
 </div>
-                        </div>
-                      </div>
-                      <div className="mt-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                        <div className="text-lg text-gray-600">Lucro</div>
-                        <div className={`text-3xl font-bold ${parseFloat(valorVendaSimples || '0') - parseFloat(valorCustoSimples || '0') >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
-                            parseFloat(valorVendaSimples || '0') - parseFloat(valorCustoSimples || '0')
-                          )}
-                        </div>
-                      </div>
                     </div>
                   </div>
-                )}
+                  <div className="mt-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                    <div className="text-lg text-gray-600">Lucro</div>
+                    <div className={`text-3xl font-bold ${parseFloat(valorVendaSimples || '0') - parseFloat(valorCustoSimples || '0') >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
+                        parseFloat(valorVendaSimples || '0') - parseFloat(valorCustoSimples || '0')
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Botão Atualizar específico para a aba Cotação */}
+                  <div className="mt-6 flex justify-end">
+                    <button
+                      onClick={async () => await atualizarValoresCotacao()}
+                      className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium flex items-center gap-2"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Atualizar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {abaAtiva === 'VENDA' && (
+              <>
                 {(formData.status === 'APROVADO' || normalizarStatus(formData.status) === 'EMITIDO') && (
                   <div className="space-y-6">
                     {/* Cabeçalho da Venda */}
@@ -3274,6 +3368,61 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
     return horario;
   };
 
+  // Função específica para atualizar apenas os valores da cotação
+  const atualizarValoresCotacao = async () => {
+    console.log('🎯 INICIO: atualizarValoresCotacao chamada');
+    
+    try {
+      if (!editingCotacao?.id) {
+        alert('Erro: Cotação não encontrada para atualização.');
+        return;
+      }
+
+      setLoading(true);
+      
+      // Preparar dados para atualização
+      const dadosAtualizacao = {
+        custo: parseFloat(valorCustoSimples || '0'),
+        valor: parseFloat(valorVendaSimples || '0'),
+        formapagid: formData.formapagid || null,
+        parcelamento: formData.parcelamento || '1'
+      };
+      
+      console.log('📊 Dados para atualização:', dadosAtualizacao);
+      
+      // Atualizar no Supabase
+      const { error } = await supabase
+        .from('cotacoes')
+        .update(dadosAtualizacao)
+        .eq('id', editingCotacao.id);
+        
+      if (error) {
+        console.error('❌ Erro ao atualizar valores:', error);
+        alert('Erro ao atualizar valores da cotação: ' + error.message);
+        return;
+      }
+      
+      // Atualizar estado local
+      setCotacoes(prev => prev.map(cot => 
+        cot.id === editingCotacao.id 
+          ? { ...cot, ...dadosAtualizacao }
+          : cot
+      ));
+      
+      // Atualizar cotação em edição
+      setEditingCotacao(prev => prev ? { ...prev, ...dadosAtualizacao } : null);
+      
+      console.log('✅ Valores atualizados com sucesso');
+      alert('Valores da cotação atualizados com sucesso!');
+      
+    } catch (error) {
+      console.error('💥 Erro inesperado:', error);
+      alert('Erro inesperado ao atualizar valores.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const salvarCotacao = async () => {
     console.log('🎯 INICIO: salvarCotacao chamada');
     
@@ -3335,6 +3484,14 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
       const dataAtual = new Date().toLocaleDateString('pt-BR');
       const titulo = `${clienteObj.nome} - ${dataAtual}`;
 
+      // Debug do custo
+      const custoCalculado = formData.status === 'APROVADO' ? calcularTotalCusto() : parseFloat(valorCustoSimples) || 0;
+      console.log('🔍 DEBUG CUSTO:');
+      console.log('📊 Status da cotação:', formData.status);
+      console.log('💰 valorCustoSimples:', valorCustoSimples);
+      console.log('🧮 calcularTotalCusto():', calcularTotalCusto());
+      console.log('💸 Custo final que será salvo:', custoCalculado);
+      
       const cotacaoData: any = {
         titulo: titulo,
         cliente: clienteObj.nome,
@@ -3343,12 +3500,13 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         empresa_id: empresaId,
         status: formData.status,
         valor: formData.status === 'APROVADO' ? formData.valorTotal || 0 : parseFloat(valorVendaSimples) || 0,
-        custo: formData.status === 'APROVADO' ? calcularTotalCusto() : parseFloat(valorCustoSimples) || 0,
+        custo: custoCalculado,
         data_viagem: formData.diasViagem ? getLocalDateString(new Date()) : null,
         data_criacao: new Date().toISOString(),
         destino: '',
         observacoes: formData.observacoesRoteiro || null,
-        formapagid: formData.formapagid || null
+        formapagid: formData.formapagid || null,
+        parcelamento: formData.parcelamento || '1'
       };
 
       if (codigoUnico) {
@@ -3842,12 +4000,14 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
           cliente_id: cotacao.cliente_id?.toString(), // Incluir cliente_id
           codigo: cotacao.codigo || `COT${cotacao.id.toString().padStart(4, '0')}`, // Fallback se não existir
           valor: cotacao.valor || 0,
+          custo: cotacao.custo || 0, // 🔧 CAMPO CUSTO ADICIONADO
           dataViagem: cotacao.data_viagem || '',
           dataCriacao: cotacao.data_criacao,
           status: cotacao.status as 'LEAD' | 'COTAR' | 'AGUARDANDO_CLIENTE' | 'APROVADO' | 'REPROVADO' | 'EMITIDO',
           destino: cotacao.destino || '',
           observacoes: cotacao.observacoes || '',
-          formapagid: cotacao.formapagid || ''
+          formapagid: cotacao.formapagid || '',
+          parcelamento: cotacao.parcelamento || '1' // 🔧 CAMPO PARCELAMENTO ADICIONADO
         };
       }) || [];
       
@@ -4028,7 +4188,6 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
       const { data, error } = await supabase
         .from('tarefas')
         .select('*')
-        .eq('lead_id', leadId)
         .eq('empresa_id', empresaId) // 🔑 FILTRO POR EMPRESA ADICIONADO
         .order('created_at', { ascending: false })
       
@@ -4109,7 +4268,6 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
       const { data, error } = await supabase
         .from('compromissos')
         .select('*')
-        .eq('lead_id', leadId)
         .eq('empresa_id', empresaId) // 🔑 FILTRO POR EMPRESA ADICIONADO
         .order('data_hora', { ascending: true })
       
@@ -4143,7 +4301,6 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         .from('compromissos')
         .insert([{
           ...novoCompromisso,
-          lead_id: leadSelecionado.id,
           empresa_id: empresaId // 🔑 EMPRESA_ID ADICIONADO
         }])
         .select()
@@ -4483,6 +4640,13 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
     }
   }, [showModalCusto, showModalVenda]);
 
+  // Carregar formas de pagamento quando a aba de venda ou cotação for acessada
+  useEffect(() => {
+    if (abaAtiva === 'VENDA' || abaAtiva === 'COTACAO') {
+      carregarFormasPagamento();
+    }
+  }, [abaAtiva]);
+
   // Carregar fornecedores e categorias quando abrir cotação APROVADA ou LANÇADO
   useEffect(() => {
     if (editingCotacao?.id && (normalizarStatus(editingCotacao.status) === 'APROVADO' || normalizarStatus(editingCotacao.status) === 'EMITIDO')) {
@@ -4644,7 +4808,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
     const dataCriacao = dataVenda;
     // Lançar contas a pagar (custos)
     for (const item of itensCusto) {
-      await supabase.from('contas_pagar').insert({
+      const { data: contaPagarData, error: contaPagarError } = await supabase.from('contas_pagar').insert({
         descricao: item.descricao,
         valor: item.valor,
         fornecedor_id: item.fornecedor || null,
@@ -4658,6 +4822,14 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         user_id: user.id,
         created_at: dataCriacao
       });
+      
+      if (contaPagarError) {
+        console.error('❌ Erro ao salvar conta a pagar:', contaPagarError);
+        alert(`Erro ao salvar conta a pagar: ${contaPagarError.message}`);
+        return;
+      } else {
+        console.log('✅ Conta a pagar salva com sucesso:', contaPagarData);
+      }
     }
     // Lançar contas a receber (vendas)
     for (const item of itensVenda) {
@@ -4670,12 +4842,11 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
       // Buscar nome do cliente
       const clienteNome = getNomeCompletoCliente(clienteIdToSave?.toString()) || 'Cliente não identificado';
       
-      await supabase.from('contas_receber').insert({
+      const { data: contaReceberData, error: contaReceberError } = await supabase.from('contas_receber').insert({
         descricao: item.descricao,
         valor: item.valor,
         cliente_id: clienteIdToSave,
-        cliente_nome: clienteNome,
-        servico: item.conta || 'Venda', // Campo obrigatório
+        
         categoria_id: item.categoria || null,
         forma_recebimento_id: item.forma || null, // Usar o ID diretamente
         parcelas: item.parcelas,
@@ -4687,6 +4858,14 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         empresa_id: empresa_id,
         created_at: dataCriacao
       });
+      
+      if (contaReceberError) {
+        console.error('❌ Erro ao salvar conta a receber:', contaReceberError);
+        alert(`Erro ao salvar conta a receber: ${contaReceberError.message}`);
+        return;
+      } else {
+        console.log('✅ Conta a receber salva com sucesso:', contaReceberData);
+      }
     }
 
     // Calcular o total das vendas lançadas para esta cotação
@@ -4991,6 +5170,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         <div className="flex gap-2">
           {[
             { value: 'total', label: 'Total' },
+            { value: 'mes_atual', label: 'Mês Atual' },
             { value: 'mes', label: 'Último Mês' },
             { value: '3meses', label: '3 Meses' },
             { value: '6meses', label: '6 Meses' },
@@ -5010,6 +5190,35 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
           ))}
         </div>
       </div>
+
+      {/* Indicador do filtro aplicado */}
+      {filtroData !== 'total' && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              <Calendar className="h-4 w-4 text-blue-600 mr-2" />
+              <span className="text-sm font-medium text-blue-800">
+                Filtro aplicado: {
+                  filtroData === 'mes_atual' ? 'Mês Atual' :
+                  filtroData === 'mes' ? 'Último mês' :
+                  filtroData === '3meses' ? 'Últimos 3 meses' :
+                  filtroData === '6meses' ? 'Últimos 6 meses' :
+                  'Último ano'
+                }
+              </span>
+              <span className="text-sm text-blue-600 ml-2">
+                ({filtrarCotacoesPorData(cotacoes).length} cotações exibidas)
+              </span>
+            </div>
+            <button
+              onClick={() => setFiltroData('total')}
+              className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+            >
+              Limpar filtro
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Kanban */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
@@ -5584,7 +5793,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                           >
                             <div className="flex items-center justify-between">
                               <div>
-                                <h3 className="font-semibold text-gray-900">{cliente.nome}</h3>
+                                <h3 className="font-semibold text-gray-900">{cliente.nome} {cliente.sobrenome}</h3>
                                 <p className="text-sm text-gray-600">{cliente.email}</p>
                                 <p className="text-sm text-gray-500">{cliente.telefone}</p>
                               </div>
@@ -6372,7 +6581,9 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
           <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold text-gray-900">Tarefas do Lead</h2>
+                <h2 className="text-2xl font-bold text-gray-900">
+                  {leadSelecionado && 'leadData' in leadSelecionado ? 'Tarefas da Cotação' : 'Tarefas do Lead'}
+                </h2>
                 <button onClick={() => setShowModalTarefas(false)} className="text-gray-400 hover:text-gray-600">
                   <X className="h-6 w-6" />
                 </button>
@@ -6763,7 +6974,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                     <select value={formVenda.cliente} onChange={e => setFormVenda(prev => ({ ...prev, cliente: e.target.value }))} className="w-full border rounded px-3 py-2">
                       <option value="">Selecione</option>
                       {clientes.map(cliente => (
-                        <option key={cliente.id} value={cliente.id}>{cliente.nome}</option>
+                        <option key={cliente.id} value={cliente.id}>{cliente.nome}{cliente.sobrenome ? ` ${cliente.sobrenome}` : ''}</option>
                       ))}
                     </select>
                   </div>
@@ -7110,6 +7321,6 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
   )
 }
 
-export default Cotacoes 
+export default Cotacoes
 
 
