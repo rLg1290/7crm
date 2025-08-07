@@ -70,7 +70,7 @@ interface Cotacao {
   status: 'LEAD' | 'COTAR' | 'AGUARDANDO_CLIENTE' | 'APROVADO' | 'REPROVADO' | 'EMITIDO'
   destino: string
   observacoes?: string
-  formapagid?: string // <-- adicionado para corrigir erro de linter
+  formapagid?: string | null // <-- ajustado para aceitar null
   parcelamento?: string // 🔧 CAMPO PARCELAMENTO ADICIONADO
 }
 
@@ -628,7 +628,8 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
       valorEntrada: 0,
       formaPagamento: 'À vista',
       observacoesVenda: '',
-      formapagid: ''
+      formapagid: '',
+      parcelamento: ''
     })
     setAbaAtiva('VOOS')
     setValorVendaSimples('');
@@ -697,7 +698,8 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
       valorEntrada: 0,
       formaPagamento: 'À vista',
       observacoesVenda: '',
-      formapagid: ''
+      formapagid: '',
+      parcelamento: ''
     })
     setAbaAtiva('VOOS')
   }
