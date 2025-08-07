@@ -12,6 +12,8 @@ interface EmpresaInfo {
   logotipo: string | null
   slug?: string
   cor_personalizada?: string
+  cor_secundaria?: string
+  cor_primaria?: string
 }
 
 interface PerfilProps {
@@ -32,7 +34,12 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
   // Estados para página pública
   const [linkCopiado, setLinkCopiado] = useState(false)
   const [corPersonalizada, setCorPersonalizada] = useState('#3B82F6') // Azul padrão
+  
+  // Estados para promoções personalizadas
+  const [corPrimaria, setCorPrimaria] = useState('#3B82F6') // Azul padrão
+  const [corSecundaria, setCorSecundaria] = useState('#10B981') // Verde padrão
   const [salvandoCor, setSalvandoCor] = useState(false)
+  const [salvandoPromocoes, setSalvandoPromocoes] = useState(false)
 
   // Buscar informações da empresa
   useEffect(() => {
@@ -44,7 +51,7 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
         try {
           const { data, error } = await supabase
             .from('empresas')
-            .select('id, nome, cnpj, codigo_agencia, logotipo, slug, cor_personalizada')
+            .select('id, nome, cnpj, codigo_agencia, logotipo, slug, cor_personalizada, cor_secundaria, cor_primaria')
             .eq('id', empresaId)
             .single()
 
@@ -58,6 +65,22 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
               setCorPersonalizada(data.cor_personalizada)
             } else {
               console.log('🎨 Nenhuma cor personalizada encontrada, usando padrão')
+            }
+            
+            // Definir cor secundária se existir
+            if (data.cor_secundaria) {
+              console.log('🎨 Cor secundária encontrada:', data.cor_secundaria)
+              setCorSecundaria(data.cor_secundaria)
+            } else {
+              console.log('🎨 Nenhuma cor secundária encontrada, usando padrão')
+            }
+            
+            // Definir cor primária se existir
+            if (data.cor_primaria) {
+              console.log('🎨 Cor primária encontrada:', data.cor_primaria)
+              setCorPrimaria(data.cor_primaria)
+            } else {
+              console.log('🎨 Nenhuma cor primária encontrada, usando padrão')
             }
           } else if (error) {
             console.error('❌ Erro ao carregar empresa:', error)
@@ -129,9 +152,11 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
     }
   }
 
-  // Função para salvar cor personalizada
-  const salvarCorPersonalizada = async () => {
-    console.log('🎨 Iniciando salvamento da cor:', { 
+
+
+  // Função para salvar cor personalizada da página
+  const salvarCores = async () => {
+    console.log('🎨 Iniciando salvamento da cor personalizada:', { 
       empresaInfo, 
       corPersonalizada,
       empresaId: empresaInfo?.id,
@@ -147,14 +172,14 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
     // Validar formato da cor
     const corRegex = /^#[0-9A-Fa-f]{6}$/
     if (!corRegex.test(corPersonalizada)) {
-      console.log('❌ Formato de cor inválido:', corPersonalizada)
-      setMessage('Erro: Formato de cor inválido. Use o formato #RRGGBB')
+      console.log('❌ Formato de cor personalizada inválido:', corPersonalizada)
+      setMessage('Erro: Formato de cor personalizada inválido. Use o formato #RRGGBB')
       return
     }
 
     setSalvandoCor(true)
     try {
-      console.log('📤 Enviando para Supabase:', {
+      console.log('📤 Enviando cor personalizada para Supabase:', {
         cor_personalizada: corPersonalizada,
         empresa_id: empresaInfo.id,
         timestamp: new Date().toISOString()
@@ -196,7 +221,7 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
           return
         }
 
-        console.log('✅ Empresa criada e cor salva com sucesso!')
+        console.log('✅ Empresa criada e cor personalizada salva com sucesso!')
         setMessage('Empresa criada e cor personalizada salva com sucesso!')
         setTimeout(() => setMessage(''), 3000)
         
@@ -209,8 +234,8 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
         return
       }
 
-      // Executar o update
-      const { data, error, count } = await supabase
+      // Executar o update para a cor personalizada
+      const { data, error } = await supabase
         .from('empresas')
         .update({ 
           cor_personalizada: corPersonalizada,
@@ -219,16 +244,15 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
         .eq('id', empresaInfo.id)
         .select('id, nome, cor_personalizada')
 
-      console.log('📥 Resposta do update:', { 
+      console.log('📥 Resposta do update da cor personalizada:', { 
         data, 
-        error, 
-        count,
+        error,
         dataLength: data?.length,
         updatedData: data?.[0]
       })
 
       if (error) {
-        console.error('❌ Erro do Supabase no update:', error)
+        console.error('❌ Erro do Supabase no update da cor personalizada:', error)
         setMessage('Erro ao salvar cor personalizada: ' + error.message)
         return
       }
@@ -240,46 +264,117 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
       }
 
       // Verificar se a cor foi realmente salva
-      const corSalva = data[0]?.cor_personalizada
-             console.log('🔍 Verificando cor salva:', { 
-         corEnviada: corPersonalizada,
-         corSalva: corSalva,
-         iguais: corPersonalizada === corSalva
-       })
+      const corPersonalizadaSalva = data[0]?.cor_personalizada
+      console.log('🔍 Verificando cor salva:', { 
+        corPersonalizadaEnviada: corPersonalizada,
+        corPersonalizadaSalva: corPersonalizadaSalva,
+        iguais: corPersonalizada === corPersonalizadaSalva
+      })
 
-      if (corSalva !== corPersonalizada) {
-        console.error('❌ Cor não foi salva corretamente:', { corEnviada: corPersonalizada, corSalva })
+      if (corPersonalizada !== corPersonalizadaSalva) {
+        console.error('❌ Cor não foi salva corretamente:', { 
+          corPersonalizadaEnviada: corPersonalizada, 
+          corPersonalizadaSalva: corPersonalizadaSalva
+        })
         setMessage('Erro: A cor não foi salva corretamente no banco de dados')
         return
       }
 
-      console.log('✅ Cor salva com sucesso!', data[0])
+      console.log('✅ Cor personalizada salva com sucesso!', data[0])
       setMessage('Cor personalizada salva com sucesso!')
       setTimeout(() => setMessage(''), 3000)
       
       // Atualizar o estado local da empresa
       setEmpresaInfo(prev => prev ? { ...prev, cor_personalizada: corPersonalizada } : prev)
 
-      // Verificação adicional - buscar novamente para confirmar
-      setTimeout(async () => {
-        const { data: verificacao } = await supabase
-          .from('empresas')
-          .select('cor_personalizada')
-          .eq('id', empresaInfo.id)
-          .single()
-        
-        console.log('🔍 Verificação final:', { 
-          corEsperada: corPersonalizada,
-          corNoBanco: verificacao?.cor_personalizada,
-          sucesso: verificacao?.cor_personalizada === corPersonalizada
-        })
-      }, 1000)
-
     } catch (error) {
-      console.error('💥 Erro inesperado:', error)
-      setMessage('Erro inesperado ao salvar cor: ' + (error as Error).message)
+      console.error('💥 Erro inesperado ao salvar cor personalizada:', error)
+      setMessage('Erro inesperado ao salvar cor personalizada: ' + (error as Error).message)
     } finally {
       setSalvandoCor(false)
+    }
+  }
+
+  // Função para salvar cores das promoções
+  const salvarPromocoes = async () => {
+    console.log('🎨 Iniciando salvamento das cores das promoções:', { 
+      empresaInfo, 
+      corPrimaria,
+      corSecundaria,
+      empresaId: empresaInfo?.id,
+      userMetadata: user.user_metadata 
+    })
+    
+    if (!empresaInfo?.id) {
+      console.log('❌ Erro: empresaInfo.id não encontrado', empresaInfo)
+      setMessage('Erro: Informações da empresa não encontradas')
+      return
+    }
+
+    // Validar formato das cores
+    const corRegex = /^#[0-9A-Fa-f]{6}$/
+    if (!corRegex.test(corPrimaria)) {
+      console.log('❌ Formato de cor primária inválido:', corPrimaria)
+      setMessage('Erro: Formato de cor primária inválido. Use o formato #RRGGBB')
+      return
+    }
+    if (!corRegex.test(corSecundaria)) {
+      console.log('❌ Formato de cor secundária inválido:', corSecundaria)
+      setMessage('Erro: Formato de cor secundária inválido. Use o formato #RRGGBB')
+      return
+    }
+
+    setSalvandoPromocoes(true)
+    try {
+      console.log('📤 Enviando cores das promoções para Supabase:', {
+        cor_primaria: corPrimaria,
+        cor_secundaria: corSecundaria,
+        empresa_id: empresaInfo.id,
+        timestamp: new Date().toISOString()
+      })
+
+      // Executar o update para as cores das promoções
+      const { data, error } = await supabase
+        .from('empresas')
+        .update({ 
+          cor_primaria: corPrimaria,
+          cor_secundaria: corSecundaria,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', empresaInfo.id)
+        .select('id, nome, cor_primaria, cor_secundaria')
+
+      console.log('📥 Resposta do update das cores das promoções:', { 
+        data, 
+        error,
+        dataLength: data?.length,
+        updatedData: data?.[0]
+      })
+
+      if (error) {
+        console.error('❌ Erro do Supabase no update das cores das promoções:', error)
+        setMessage('Erro ao salvar cores das promoções: ' + error.message)
+        return
+      }
+
+      if (!data || data.length === 0) {
+        console.error('❌ Nenhum registro foi atualizado')
+        setMessage('Erro: Nenhum registro foi atualizado. Verifique as permissões.')
+        return
+      }
+
+      console.log('✅ Cores das promoções salvas com sucesso!', data[0])
+      setMessage('Cores das promoções salvas com sucesso!')
+      setTimeout(() => setMessage(''), 3000)
+      
+      // Atualizar o estado local da empresa
+      setEmpresaInfo(prev => prev ? { ...prev, cor_primaria: corPrimaria, cor_secundaria: corSecundaria } : prev)
+
+    } catch (error) {
+      console.error('💥 Erro inesperado ao salvar cores das promoções:', error)
+      setMessage('Erro inesperado ao salvar cores das promoções: ' + (error as Error).message)
+    } finally {
+      setSalvandoPromocoes(false)
     }
   }
 
@@ -401,7 +496,7 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
                 </div>
               </div>
 
-              {/* Personalização de Cor */}
+              {/* Personalização de Cor da Página */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -440,20 +535,125 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
                 </div>
               </div>
 
-              {/* Botão Salvar Cor */}
-              <div className="flex justify-end mt-4">
+              {/* Botão Salvar Cor da Página */}
+              <div className="flex justify-center mt-6">
                 <button
-                  onClick={salvarCorPersonalizada}
+                  onClick={salvarCores}
                   disabled={salvandoCor}
-                  className="inline-flex items-center px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-medium rounded-lg hover:from-blue-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
                 >
                   {salvandoCor ? (
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
                   ) : (
-                    <Palette className="h-4 w-4 mr-2" />
+                    <Palette className="h-5 w-5 mr-2" />
                   )}
-                  {salvandoCor ? 'Salvando...' : 'Salvar Cor'}
+                  {salvandoCor ? 'Salvando Cor...' : 'Salvar Cor da Página'}
                 </button>
+              </div>
+
+              {/* Promoções Personalizadas */}
+              <div className="mt-8 pt-6 border-t border-gray-200">
+                <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                  <Palette className="h-5 w-5 mr-2 text-green-600" />
+                  Promoções Personalizadas
+                </h4>
+                <p className="text-sm text-gray-600 mb-6">
+                  Configure as cores que serão usadas nas suas promoções e materiais de marketing.
+                </p>
+
+                {/* Cor Primária das Promoções */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <Palette className="h-4 w-4 inline mr-1" />
+                      Cor Primária
+                    </label>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="color"
+                        value={corPrimaria}
+                        onChange={(e) => setCorPrimaria(e.target.value)}
+                        className="w-16 h-10 border border-gray-300 rounded-lg cursor-pointer"
+                      />
+                      <div className="flex-1">
+                        <input
+                          type="text"
+                          value={corPrimaria}
+                          onChange={(e) => setCorPrimaria(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm"
+                          placeholder="#3B82F6"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Prévia da Cor Primária
+                    </label>
+                    <div 
+                      className="w-full h-10 rounded-lg border border-gray-300 flex items-center justify-center text-white font-medium text-sm"
+                      style={{ backgroundColor: corPrimaria }}
+                    >
+                      Cor Primária das Promoções
+                    </div>
+                  </div>
+                </div>
+
+                {/* Cor Secundária das Promoções */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <Palette className="h-4 w-4 inline mr-1" />
+                      Cor Secundária
+                    </label>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="color"
+                        value={corSecundaria}
+                        onChange={(e) => setCorSecundaria(e.target.value)}
+                        className="w-16 h-10 border border-gray-300 rounded-lg cursor-pointer"
+                      />
+                      <div className="flex-1">
+                        <input
+                          type="text"
+                          value={corSecundaria}
+                          onChange={(e) => setCorSecundaria(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm"
+                          placeholder="#10B981"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Prévia da Cor Secundária
+                    </label>
+                    <div 
+                      className="w-full h-10 rounded-lg border border-gray-300 flex items-center justify-center text-white font-medium text-sm"
+                      style={{ backgroundColor: corSecundaria }}
+                    >
+                      Cor Secundária das Promoções
+                    </div>
+                  </div>
+                </div>
+
+                {/* Botão Salvar Cores das Promoções */}
+                <div className="flex justify-center mb-6">
+                  <button
+                    onClick={salvarPromocoes}
+                    disabled={salvandoPromocoes}
+                    className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-green-600 to-blue-600 text-white font-medium rounded-lg hover:from-green-700 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                  >
+                    {salvandoPromocoes ? (
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                    ) : (
+                      <Palette className="h-5 w-5 mr-2" />
+                    )}
+                    {salvandoPromocoes ? 'Salvando Cores...' : 'Salvar Cores das Promoções'}
+                  </button>
+                </div>
               </div>
 
               {/* Informações Adicionais */}
@@ -467,7 +667,8 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
                     <p className="text-sm text-blue-700 mt-1">
                       Quando um cliente acessa seu link personalizado e preenche o formulário, 
                       um novo lead é automaticamente criado em seu sistema CRM na coluna "LEAD". 
-                      A cor personalizada será aplicada ao design da página.
+                      A cor personalizada será aplicada ao design da página, enquanto as cores das promoções 
+                      serão usadas nos materiais de marketing e campanhas promocionais.
                     </p>
                   </div>
                 </div>
@@ -619,4 +820,4 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
   )
 }
 
-export default Perfil 
+export default Perfil

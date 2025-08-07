@@ -19,6 +19,7 @@ import CotacaoPrintRaw from './pages/CotacaoPrintRaw'
 import CotacaoView from './pages/CotacaoView'
 
 import SolicitacaoOrcamento from './pages/SolicitacaoOrcamento'
+import Promocoes from './pages/Promocoes'
 import { User } from '@supabase/supabase-js'
 
 function App() {
@@ -92,6 +93,7 @@ function App() {
                 <Route path="/aereo" element={<Aereo />} />
                 <Route path="/hotelaria" element={<Hotelaria />} />
                 <Route path="/quadro-voos" element={<QuadroVoos />} />
+                <Route path="/promocoes" element={<Promocoes user={user} />} />
                 <Route path="/perfil" element={<Perfil user={user} />} />
               </Routes>
             </Layout>
@@ -102,4 +104,4 @@ function App() {
   )
 }
 
-export default App 
+export default App

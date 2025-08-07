@@ -2,13 +2,33 @@
 
 Sistema de CRM moderno construído com React, TypeScript, Tailwind CSS e Supabase.
 
+## 🏗️ Estrutura do Projeto
+
+Este repositório contém **2 sistemas independentes**:
+
+- **Sistema Principal** (`/`) - Interface para usuários das agências
+- **Sistema Admin** (`/7crm-admin/`) - Painel administrativo
+
 ## 🚀 Funcionalidades
 
+### Sistema Principal
 - ✅ Autenticação completa (Login/Cadastro)
+- ✅ Gestão de clientes
+- ✅ Sistema de cotações
+- ✅ Calendário de eventos
 - ✅ Interface moderna e responsiva
-- ✅ Integração com Supabase
-- ✅ TypeScript para tipagem
-- ✅ Tailwind CSS para estilização
+
+### Sistema Admin
+- ✅ Gestão de empresas
+- ✅ Gestão de usuários
+- ✅ Gestão de promoções
+- ✅ Painel administrativo completo
+
+### Tecnologias
+- ✅ React + TypeScript
+- ✅ Tailwind CSS
+- ✅ Supabase (Backend)
+- ✅ Vite (Build tool)
 
 ## 📋 Pré-requisitos
 
@@ -62,16 +82,50 @@ O sistema estará disponível em `http://localhost:5173`
 ## 📁 Estrutura do projeto
 
 ```
-src/
-├── components/
-│   ├── LoginPage.tsx    # Página de login/cadastro
-│   └── Dashboard.tsx    # Dashboard principal
-├── lib/
-│   └── supabase.ts      # Configuração Supabase
-├── App.tsx              # Componente principal
-├── main.tsx             # Entry point
-└── index.css            # Estilos globais
+7crm/
+├── src/                 # Sistema Principal
+│   ├── components/
+│   ├── lib/
+│   └── ...
+├── 7crm-admin/          # Sistema Admin
+│   ├── src/
+│   ├── components/
+│   └── ...
+├── vercel.json          # Config deploy Sistema Principal
+└── GUIA_DEPLOY_VERCEL_DUPLO.md
 ```
+
+## 🚀 Executar Localmente
+
+### Sistema Principal
+```bash
+# Na raiz do projeto
+npm install
+npm run dev
+# Acesse: http://localhost:5173
+```
+
+### Sistema Admin
+```bash
+# No diretório admin
+cd 7crm-admin
+npm install
+npm run dev
+# Acesse: http://localhost:5174
+```
+
+## 🌐 Deploy no Vercel
+
+Para fazer deploy dos **2 sistemas separados** no Vercel:
+
+📖 **[Consulte o Guia Completo](./GUIA_DEPLOY_VERCEL_DUPLO.md)**
+
+O guia inclui:
+- ✅ Configuração de deploy duplo
+- ✅ Passo a passo detalhado
+- ✅ Configuração de variáveis de ambiente
+- ✅ Troubleshooting
+- ✅ Deploy automático
 
 ## 🎨 Design
 
@@ -91,4 +145,4 @@ src/
 
 ---
 
-Desenvolvido com ❤️ usando React + Supabase 
+Desenvolvido com ❤️ usando React + Supabase

@@ -13,7 +13,8 @@ import {
   Building,
   DollarSign,
   Menu,
-  X
+  X,
+  Tag
 } from 'lucide-react'
 import { User } from '@supabase/supabase-js'
 import NotificationCenter from './NotificationCenter'
@@ -66,6 +67,7 @@ const Layout: React.FC<LayoutProps> = ({ user, children }) => {
     { name: 'Clientes', href: '/clientes', icon: Users, color: 'text-purple-600' },
     { name: 'Financeiro', href: '/financeiro', icon: DollarSign, color: 'text-emerald-600' },
     { name: 'Calendário', href: '/calendario', icon: Calendar, color: 'text-orange-600' },
+    { name: 'Promoções', href: '/promocoes', icon: Tag, color: 'text-pink-600' },
     // { name: 'Aéreo', href: '/aereo', icon: Plane, color: 'text-sky-600' },
     // { name: 'Hotelaria', href: '/hotelaria', icon: Hotel, color: 'text-indigo-600' },
   ]
@@ -256,4 +258,4 @@ const Layout: React.FC<LayoutProps> = ({ user, children }) => {
   )
 }
 
-export default Layout 
+export default Layout
