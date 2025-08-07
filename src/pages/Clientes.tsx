@@ -45,6 +45,8 @@ interface ClientesProps {
 const Clientes: React.FC<ClientesProps> = ({ user }) => {
   const [searchTerm, setSearchTerm] = useState('')
   const [showModal, setShowModal] = useState(false)
+  const [showViewModal, setShowViewModal] = useState(false)
+  const [viewingClient, setViewingClient] = useState<Cliente | null>(null)
   const [currentStep, setCurrentStep] = useState(1)
   const [loading, setLoading] = useState(false)
   const [clientes, setClientes] = useState<Cliente[]>([])
@@ -310,6 +312,18 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
     setShowModal(false)
     setCurrentStep(1)
     setEditingClient(null)
+  }
+
+  // Função para abrir modal de visualização
+  const handleViewClient = (cliente: Cliente) => {
+    setViewingClient(cliente)
+    setShowViewModal(true)
+  }
+
+  // Função para fechar modal de visualização
+  const handleCloseViewModal = () => {
+    setShowViewModal(false)
+    setViewingClient(null)
   }
 
   const handleNextStep = () => {
@@ -911,7 +925,12 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
                     <tr key={cliente.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div>
-                          <div className="text-sm font-medium text-gray-900">{cliente.nome} {cliente.sobrenome}</div>
+                          <button
+                            onClick={() => handleViewClient(cliente)}
+                            className="text-sm font-medium text-purple-600 hover:text-purple-800 transition-colors cursor-pointer underline-offset-2 hover:underline"
+                          >
+                            {cliente.nome} {cliente.sobrenome}
+                          </button>
                           {cliente.rede_social && (
                             <div className="text-sm text-gray-500">{cliente.rede_social}</div>
                           )}
@@ -1119,8 +1138,199 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
           </div>
         </div>
       )}
+
+      {/* Modal de Visualização do Cliente */}
+      {showViewModal && viewingClient && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg w-full max-w-2xl max-h-[90vh] overflow-hidden">
+            {/* Header do Modal */}
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h3 className="text-xl font-semibold text-gray-900">
+                Dados do Cliente
+              </h3>
+              <button
+                onClick={handleCloseViewModal}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+
+            {/* Conteúdo do Modal */}
+            <div className="p-6 max-h-96 overflow-y-auto">
+              <div className="space-y-6">
+                {/* Dados Pessoais */}
+                <div>
+                  <h4 className="font-medium text-gray-900 mb-4 flex items-center">
+                    <User className="h-5 w-5 mr-2 text-purple-600" />
+                    Dados Pessoais
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Nome Completo</label>
+                      <div className="text-sm text-gray-900 bg-gray-50 p-3 rounded-lg">
+                        {viewingClient.nome} {viewingClient.sobrenome}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Data de Nascimento</label>
+                      <div className="text-sm text-gray-900 bg-gray-50 p-3 rounded-lg">
+                        {formatDate(viewingClient.data_nascimento)}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">CPF</label>
+                      <div className="text-sm text-gray-900 bg-gray-50 p-3 rounded-lg">
+                        {viewingClient.cpf}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Nacionalidade</label>
+                      <div className="text-sm text-gray-900 bg-gray-50 p-3 rounded-lg">
+                        {viewingClient.nacionalidade}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Documentos */}
+                {(viewingClient.rg || viewingClient.passaporte) && (
+                  <div>
+                    <h4 className="font-medium text-gray-900 mb-4 flex items-center">
+                      <FileText className="h-5 w-5 mr-2 text-purple-600" />
+                      Documentos
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {viewingClient.rg && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">RG</label>
+                          <div className="text-sm text-gray-900 bg-gray-50 p-3 rounded-lg">
+                            {viewingClient.rg}
+                          </div>
+                        </div>
+                      )}
+                      {viewingClient.passaporte && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Passaporte</label>
+                          <div className="text-sm text-gray-900 bg-gray-50 p-3 rounded-lg">
+                            {viewingClient.passaporte}
+                          </div>
+                        </div>
+                      )}
+                      {viewingClient.data_expedicao && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Data de Expedição</label>
+                          <div className="text-sm text-gray-900 bg-gray-50 p-3 rounded-lg">
+                            {formatDate(viewingClient.data_expedicao)}
+                          </div>
+                        </div>
+                      )}
+                      {viewingClient.data_expiracao && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Data de Expiração</label>
+                          <div className="text-sm text-gray-900 bg-gray-50 p-3 rounded-lg">
+                            {formatDate(viewingClient.data_expiracao)}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Contato */}
+                <div>
+                  <h4 className="font-medium text-gray-900 mb-4 flex items-center">
+                    <Phone className="h-5 w-5 mr-2 text-purple-600" />
+                    Contato
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                      <div className="text-sm text-gray-900 bg-gray-50 p-3 rounded-lg flex items-center">
+                        <Mail className="h-4 w-4 mr-2 text-gray-400" />
+                        {viewingClient.email}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Telefone</label>
+                      <div className="text-sm text-gray-900 bg-gray-50 p-3 rounded-lg flex items-center">
+                        <Phone className="h-4 w-4 mr-2 text-gray-400" />
+                        {viewingClient.telefone}
+                      </div>
+                    </div>
+                    {viewingClient.rede_social && (
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Rede Social</label>
+                        <div className="text-sm text-gray-900 bg-gray-50 p-3 rounded-lg flex items-center">
+                          <Globe className="h-4 w-4 mr-2 text-gray-400" />
+                          {viewingClient.rede_social}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Observações */}
+                {viewingClient.observacoes && (
+                  <div>
+                    <h4 className="font-medium text-gray-900 mb-4 flex items-center">
+                      <MessageCircle className="h-5 w-5 mr-2 text-purple-600" />
+                      Observações
+                    </h4>
+                    <div className="text-sm text-gray-900 bg-gray-50 p-3 rounded-lg">
+                      {viewingClient.observacoes}
+                    </div>
+                  </div>
+                )}
+
+                {/* Data de Cadastro */}
+                <div>
+                  <h4 className="font-medium text-gray-900 mb-4 flex items-center">
+                    <Calendar className="h-5 w-5 mr-2 text-purple-600" />
+                    Informações do Sistema
+                  </h4>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Data de Cadastro</label>
+                    <div className="text-sm text-gray-900 bg-gray-50 p-3 rounded-lg">
+                      {new Date(viewingClient.created_at).toLocaleDateString('pt-BR', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer com Botões */}
+            <div className="flex items-center justify-end p-6 border-t border-gray-200">
+              <div className="flex space-x-3">
+                <button
+                  onClick={handleCloseViewModal}
+                  className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+                >
+                  Fechar
+                </button>
+                <button
+                  onClick={() => {
+                    handleCloseViewModal()
+                    handleEditClient(viewingClient)
+                  }}
+                  className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center"
+                >
+                  <Edit className="h-4 w-4 mr-2" />
+                  Editar Cliente
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-export default Clientes 
+export default Clientes

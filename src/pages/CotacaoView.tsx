@@ -178,7 +178,25 @@ const CotacaoView: React.FC = () => {
         .text-xs { font-size: 10px !important; }
         .cia-nome-print { color: #fff !important; }
         .info-bagagem-print { font-size: 11px !important; padding: 2px 10px !important; border-radius: 10px !important; }
-        @media print { .btn-print { display: none !important; } }
+        .titulo-orcamento {
+          color: #fff !important;
+        }
+        @media print { 
+          .btn-print { display: none !important; }
+          .titulo-orcamento { color: #fff !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          .footer-investimento {
+             position: fixed !important;
+             bottom: 0 !important;
+             left: 0 !important;
+             right: 0 !important;
+             margin: 0 !important;
+             max-width: none !important;
+             width: 100% !important;
+             z-index: 1000 !important;
+           }
+          h2 { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        }
         .btn-print { position: fixed; top: 24px; right: 32px; z-index: 9999; background: #2563eb; color: #fff; border: none; border-radius: 8px; padding: 10px 22px; font-size: 15px; font-weight: 700; box-shadow: 0 2px 8px rgba(0,0,0,0.08); cursor: pointer; transition: background 0.2s; }
         .btn-print:hover { background: #1d4ed8; }
       `}</style>
@@ -211,8 +229,9 @@ const CotacaoView: React.FC = () => {
         marginTop: 8
       }}>
         <h2
+          className="titulo-orcamento"
           style={{
-            background: `linear-gradient(90deg, ${corEmpresa} 0%, ${corEmpresaEscura} 100%)`,
+            background: corEmpresa,
             color: '#fff',
             padding: '12px 36px',
             borderRadius: 12,
@@ -224,7 +243,9 @@ const CotacaoView: React.FC = () => {
             textTransform: 'uppercase',
             border: 'none',
             outline: 'none',
-            textShadow: `0 2px 8px ${corEmpresa}22`
+            textShadow: `0 2px 8px ${corEmpresa}22`,
+            WebkitPrintColorAdjust: 'exact',
+            printColorAdjust: 'exact'
           }}
         >
           ORÇAMENTO DE VIAGEM
@@ -524,7 +545,7 @@ const CotacaoView: React.FC = () => {
           )}
         </div>
       )}
-      <footer style={{
+      <footer className="footer-investimento" style={{
         width: '100%',
         maxWidth: 1000,
         margin: '24px auto 0 auto',
@@ -539,10 +560,13 @@ const CotacaoView: React.FC = () => {
         gap: 16
       }}>
         <div style={{fontSize: 22, fontWeight: 800, marginBottom: 8, letterSpacing: 2}}>
-          R$ {cotacao.valor?.toLocaleString('pt-BR', {minimumFractionDigits: 2}) || '-'}
+          Investimento Total: R$ {cotacao.valor?.toLocaleString('pt-BR', {minimumFractionDigits: 2}) || '-'}
         </div>
         <div style={{fontSize: 13, fontWeight: 600, marginBottom: 8}}>
           Forma de pagamento: <span style={{fontWeight: 800}}>{formaPagamentoNome || '-'}</span>
+          {cotacao.parcelamento && cotacao.parcelamento !== '1' && (
+            <span style={{fontWeight: 800}}> em {cotacao.parcelamento}x de R$ {((cotacao.valor || 0) / parseInt(cotacao.parcelamento || '1')).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
+          )}
         </div>
         <ul style={{listStyle: 'none', padding: 0, margin: 0}}>
           {(cotacao.custos || []).map((item: any, idx: number) => (
@@ -558,4 +582,4 @@ const CotacaoView: React.FC = () => {
   );
 };
 
-export default CotacaoView; 
+export default CotacaoView;

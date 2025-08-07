@@ -54,10 +54,9 @@ interface ContasReceber {
   empresa_id?: string
   cliente_id?: string
   fornecedor_id?: number
-  cliente_nome: string
   categoria_id?: number
   descricao: string
-  servico: string
+
   valor: number
   vencimento: string
   status: 'recebida' | 'pendente' | 'vencida'
@@ -172,7 +171,6 @@ const Financeiro = () => {
     categoria_id: 0,
     cliente_id: null as number | null,
     fornecedor_id: null as number | null,
-    cliente_nome: '',
     descricao: '',
     valor: 0,
     vencimento: '',
@@ -403,7 +401,6 @@ const Financeiro = () => {
       console.log('Contas a receber carregadas:', contas);
       console.log('Detalhes das contas:', contas.map(c => ({
         id: c.id,
-        cliente_nome: c.cliente_nome,
         descricao: c.descricao,
         valor: c.valor,
         empresa_id: c.empresa_id
@@ -494,6 +491,9 @@ const Financeiro = () => {
       alert('Por favor, preencha todos os campos obrigatórios (categoria, forma de pagamento, valor e vencimento).')
       return
     }
+
+    // Converter valor de centavos para reais
+    const valorEmReais = novaContaPagar.valor / 100
     
     setSalvandoContaPagar(true)
     try {
@@ -501,7 +501,7 @@ const Financeiro = () => {
         categoria_id: novaContaPagar.categoria_id,
         fornecedor_id: novaContaPagar.fornecedor_id || undefined,
         forma_pagamento_id: novaContaPagar.forma_pagamento_id,
-        valor: novaContaPagar.valor,
+        valor: valorEmReais,
         parcelas: novaContaPagar.parcelas.toString(),
         vencimento: novaContaPagar.vencimento,
         status: novaContaPagar.status,
@@ -564,7 +564,6 @@ const Financeiro = () => {
       categoria_id: 0,
       cliente_id: null,
       fornecedor_id: null,
-      cliente_nome: '',
       descricao: '',
       valor: 0,
       vencimento: '',
@@ -760,6 +759,9 @@ const Financeiro = () => {
       alert('Por favor, preencha todos os campos obrigatórios (categoria, valor e vencimento).');
       return;
     }
+
+    // Converter valor de centavos para reais
+    const valorEmReais = novaContaReceber.valor / 100;
     
     // Validação específica por tipo
     if (tipoReceberSelecionado === 'conta' && !novaContaReceber.cliente_id) {
@@ -794,7 +796,7 @@ const Financeiro = () => {
         cliente_id: tipoReceberSelecionado === 'conta' ? novaContaReceber.cliente_id : null,
         fornecedor_id: tipoReceberSelecionado === 'comissao' ? novaContaReceber.fornecedor_id : null,
         descricao: novaContaReceber.descricao,
-        valor: novaContaReceber.valor,
+        valor: valorEmReais,
         vencimento: novaContaReceber.vencimento,
         status: novaContaReceber.status,
         forma_recebimento_id: novaContaReceber.forma_recebimento_id,
@@ -832,7 +834,6 @@ const Financeiro = () => {
         categoria_id: 0,
         cliente_id: null,
         fornecedor_id: null,
-        cliente_nome: '',
         descricao: '',
         valor: 0,
         vencimento: '',
@@ -854,9 +855,9 @@ const Financeiro = () => {
   // Exemplo de uso (para quando o modal estiver pronto):
   // handleSalvarContaReceber({
   //   cliente_id: '...',
-  //   cliente_nome: 'Nome do Cliente',
+
   //   descricao: 'Descrição',
-  //   servico: 'Serviço',
+
   //   valor: 1000,
   //   vencimento: '2024-08-01',
   //   status: 'pendente',
@@ -1628,7 +1629,16 @@ const Financeiro = () => {
                       tipo: 'receber' as const,
                       categoria: categoriasVenda.find(cat => cat.id === conta.categoria_id)?.nome || 
                                 categoriasComissaoVenda.find(cat => cat.id === conta.categoria_id)?.nome || 'Sem categoria',
-                      entidade: conta.cliente_nome || 'Cliente'
+                      entidade: (() => {
+                        if (conta.cliente_id) {
+                          const cliente = clientes.find(c => c.id === parseInt(conta.cliente_id || '0'))
+                          return cliente ? `${cliente.nome}${cliente.sobrenome ? ` ${cliente.sobrenome}` : ''}` : 'Cliente'
+                        } else if (conta.fornecedor_id) {
+                          const fornecedor = fornecedores.find(f => f.id === conta.fornecedor_id)
+                          return fornecedor ? fornecedor.nome : 'Fornecedor'
+                        }
+                        return 'Cliente'
+                      })()
                     }))
                 ];
 
@@ -1890,11 +1900,26 @@ const Financeiro = () => {
                                 {conta.status === 'PAGO' ? (
                                   <button className="p-1 text-yellow-600 hover:text-yellow-800 rounded" onClick={async () => {
                                     if (window.confirm('Tem certeza que deseja desfazer o pagamento desta conta?')) {
-                                      await supabase
-                                        .from('contas_pagar')
-                                        .update({ status: 'PENDENTE', pago_em: null })
-                                        .eq('id', conta.id);
-                                      if (user) await carregarContasPagar(user.id);
+                                      try {
+                                        console.log('Desfazendo pagamento da conta:', conta.id);
+                                        const { error } = await supabase
+                                          .from('contas_pagar')
+                                          .update({ status: 'PENDENTE', pago_em: null })
+                                          .eq('id', conta.id);
+                                        
+                                        if (error) {
+                                          console.error('Erro ao desfazer pagamento:', error);
+                                          alert('Erro ao desfazer pagamento: ' + error.message);
+                                          return;
+                                        }
+                                        
+                                        console.log('Pagamento desfeito com sucesso, recarregando dados...');
+                                        if (user) await carregarContasPagar(user.id);
+                                        alert('Pagamento desfeito com sucesso!');
+                                      } catch (err) {
+                                        console.error('Erro inesperado ao desfazer pagamento:', err);
+                                        alert('Erro inesperado ao desfazer pagamento.');
+                                      }
                                     }
                                   }} title="Desfazer pagamento">
                                     <ArrowLeft className="h-4 w-4" />
@@ -2243,11 +2268,13 @@ const Financeiro = () => {
                         <span className="text-lg">R$</span>
                       </div>
                       <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={novaContaPagar.valor}
-                        onChange={(e) => setNovaContaPagar(prev => ({ ...prev, valor: parseFloat(e.target.value) || 0 }))}
+                        type="text"
+                        value={novaContaPagar.valor === 0 ? '' : (novaContaPagar.valor / 100).toFixed(2).replace('.', ',')}
+                        onChange={(e) => {
+                          const value = e.target.value.replace(/\D/g, '');
+                          const numericValue = parseInt(value) || 0;
+                          setNovaContaPagar(prev => ({ ...prev, valor: numericValue }));
+                        }}
                         className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200 bg-white hover:border-gray-300"
                         placeholder="0,00"
                         required
@@ -2540,8 +2567,7 @@ const Financeiro = () => {
                               setNovaContaReceber(prev => {
                                 const newState = { 
                                   ...prev, 
-                                  fornecedor_id: fornecedorId,
-                                  cliente_nome: fornecedorSelecionado ? fornecedorSelecionado.nome : ''
+                                  fornecedor_id: fornecedorId
                                 };
                                 console.log('Debug - Novo estado:', newState);
                                 return newState;
@@ -2573,8 +2599,7 @@ const Financeiro = () => {
                               const clienteSelecionado = clientes.find(c => c.id === clienteId);
                               setNovaContaReceber(prev => ({ 
                                 ...prev, 
-                                cliente_id: clienteId,
-                                cliente_nome: clienteSelecionado ? `${clienteSelecionado.nome}${clienteSelecionado.sobrenome ? ` ${clienteSelecionado.sobrenome}` : ''}` : ''
+                                cliente_id: clienteId
                               }));
                             }}
                             className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 bg-white hover:border-gray-300"
@@ -2602,11 +2627,13 @@ const Financeiro = () => {
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">R$</span>
                       <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={novaContaReceber.valor || ''}
-                        onChange={(e) => setNovaContaReceber(prev => ({ ...prev, valor: parseFloat(e.target.value) || 0 }))}
+                        type="text"
+                        value={novaContaReceber.valor === 0 ? '' : (novaContaReceber.valor / 100).toFixed(2).replace('.', ',')}
+                        onChange={(e) => {
+                          const value = e.target.value.replace(/\D/g, '');
+                          const numericValue = parseInt(value) || 0;
+                          setNovaContaReceber(prev => ({ ...prev, valor: numericValue }));
+                        }}
                         className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 bg-white hover:border-gray-300"
                         placeholder="0,00"
                         required
@@ -2996,7 +3023,7 @@ const Financeiro = () => {
             <div className="bg-white rounded-lg p-6 w-full max-w-md">
               <h3 className="text-lg font-bold mb-4">Detalhes da Conta</h3>
               <div className="mb-2"><b>Descrição:</b> {contaReceberSelecionada.descricao}</div>
-              <div className="mb-2"><b>Serviço:</b> {contaReceberSelecionada.servico}</div>
+              
               <div className="mb-2"><b>Valor:</b> {formatarMoeda(contaReceberSelecionada.valor)}</div>
               <div className="mb-2"><b>Vencimento:</b> {formatarDataLocal(contaReceberSelecionada.vencimento)}</div>
               <div className="mb-2"><b>Status:</b> {contaReceberSelecionada.status}</div>
@@ -3311,7 +3338,19 @@ const Financeiro = () => {
                 <p className="text-gray-700 mb-2">Tem certeza que deseja excluir esta conta a receber?</p>
                 <div className="bg-gray-50 p-3 rounded-lg">
                   <p className="font-medium">{contaReceberSelecionada.descricao}</p>
-                  <p className="text-sm text-gray-600">Cliente: {contaReceberSelecionada.cliente_nome}</p>
+                  <p className="text-sm text-gray-600">Cliente: {
+                    contaReceberSelecionada.cliente_id 
+                      ? (() => {
+                          const cliente = clientes.find(c => c.id === parseInt(contaReceberSelecionada.cliente_id || '0'))
+                          return cliente ? `${cliente.nome}${cliente.sobrenome ? ` ${cliente.sobrenome}` : ''}` : `Cliente ID: ${contaReceberSelecionada.cliente_id}`
+                        })()
+                      : contaReceberSelecionada.fornecedor_id
+                        ? (() => {
+                            const fornecedor = fornecedores.find(f => f.id === contaReceberSelecionada.fornecedor_id)
+                            return fornecedor ? fornecedor.nome : `Fornecedor ID: ${contaReceberSelecionada.fornecedor_id}`
+                          })()
+                        : 'Entidade não identificada'
+                  }</p>
                   <p className="text-sm text-gray-600">{formatarMoeda(contaReceberSelecionada.valor)} - Vencimento: {formatarDataLocal(contaReceberSelecionada.vencimento)}</p>
                 </div>
                 <p className="text-sm text-red-600 mt-2 font-medium">⚠️ Esta ação não pode ser desfeita!</p>
@@ -3350,4 +3389,4 @@ const Financeiro = () => {
   )
 }
 
-export default Financeiro 
+export default Financeiro

@@ -72,6 +72,7 @@ const CotacaoPrintRaw: React.FC = () => {
   const [voos, setVoos] = useState<any[]>([]);
   const [passageiros, setPassageiros] = useState<any[]>([]);
   const [ciasAereas, setCiasAereas] = useState<any[]>([]);
+  const [formaPagamentoNome, setFormaPagamentoNome] = useState<string>('');
 
   useEffect(() => {
     const buscarDados = async () => {
@@ -116,6 +117,11 @@ const CotacaoPrintRaw: React.FC = () => {
       // Companhias aéreas
       const { data: ciasData } = await supabase.from('CiasAereas').select('*');
       setCiasAereas(ciasData || []);
+      // Forma de pagamento
+      if (cot?.formapagid) {
+        const { data: formaPagamento } = await supabase.from('formas_pagamento').select('nome').eq('id', cot.formapagid).single();
+        setFormaPagamentoNome(formaPagamento?.nome || '-');
+      }
       setLoading(false);
     };
     buscarDados();
@@ -325,12 +331,21 @@ const CotacaoPrintRaw: React.FC = () => {
               color: #fff !important;
             }
           }
+          .titulo-confirmacao {
+            color: #fff !important;
+          }
+          @media print { 
+            .btn-print { display: none !important; }
+            .titulo-confirmacao { color: #fff !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+            h2 { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          }
           .btn-print { position: fixed; top: 24px; right: 32px; z-index: 9999; background: #2563eb; color: #fff; border: none; border-radius: 8px; padding: 10px 22px; font-size: 15px; font-weight: 700; box-shadow: 0 2px 8px rgba(0,0,0,0.08); cursor: pointer; transition: background 0.2s; }
           .btn-print:hover { background: #1d4ed8; }
-          @media print { .btn-print { display: none !important; } }
         `}</style>
       </head>
       <body>
+        <button className="btn-print" onClick={() => window.print()}>🖨️ Imprimir</button>
         <div className="container">
           <div className="header">
             <div className="header-content">
@@ -359,11 +374,12 @@ const CotacaoPrintRaw: React.FC = () => {
             marginTop: 8
           }}>
             <h2
+              className="titulo-confirmacao"
               style={{
-                background: 'linear-gradient(90deg, #d4145a 0%, #91146a 100%)',
+                background: corEmpresa,
                 color: '#fff',
                 padding: '12px 36px',
-                borderRadius: 18,
+                borderRadius: 12,
                 fontSize: 24,
                 fontWeight: 800,
                 letterSpacing: 2,
@@ -371,8 +387,10 @@ const CotacaoPrintRaw: React.FC = () => {
                 textTransform: 'uppercase',
                 border: 'none',
                 outline: 'none',
-                boxShadow: '0 4px 16px 0 #d4145a22',
-                textShadow: '0 2px 8px #91146a22'
+                boxShadow: `0 4px 16px 0 ${corEmpresa}22`,
+                textShadow: `0 2px 8px ${corEmpresa}22`,
+                WebkitPrintColorAdjust: 'exact',
+                printColorAdjust: 'exact'
               }}
             >
               Confirmação de Reserva
@@ -752,10 +770,13 @@ const CotacaoPrintRaw: React.FC = () => {
           gap: 16
         }}>
           <div style={{fontSize: 22, fontWeight: 800, marginBottom: 8, letterSpacing: 2}}>
-            R$ {cotacao.valor_total?.toLocaleString('pt-BR', {minimumFractionDigits: 2}) || '-'}
+            Valor Total: R$ {cotacao.valor?.toLocaleString('pt-BR', {minimumFractionDigits: 2}) || '-'}
           </div>
           <div style={{fontSize: 13, fontWeight: 600, marginBottom: 8}}>
-            Forma de pagamento: <span style={{fontWeight: 800}}>{cotacao.forma_pagamento || '-'}</span>
+            Forma de pagamento: <span style={{fontWeight: 800}}>{formaPagamentoNome || '-'}</span>
+            {cotacao.parcelamento && cotacao.parcelamento !== '1' && (
+              <span style={{fontWeight: 800}}> em {cotacao.parcelamento}x de R$ {((cotacao.valor || 0) / parseInt(cotacao.parcelamento || '1')).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
+            )}
           </div>
           <ul style={{listStyle: 'none', padding: 0, margin: 0}}>
             {(cotacao.custos || []).map((item: any, idx: number) => (
@@ -766,10 +787,9 @@ const CotacaoPrintRaw: React.FC = () => {
             ))}
           </ul>
         </footer>
-        <button className="btn-print" onClick={() => window.print()}>Imprimir</button>
       </body>
     </html>
   );
 };
 
-export default CotacaoPrintRaw; 
+export default CotacaoPrintRaw;
