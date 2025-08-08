@@ -44,18 +44,9 @@ const Promocoes: React.FC<PromocoesProps> = ({ user }) => {
 
   const carregarPromocoes = async () => {
     try {
-      const empresaId = user.user_metadata?.empresa_id
-      
-      if (!empresaId) {
-        console.error('ID da empresa não encontrado')
-        setLoading(false)
-        return
-      }
-
       const { data: promocoesData, error } = await supabase
         .from('promocoes')
         .select('*')
-        .eq('empresa_id', empresaId)
         .eq('ativo', true)
         .order('created_at', { ascending: false })
 
