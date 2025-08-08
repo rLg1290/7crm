@@ -6,13 +6,9 @@ import {
   Search, 
   Edit, 
   Trash2, 
-  Eye, 
-  EyeOff,
   AlertCircle,
   Check,
-  X,
-  Calendar,
-  Building2
+  X
 } from 'lucide-react'
 
 interface Promocao {
@@ -28,7 +24,7 @@ interface Promocao {
   empresa?: {
     nome: string
     codigo_agencia: string
-  }
+  }[]
   created_at: string
 }
 
@@ -214,7 +210,7 @@ const Promocoes = () => {
     promocao.destino.toLowerCase().includes(searchTerm.toLowerCase()) ||
     promocao.observacoes.toLowerCase().includes(searchTerm.toLowerCase()) ||
     promocao.tipo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    promocao.empresa?.nome.toLowerCase().includes(searchTerm.toLowerCase())
+    promocao.empresa?.[0]?.nome.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
   if (loading) {
@@ -336,10 +332,10 @@ const Promocoes = () => {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    {promocao.empresa ? (
+                    {promocao.empresa?.[0] ? (
                       <div>
-                        <div className="text-sm font-medium text-gray-900">{promocao.empresa.nome}</div>
-                        <div className="text-sm text-gray-500">{promocao.empresa.codigo_agencia}</div>
+                        <div className="text-sm font-medium text-gray-900">{promocao.empresa[0].nome}</div>
+                        <div className="text-sm text-gray-500">{promocao.empresa[0].codigo_agencia}</div>
                       </div>
                     ) : (
                       <span className="text-sm text-gray-500">Todas as empresas</span>

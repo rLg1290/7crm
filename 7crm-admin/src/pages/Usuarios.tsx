@@ -9,8 +9,6 @@ import {
   Shield, 
   ShieldCheck,
   AlertCircle,
-  Check,
-  X,
   Building2,
   Mail,
   Calendar
@@ -24,7 +22,7 @@ interface Usuario {
   empresa?: {
     nome: string
     codigo_agencia: string
-  }
+  }[]
   created_at: string
   last_sign_in_at?: string
 }
@@ -199,7 +197,7 @@ const Usuarios = () => {
 
   const filteredUsuarios = usuarios.filter(usuario =>
     usuario.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    usuario.empresa?.nome.toLowerCase().includes(searchTerm.toLowerCase())
+    usuario.empresa?.[0]?.nome.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
   if (loading) {
@@ -297,12 +295,12 @@ const Usuarios = () => {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    {usuario.empresa ? (
+                    {usuario.empresa?.[0] ? (
                       <div className="flex items-center">
                         <Building2 className="h-4 w-4 text-gray-400 mr-2" />
                         <div>
-                          <div className="text-sm font-medium text-gray-900">{usuario.empresa.nome}</div>
-                          <div className="text-sm text-gray-500">{usuario.empresa.codigo_agencia}</div>
+                          <div className="text-sm font-medium text-gray-900">{usuario.empresa[0].nome}</div>
+                          <div className="text-sm text-gray-500">{usuario.empresa[0].codigo_agencia}</div>
                         </div>
                       </div>
                     ) : (

@@ -6,8 +6,6 @@ import {
   Search, 
   Edit, 
   Trash2, 
-  Eye, 
-  EyeOff,
   AlertCircle,
   Check,
   X
