@@ -36,10 +36,10 @@ const Layout: React.FC<LayoutProps> = ({ user, children }) => {
   ]
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 w-full">
       {/* Header Administrativo */}
-      <header className="bg-white shadow-lg border-b border-gray-100 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 lg:px-8">
+      <header className="bg-white shadow-lg border-b border-gray-100 sticky top-0 z-50 w-full">
+        <div className="w-full px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             
             {/* Logo e Título - Esquerda */}
@@ -156,8 +156,10 @@ const Layout: React.FC<LayoutProps> = ({ user, children }) => {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1">
-        {children}
+      <main className="flex-1 w-full">
+        <div className="w-full">
+          {children}
+        </div>
       </main>
     </div>
   )
