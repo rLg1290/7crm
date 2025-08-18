@@ -9,6 +9,7 @@ import {
   Tag,
   Users,
   BarChart3,
+  Search,
   Menu,
   X
 } from 'lucide-react'
@@ -32,6 +33,7 @@ const Layout: React.FC<LayoutProps> = ({ user, children }) => {
     { name: 'Empresas', href: '/empresas', icon: Building2, color: 'text-green-600' },
     { name: 'Promoções', href: '/promocoes', icon: Tag, color: 'text-pink-600' },
     { name: 'Usuários', href: '/usuarios', icon: Users, color: 'text-purple-600' },
+    { name: 'Pesquisas', href: '/pesquisas', icon: Search, color: 'text-indigo-600' },
     { name: 'Relatórios', href: '/relatorios', icon: BarChart3, color: 'text-orange-600' },
   ]
 

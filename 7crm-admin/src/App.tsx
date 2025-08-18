@@ -8,6 +8,7 @@ import Dashboard from './pages/Dashboard'
 import Empresas from './pages/Empresas'
 import Promocoes from './pages/Promocoes'
 import Usuarios from './pages/Usuarios'
+import Pesquisas from './pages/Pesquisas'
 import Relatorios from './pages/Relatorios'
 
 function App() {
@@ -85,6 +86,7 @@ function App() {
           <Route path="/empresas" element={<Empresas />} />
           <Route path="/promocoes" element={<Promocoes />} />
           <Route path="/usuarios" element={<Usuarios />} />
+          <Route path="/pesquisas" element={<Pesquisas />} />
           <Route path="/relatorios" element={<Relatorios />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
