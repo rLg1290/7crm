@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react'
-import { Search, Filter, Plus, Eye, Download, Calendar, User, Building2, BarChart3, TrendingUp, Users, Star, Gift } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Search, Eye, Download, Calendar, User, Building2, BarChart3, TrendingUp, Users, Star, Gift } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
 interface PesquisaResposta {
@@ -69,12 +69,7 @@ const Pesquisas = () => {
   const [filterStatus, setFilterStatus] = useState<string>('todas')
   const [selectedPesquisa, setSelectedPesquisa] = useState<PesquisaAgrupada | null>(null)
   
-  // Estados para busca de cupons
-  const [showCupomModal, setShowCupomModal] = useState(false)
-  const [cupomBusca, setCupomBusca] = useState('')
-  const [cupomResultados, setCupomResultados] = useState<PesquisaResposta[]>([])
-  const [cupomFiltro, setCupomFiltro] = useState<'todos' | 'utilizados' | 'nao_utilizados'>('todos')
-  const [loadingCupons, setLoadingCupons] = useState(false)
+
 
   useEffect(() => {
     fetchPesquisas()
@@ -99,63 +94,7 @@ const Pesquisas = () => {
     return Math.round((soma / (respostas.length * 5)) * 10) / 10
   }
 
-  const buscarCupons = async () => {
-    if (!cupomBusca.trim()) return
-    
-    setLoadingCupons(true)
-    try {
-      let query = supabase
-        .from('pesquisa_respostas')
-        .select('*')
-        .not('cupom_desconto', 'is', null)
-        .ilike('cupom_desconto', `%${cupomBusca}%`)
 
-      // Aplicar filtro de status
-      if (cupomFiltro === 'utilizados') {
-        query = query.eq('cupom_utilizado', true)
-      } else if (cupomFiltro === 'nao_utilizados') {
-        query = query.eq('cupom_utilizado', false)
-      }
-
-      const { data, error } = await query
-
-      if (error) {
-        console.error('Erro ao buscar cupons:', error)
-        return
-      }
-
-      setCupomResultados(data || [])
-    } catch (error) {
-      console.error('Erro ao buscar cupons:', error)
-    } finally {
-      setLoadingCupons(false)
-    }
-  }
-
-  const marcarCupomComoUtilizado = async (cupomId: string) => {
-    try {
-      const { error } = await supabase
-        .from('pesquisa_respostas')
-        .update({ cupom_utilizado: true })
-        .eq('id', cupomId)
-
-      if (error) {
-        console.error('Erro ao marcar cupom como utilizado:', error)
-        return
-      }
-
-      // Atualizar os resultados localmente
-      setCupomResultados(prev => 
-        prev.map(cupom => 
-          cupom.id === cupomId 
-            ? { ...cupom, cupom_utilizado: true }
-            : cupom
-        )
-      )
-    } catch (error) {
-      console.error('Erro ao marcar cupom como utilizado:', error)
-    }
-  }
 
   const exportarDados = (pesquisa: PesquisaAgrupada) => {
     const headers = [
@@ -285,7 +224,7 @@ const Pesquisas = () => {
   })
 
   const totalRespostas = pesquisas.reduce((sum, pesquisa) => sum + pesquisa.total_respostas, 0)
-  const pesquisasAtivas = pesquisas.filter(p => p.status === 'ativa').length
+
   const mediaNPS = pesquisas.length > 0 ? 
     Math.round(pesquisas.reduce((sum, p) => sum + p.nps_score, 0) / pesquisas.length) : 0
   const mediaSatisfacaoGeral = pesquisas.length > 0 ? 
@@ -300,15 +239,7 @@ const Pesquisas = () => {
     }
   }
 
-  const getTipoColor = (tipo: string) => {
-    switch (tipo) {
-      case 'satisfacao': return 'bg-blue-100 text-blue-800'
-      case 'mercado': return 'bg-purple-100 text-purple-800'
-      case 'produto': return 'bg-orange-100 text-orange-800'
-      case 'servico': return 'bg-teal-100 text-teal-800'
-      default: return 'bg-gray-100 text-gray-800'
-    }
-  }
+
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('pt-BR')
