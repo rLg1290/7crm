@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Search, Eye, Download, Calendar, User, Building2, BarChart3, TrendingUp, Users, Star, Gift } from 'lucide-react'
+import { Search, Eye, Download, Calendar, User, Building2, BarChart3, TrendingUp, Users, Star } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
 interface PesquisaResposta {
@@ -304,13 +304,7 @@ const Pesquisas = () => {
                 <option value="finalizada">Finalizadas</option>
               </select>
               
-              <button
-                onClick={() => setShowCupomModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
-              >
-                <Gift className="h-4 w-4" />
-                Buscar Cupons
-              </button>
+
             </div>
           </div>
         </div>
