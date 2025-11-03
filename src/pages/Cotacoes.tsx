@@ -59,6 +59,7 @@ interface Compromisso {
 
 interface Cotacao {
   id: string
+  idBanco: number // ID numérico real do banco para operações críticas
   titulo: string
   cliente: string
   cliente_id?: string
@@ -72,6 +73,9 @@ interface Cotacao {
   observacoes?: string
   formapagid?: string | null // <-- ajustado para aceitar null
   parcelamento?: string // 🔧 CAMPO PARCELAMENTO ADICIONADO
+  // Campos opcionais utilizados apenas quando a linha representa um lead no Kanban
+  isLead?: boolean
+  leadData?: Lead
 }
 
 interface Passageiro {
@@ -466,17 +470,22 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
 
       // Remover lead
       console.log('Removendo lead com ID:', lead.id)
-      const { error: errorLead } = await supabase
-        .from('leads')
-        .delete()
-        .eq('id', lead.id)
-
-      if (errorLead) {
-        console.error('Erro ao remover lead:', errorLead)
-        alert(`Erro ao remover lead: ${errorLead.message}`)
-        // Não falhar se não conseguir remover o lead
+      const leadIdNum = Number(lead.id)
+      if (!Number.isFinite(leadIdNum)) {
+        console.error('ID de lead inválido para exclusão:', lead.id)
       } else {
-        console.log('Lead removido com sucesso')
+        const { error: errorLead } = await supabase
+          .from('leads')
+          .delete()
+          .eq('id', leadIdNum)
+
+        if (errorLead) {
+          console.error('Erro ao remover lead:', errorLead)
+          alert(`Erro ao remover lead: ${errorLead.message}`)
+          // Não falhar se não conseguir remover o lead
+        } else {
+          console.log('Lead removido com sucesso')
+        }
       }
 
       // Recarregar dados
@@ -856,6 +865,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
           'Cliente não encontrado';
         
         return {
+        idBanco: -Math.abs(Number(lead.id) || 0),
         id: `lead-${lead.id}`,
           titulo: nomeCompleto,
           cliente: nomeCompleto,
@@ -1221,13 +1231,56 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
       try {
         console.log('Tentando deletar cotação:', cotacao)
         
-        // Deletar do Supabase - tratar ID corretamente
-        const cotacaoId = typeof cotacao.id === 'string' ? parseInt(cotacao.id) : cotacao.id
-        
+        // Se for um lead representado como cartão, deletar da tabela 'leads' no banco
+        if (cotacao.isLead) {
+          const leadIdFromData = cotacao.leadData?.id
+          const leadIdFromString = (() => {
+            try {
+              return Number(cotacao.id?.replace('lead-', ''))
+            } catch {
+              return NaN
+            }
+          })()
+
+          const leadId = Number.isInteger(leadIdFromData) ? leadIdFromData : leadIdFromString
+
+          if (!Number.isInteger(leadId)) {
+            console.error('ID inválido para exclusão de lead:', cotacao.id, 'leadData.id:', cotacao.leadData?.id)
+            alert('Erro: ID inválido do lead. Recarregue a página e tente novamente.')
+            return
+          }
+
+          const { error: deleteLeadError } = await supabase
+            .from('leads')
+            .delete()
+            .eq('id', leadId)
+
+          if (deleteLeadError) {
+            console.error('Erro ao deletar lead:', deleteLeadError)
+            alert('Erro ao deletar lead: ' + deleteLeadError.message)
+            return
+          }
+
+          // Atualizar estado local e recarregar leads para garantir consistência
+          setLeads(prev => prev.filter(l => l.id !== leadId))
+          setCotacoes(prev => prev.filter(c => c.id !== cotacao.id))
+          await carregarLeads()
+          console.log(`Lead ${leadId} deletado com sucesso do banco e removido da visualização`)
+          return
+        }
+
+        // Usar idBanco numérico para exclusão
+        const cotacaoIdNum = Number.isInteger(cotacao.idBanco) ? cotacao.idBanco : Number(cotacao.id)
+        if (!Number.isInteger(cotacaoIdNum)) {
+          console.error('ID inválido para exclusão de cotação:', cotacao.id, 'idBanco:', cotacao.idBanco)
+          alert('Erro: ID inválido da cotação. Recarregue a página e tente novamente.')
+          return
+        }
+
         const { error } = await supabase
           .from('cotacoes')
           .delete()
-          .eq('id', cotacaoId)
+          .eq('id', cotacaoIdNum)
         
         if (error) {
           console.error('Erro ao deletar cotação:', error)
@@ -1236,7 +1289,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         }
         
         // Atualizar estado local
-        setCotacoes(prev => prev.filter(c => c.id !== cotacao.id))
+        setCotacoes(prev => prev.filter(c => c.idBanco !== cotacaoIdNum))
         console.log(`Cotação ${cotacao.id} deletada com sucesso`)
       } catch (err) {
         console.error('Erro inesperado ao deletar cotação:', err)
@@ -3986,7 +4039,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
       console.log('✅ Cotações carregadas do Supabase com clientes:', data?.length || 0);
       
       // Converter dados do Supabase para o formato esperado pelo componente
-      const cotacoesFormatadas = data?.map(cotacao => {
+      const cotacoesFormatadas = (data || []).map(cotacao => {
         console.log('Cotação individual com cliente_id:', cotacao.cliente_id);
         
         // Buscar nome completo do cliente se cliente_id existir
@@ -3995,8 +4048,14 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
           nomeCompletoCliente = `${cotacao.clientes.nome}${cotacao.clientes.sobrenome ? ' ' + cotacao.clientes.sobrenome : ''}`;
         }
         
+        const idBanco = Number(cotacao.id);
+        if (!Number.isInteger(idBanco)) {
+          console.warn('Descartando cotação com id inválido:', cotacao.id);
+          return null;
+        }
         return {
           id: cotacao.id.toString(),
+          idBanco,
           titulo: cotacao.titulo,
           cliente: nomeCompletoCliente, // Usar nome completo aqui
           cliente_id: cotacao.cliente_id?.toString(), // Incluir cliente_id
@@ -4011,7 +4070,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
           formapagid: cotacao.formapagid || '',
           parcelamento: cotacao.parcelamento || '1' // 🔧 CAMPO PARCELAMENTO ADICIONADO
         };
-      }) || [];
+      }).filter(Boolean) as Cotacao[];
       
       console.log('✅ Cotações formatadas com nomes completos:', cotacoesFormatadas.length);
       setCotacoes(cotacoesFormatadas);
@@ -4659,14 +4718,20 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
   }, [editingCotacao]);
 
   // Função utilitária para buscar nome pelo ID
-  const getNomeFornecedor = (id: string | undefined) => {
-    if (!id) return '-'
-    return fornecedores.find(f => f.id === id)?.nome || '-'
+  const getNomeFornecedor = (idOuNome: string | number | undefined) => {
+    if (!idOuNome) return '-'
+    const porId = fornecedores.find(f => String(f.id) === String(idOuNome))
+    if (porId) return porId.nome
+    const porNome = fornecedores.find(f => f.nome === idOuNome)
+    return porNome?.nome || '-'
   }
 
-  const getNomeCategoria = (id: string | undefined) => {
-    if (!id) return '-'
-    return categorias.find(c => c.id === id)?.nome || '-'
+  const getNomeCategoria = (idOuNome: string | number | undefined) => {
+    if (!idOuNome) return '-'
+    const porId = categorias.find(c => String(c.id) === String(idOuNome))
+    if (porId) return porId.nome
+    const porNome = categorias.find(c => c.nome === idOuNome)
+    return porNome?.nome || '-'
   }
 
   const getNomeCliente = (id: string | undefined) => {
@@ -4721,13 +4786,24 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
     }
   }
 
-  function getIdFormaPagamento(nome: string) {
-    return formasPagamento.find(f => f.nome === nome)?.id
+  function getIdFormaPagamento(idOuNome: string | number | undefined) {
+    if (idOuNome === undefined || idOuNome === null || idOuNome === '') return null
+    // Primeiro tenta por ID (normalizando para string)
+    const porId = formasPagamento.find(f => String(f.id) === String(idOuNome))?.id
+    if (porId) return porId
+    // Depois tenta por nome
+    const porNome = formasPagamento.find(f => f.nome === idOuNome)?.id
+    return porNome ?? null
   }
 
-  function getNomeFormaPagamento(id: string | undefined) {
-    if (!id) return '-'
-    return formasPagamento.find(f => f.id === id)?.nome || '-'
+  function getNomeFormaPagamento(idOuNome: string | number | undefined) {
+    if (!idOuNome) return '-'
+    // Primeiro tenta por ID (normaliza para string)
+    const porId = formasPagamento.find(f => String(f.id) === String(idOuNome))
+    if (porId) return porId.nome
+    // Depois tenta por nome (para casos onde salvamos o nome)
+    const porNome = formasPagamento.find(f => f.nome === idOuNome)
+    return porNome?.nome || '-'
   }
 
   // Função para verificar localizadores antes de lançar venda
@@ -4839,21 +4915,28 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
       console.log('cliente_id sendo salvo:', clienteIdToSave);
       
       // Buscar empresa_id do usuário
-      const empresa_id = user?.user_metadata?.empresa_id || null;
+      const empresa_id_meta = user?.user_metadata?.empresa_id || null;
+      let empresa_id = empresa_id_meta;
+      if (!empresa_id && user?.id) {
+        const { data: userEmpresa } = await supabase
+          .from('usuarios_empresas')
+          .select('empresa_id')
+          .eq('usuario_id', user.id)
+          .single();
+        empresa_id = userEmpresa?.empresa_id || null;
+      }
       
-      // Buscar nome do cliente
+      // Buscar nome do cliente (apenas para logs/depuração)
       const clienteNome = getNomeCompletoCliente(clienteIdToSave?.toString()) || 'Cliente não identificado';
       
       const { data: contaReceberData, error: contaReceberError } = await supabase.from('contas_receber').insert({
         descricao: item.descricao,
         valor: item.valor,
         cliente_id: clienteIdToSave,
-        
         categoria_id: item.categoria || null,
-        forma_recebimento_id: item.forma || null, // Usar o ID diretamente
-        parcelas: item.parcelas,
+        forma_recebimento_id: getIdFormaPagamento(item.forma) || null,
         vencimento: item.vencimento,
-        status: 'PENDENTE',
+        status: 'pendente',
         origem: 'COTACAO',
         origem_id: editingCotacao?.id || null,
         user_id: user.id,
@@ -4913,47 +4996,44 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
           // Pega data e hora do campo abertura_checkin
           if (!voo.abertura_checkin) continue;
           
-          // Função para converter data/hora considerando fuso horário
+          // Função para converter data/hora (usar valores exatos do texto; não aplicar conversão de fuso)
           const converterDataHora = (dataHoraString: string) => {
-            const dataHora = new Date(dataHoraString);
-            if (isNaN(dataHora.getTime())) return null;
-            
-            // Se a data já tem informação de fuso horário, usar como está
-            if (dataHoraString.includes('T') && (dataHoraString.includes('Z') || dataHoraString.includes('+'))) {
-              return {
-                data: dataHora.toLocaleDateString('en-CA'), // yyyy-mm-dd
-                hora: dataHora.toLocaleTimeString('pt-BR', { 
-                  hour: '2-digit', 
-                  minute: '2-digit',
-                  hour12: false 
-                })
-              };
+            if (!dataHoraString) return null;
+            const str = dataHoraString.trim();
+            // Detecta separador entre data e hora
+            const sep = str.includes('T') ? 'T' : ' ';
+            const [dataParte, horaParteRaw] = str.split(sep);
+            let horaParte = horaParteRaw || '00:00';
+            // Remover sufixos de timezone (Z, +00, -03:00, etc.) mantendo apenas hh:mm[:ss]
+            horaParte = horaParte.replace(/Z$/i, '');
+            // Corta qualquer offset de timezone depois do horário
+            horaParte = horaParte.split('+')[0];
+            // Para offsets negativos, cortar após o horário
+            if (horaParte.includes('-')) {
+              const idx = horaParte.indexOf('-');
+              // Só cortar se o '-' não for o separador de horas (não deve ocorrer em hh:mm)
+              if (idx > 5) {
+                horaParte = horaParte.slice(0, idx);
+              }
             }
-            
-            // Se não tem fuso horário, assumir que é horário local
-            const dataHoraLocal = new Date(dataHoraString + 'T00:00:00');
-            return {
-              data: dataHoraLocal.toLocaleDateString('en-CA'),
-              hora: dataHoraLocal.toLocaleTimeString('pt-BR', { 
-                hour: '2-digit', 
-                minute: '2-digit',
-                hour12: false 
-              })
-            };
+            // Garantir formato hh:mm
+            const horaFinal = horaParte.slice(0,5);
+            return { data: dataParte, hora: horaFinal };
           };
           
-          const dataHoraConvertida = converterDataHora(voo.abertura_checkin);
-          if (!dataHoraConvertida) continue;
-          
-          const { data: data_vencimento, hora: hora_vencimento } = dataHoraConvertida;
+          // Usar SEMPRE a data/hora de abertura_checkin como vencimento da tarefa de check-in
+          const parsed = converterDataHora((voo as any).abertura_checkin || (voo as any).aberturaCheckin || '');
+          if (!parsed) continue;
+          const data_vencimento: string = parsed.data;
+          const hora_vencimento: string = parsed.hora;
           
           // Log para debug do horário
-          console.log(`🕐 Horário original: ${voo.abertura_checkin}`);
-          console.log(`📅 Data vencimento: ${data_vencimento}`);
-          console.log(`⏰ Hora vencimento: ${hora_vencimento}`);
+          console.log(`🕐 Abertura de check-in (raw): ${(voo as any).abertura_checkin || (voo as any).aberturaCheckin}`);
+          console.log(`📅 Data vencimento (tarefa): ${data_vencimento}`);
+          console.log(`⏰ Hora vencimento (tarefa): ${hora_vencimento}`);
           
           // Nome do check-in
-          const localizador = voo.localizador || voo.numero_voo || 'Voo';
+          const localizador = voo.localizador || voo.numero_voo || (voo as any).numeroVoo || 'Voo';
           const titulo = `CHECK-IN ${localizador}`;
           const descricao = `Realizar check-in do voo ${localizador} (${voo.origem} → ${voo.destino})`;
           // Buscar empresa_id e cliente

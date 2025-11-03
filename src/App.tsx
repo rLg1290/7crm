@@ -63,8 +63,10 @@ function App() {
 
   console.log('🎯 Rendering main app, user:', user)
 
+  // Usa basename coerente com o base do Vite
+  const basename = (import.meta as any).env.BASE_URL || '/'
   return (
-    <Router>
+    <Router basename={basename}>
       <Routes>
         {/* Rota especial para teste - acessível sem login */}
         <Route path="/teste" element={<TesteLogin />} />

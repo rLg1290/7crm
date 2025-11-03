@@ -536,6 +536,15 @@ const Dashboard = () => {
       // Buscar tarefas de check-in das próximas 24 horas
       const agora = new Date()
       const amanha = new Date(agora.getTime() + 24 * 60 * 60 * 1000)
+      // Evitar uso de toISOString (UTC) para não deslocar a data; usar data local
+      const toLocalDateStr = (d: Date) => {
+        const y = d.getFullYear()
+        const m = String(d.getMonth() + 1).padStart(2, '0')
+        const day = String(d.getDate()).padStart(2, '0')
+        return `${y}-${m}-${day}`
+      }
+      const hojeStr = toLocalDateStr(agora)
+      const amanhaStr = toLocalDateStr(amanha)
       
       const { data: tarefasCheckin, error: tarefasError } = await supabase
         .from('tarefas')
@@ -551,8 +560,8 @@ const Dashboard = () => {
         `)
         .eq('categoria', 'checkin')
         .eq('empresa_id', empresaId)
-        .gte('data_vencimento', agora.toISOString().split('T')[0])
-        .lte('data_vencimento', amanha.toISOString().split('T')[0])
+        .gte('data_vencimento', hojeStr)
+        .lte('data_vencimento', amanhaStr)
         .eq('status', 'pendente')
         .order('data_vencimento', { ascending: true })
         .order('hora_vencimento', { ascending: true })
@@ -1166,4 +1175,4 @@ const Dashboard = () => {
   )
 }
 
-export default Dashboard 
+export default Dashboard

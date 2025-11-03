@@ -274,8 +274,9 @@ ${formData.observacoes || 'Nenhuma observação adicional'}`
       const { error: errorLead } = await supabase
         .from('leads')
         .insert([{
-          cliente_id: clienteId.toString(),
-          observacao: observacaoFormatada
+          cliente_id: clienteId,
+          observacao: observacaoFormatada,
+          empresa_id: empresa.id
         }])
 
       if (errorLead) {
@@ -813,4 +814,4 @@ ${formData.observacoes || 'Nenhuma observação adicional'}`
   )
 }
 
-export default SolicitacaoOrcamento 
+export default SolicitacaoOrcamento
