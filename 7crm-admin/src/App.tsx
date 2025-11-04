@@ -5,6 +5,7 @@ import { User } from '@supabase/supabase-js'
 import LoginPage from './components/LoginPage'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
+import Kanban from './pages/Kanban'
 import Empresas from './pages/Empresas'
 import Promocoes from './pages/Promocoes'
 import Usuarios from './pages/Usuarios'
@@ -83,6 +84,7 @@ function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/kanban" element={<Kanban />} />
           <Route path="/empresas" element={<Empresas />} />
           <Route path="/promocoes" element={<Promocoes />} />
           <Route path="/usuarios" element={<Usuarios />} />
