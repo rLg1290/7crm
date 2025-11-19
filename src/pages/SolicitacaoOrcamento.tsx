@@ -2,6 +2,18 @@ import React, { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { Plane, MapPin, Calendar, Users, Luggage, CheckCircle, AlertCircle } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import logger from '../utils/logger'
+
+// Helper para formatar datas YYYY-MM-DD como DD/MM/YYYY sem converter fuso
+function formatarDataBR(dateString: string): string {
+  if (!dateString) return '-'
+  const onlyDate = dateString.slice(0, 10)
+  const [ano, mes, dia] = onlyDate.split('-')
+  if (ano && mes && dia) {
+    return `${dia}/${mes}/${ano}`
+  }
+  return dateString
+}
 
 interface SolicitacaoData {
   nome: string
@@ -99,7 +111,7 @@ const SolicitacaoOrcamento = () => {
       }
 
       try {
-        console.log('🔍 Buscando empresa:', nomeEmpresa)
+        logger.debug('🔍 Buscando empresa:', nomeEmpresa)
         
         // Buscar empresa por slug primeiro, depois por código como fallback
         const { data, error } = await supabase
@@ -117,13 +129,13 @@ const SolicitacaoOrcamento = () => {
         }
 
         if (!data) {
-          console.log('❌ Empresa não encontrada:', nomeEmpresa)
+          logger.warn('❌ Empresa não encontrada:', nomeEmpresa)
           setError('Empresa não encontrada ou inativa')
           setLoading(false)
           return
         }
 
-        console.log('✅ Empresa encontrada:', data.nome)
+        logger.info('✅ Empresa encontrada:', data.nome)
         setEmpresa(data)
         setLoading(false)
       } catch (err) {
@@ -137,10 +149,18 @@ const SolicitacaoOrcamento = () => {
   }, [nomeEmpresa])
 
   // Obter cores personalizadas da empresa
-  const coresPersonalizadas = gerarCoresPersonalizadas(empresa?.cor_personalizada || '')
+  const coresPersonalizadas = React.useMemo(
+    () => gerarCoresPersonalizadas(empresa?.cor_personalizada || ''),
+    [empresa?.cor_personalizada]
+  )
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target
+
+    // Log específico para inputs de data, para capturar exatamente o valor vindo do componente
+    if (type === 'date') {
+      logger.debug('🧪 onChange date', { name, value })
+    }
     
     if (type === 'checkbox') {
       const checked = (e.target as HTMLInputElement).checked
@@ -177,17 +197,31 @@ const SolicitacaoOrcamento = () => {
     })
   }
 
-  const formatarObservacao = () => {
-    const servicosAdicionais = []
+  const formatarObservacao = (overrides?: { idaRaw?: string; voltaRaw?: string }) => {
+    const servicosAdicionais: string[] = []
     if (formData.hospedagem) servicosAdicionais.push('Hospedagem')
     if (formData.transporte) servicosAdicionais.push('Transporte')
     if (formData.passeios) servicosAdicionais.push('Passeios')
     if (formData.seguros) servicosAdicionais.push('Seguros')
 
+    // 1) Se recebemos overrides (via FormData do submit), usar esses valores primeiro
+    // 2) Caso contrário, capturar do DOM
+    // 3) Por fim, fallback para o estado React
+    const idaDom = (document.querySelector('input[name="dataIda"]') as HTMLInputElement)?.value || ''
+    const voltaDom = (document.querySelector('input[name="dataVolta"]') as HTMLInputElement)?.value || ''
+
+    const idaRaw = overrides?.idaRaw ?? idaDom ?? formData.dataIda
+    const voltaRaw = overrides?.voltaRaw ?? voltaDom ?? formData.dataVolta
+
+    logger.debug('🧪 Debug datas seleção', { idaDom, voltaDom, idaRaw, voltaRaw })
+
+    const idaFormatada = idaRaw ? formatarDataBR(idaRaw) : 'Não informado'
+    const voltaFormatada = voltaRaw ? formatarDataBR(voltaRaw) : 'Não informado'
+
     return `ORIGEM: ${formData.origem}
 DESTINO: ${formData.destino}
-IDA: ${formData.dataIda ? new Date(formData.dataIda).toLocaleDateString('pt-BR') : 'Não informado'}
-VOLTA: ${formData.dataVolta ? new Date(formData.dataVolta).toLocaleDateString('pt-BR') : 'Não informado'}
+IDA: ${idaFormatada}
+VOLTA: ${voltaFormatada}
 
 ADT: ${formData.adultos}
 CHD: ${formData.criancas}
@@ -209,7 +243,7 @@ ${formData.observacoes || 'Nenhuma observação adicional'}`
     setError('')
 
     try {
-      console.log('📝 Iniciando envio do formulário...')
+      logger.debug('📝 Iniciando envio do formulário...')
       
       // Validação básica
       if (!formData.nome || !formData.sobrenome || !formData.email || !formData.celular || !formData.origem || !formData.destino) {
@@ -221,7 +255,40 @@ ${formData.observacoes || 'Nenhuma observação adicional'}`
         throw new Error('Dados da empresa não carregados. Recarregue a página e tente novamente.')
       }
 
-      console.log('🔍 Verificando cliente existente...')
+      // Capturar diretamente os valores submetidos pelo formulário (fonte de verdade)
+      const formEl = e.target as HTMLFormElement
+      const fd = new FormData(formEl)
+      const idaRawForm = (fd.get('dataIda') || '') as string
+      const voltaRawForm = (fd.get('dataVolta') || '') as string
+      logger.debug('🧪 FormData submit values', { idaRawForm, voltaRawForm })
+
+      // Fluxo para usuário ANÔNIMO: usa RPC SECURITY DEFINER
+      const { data: authData } = await supabase.auth.getUser()
+      const user = authData?.user
+      if (!user) {
+        logger.debug('👤 Usuário anônimo: enviando via RPC create_cliente_lead_public', { nomeEmpresa })
+        const observacaoFormatada = formatarObservacao({ idaRaw: idaRawForm, voltaRaw: voltaRawForm })
+        logger.debug('🧪 Observação formatada que será gravada (RPC):', observacaoFormatada)
+        const { data: rpcData, error: rpcError } = await supabase.rpc('create_cliente_lead_public', {
+          p_empresa_slug: nomeEmpresa,
+          p_nome: formData.nome,
+          p_sobrenome: formData.sobrenome,
+          p_email: formData.email,
+          p_telefone: formData.celular,
+          p_observacao: observacaoFormatada
+        })
+
+        if (rpcError) {
+          logger.error('❌ Erro ao criar lead via RPC pública', { rpcError })
+          throw new Error('Erro ao enviar solicitação: ' + rpcError.message)
+        }
+
+        logger.info('✅ Lead criado via RPC com sucesso', { cliente_id: rpcData?.cliente_id, lead_id: rpcData?.lead_id })
+        setSubmitted(true)
+        return
+      }
+
+      logger.debug('🔍 Verificando cliente existente...')
       
       // 1. Primeiro, verificar se o cliente já existe
       let { data: clienteExistente, error: errorClienteExistente } = await supabase
@@ -231,17 +298,17 @@ ${formData.observacoes || 'Nenhuma observação adicional'}`
         .single()
 
       if (errorClienteExistente && errorClienteExistente.code !== 'PGRST116') {
-        console.error('❌ Erro ao verificar cliente existente:', errorClienteExistente)
+        logger.error('❌ Erro ao verificar cliente existente', errorClienteExistente)
         throw new Error('Erro ao verificar dados do cliente')
       }
 
       let clienteId
 
       if (clienteExistente) {
-        console.log('✅ Cliente existente encontrado:', clienteExistente.id)
+        logger.debug('✅ Cliente existente encontrado:', clienteExistente.id)
         clienteId = clienteExistente.id
       } else {
-        console.log('🆕 Criando novo cliente...')
+        logger.debug('🆕 Criando novo cliente...')
         
         // Criar novo cliente
         const { data: novoCliente, error: errorCliente } = await supabase
@@ -259,17 +326,18 @@ ${formData.observacoes || 'Nenhuma observação adicional'}`
           .single()
 
         if (errorCliente) {
-          console.error('❌ Erro ao criar cliente:', errorCliente)
+          logger.error('❌ Erro ao criar cliente', errorCliente)
           throw new Error('Erro ao cadastrar cliente: ' + errorCliente.message)
         }
 
-        console.log('✅ Novo cliente criado:', novoCliente.id)
+        logger.debug('✅ Novo cliente criado:', novoCliente.id)
         clienteId = novoCliente.id
       }
 
       // 2. Criar o lead com as informações formatadas
-      console.log('📋 Criando lead...')
-      const observacaoFormatada = formatarObservacao()
+      logger.debug('📋 Criando lead...')
+      const observacaoFormatada = formatarObservacao({ idaRaw: idaRawForm, voltaRaw: voltaRawForm })
+      logger.debug('🧪 Observação formatada que será gravada:', observacaoFormatada)
 
       const { error: errorLead } = await supabase
         .from('leads')
@@ -280,14 +348,14 @@ ${formData.observacoes || 'Nenhuma observação adicional'}`
         }])
 
       if (errorLead) {
-        console.error('❌ Erro ao criar lead:', errorLead)
+        logger.error('❌ Erro ao criar lead', errorLead)
         throw new Error('Erro ao enviar solicitação: ' + errorLead.message)
       }
 
-      console.log('✅ Lead criado com sucesso!')
+      logger.info('✅ Lead criado com sucesso!')
       setSubmitted(true)
     } catch (err: any) {
-      console.error('❌ Erro ao enviar solicitação:', err)
+      logger.error('❌ Erro ao enviar solicitação', err)
       setError(err.message || 'Erro inesperado ao enviar solicitação. Tente novamente.')
     } finally {
       setIsSubmitting(false)
@@ -347,7 +415,7 @@ ${formData.observacoes || 'Nenhuma observação adicional'}`
   }
 
   // Estado de erro se empresa não foi encontrada
-  if (error || !empresa) {
+  if (!empresa) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-cyan-50 to-blue-100 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 text-center">

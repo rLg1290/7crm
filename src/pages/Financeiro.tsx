@@ -30,6 +30,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import NotificationCenter from '../components/NotificationCenter'
 import { financeiroService, type ContasPagar } from '../services/financeiroService'
 import { supabase } from '../lib/supabase'
+import logger from '../utils/logger'
 
 interface User {
   id: string
@@ -236,15 +237,15 @@ const Financeiro = () => {
         await carregarFormasPagamento(user.id)
         await carregarFornecedores(user.id)
         // Buscar empresa_id do usuário
-        const { data: userEmpresa } = await supabase
+        const { data: userEmpresaRows } = await supabase
           .from('usuarios_empresas')
           .select('empresa_id')
           .eq('usuario_id', user.id)
-          .single()
-        
-        if (userEmpresa?.empresa_id) {
-          await carregarClientes(userEmpresa.empresa_id)
-          await carregarContasReceber(userEmpresa.empresa_id)
+          .limit(1)
+        const empresaId = Array.isArray(userEmpresaRows) && userEmpresaRows.length ? (userEmpresaRows[0] as any).empresa_id : null
+        if (empresaId) {
+          await carregarClientes(empresaId)
+          await carregarContasReceber(empresaId)
         }
       }
       
@@ -261,7 +262,7 @@ const Financeiro = () => {
       setTransacoes([])
       
     } catch (error) {
-      console.error('Erro ao carregar dados financeiros:', error)
+      logger.error('Erro ao carregar dados financeiros:', error)
     } finally {
       setLoading(false)
     }
@@ -273,7 +274,7 @@ const Financeiro = () => {
       const categorias = await financeiroService.getCategoriasCusto(userId)
       setCategoriasCusto(categorias)
     } catch (error) {
-      console.error('Erro ao carregar categorias de custo:', error)
+      logger.error('Erro ao carregar categorias de custo:', error)
     } finally {
       setLoadingCategorias(false)
     }
@@ -284,7 +285,7 @@ const Financeiro = () => {
       const categorias = await financeiroService.getCategoriasVenda(userId)
       setCategoriasVenda(categorias)
     } catch (error) {
-      console.error('Erro ao carregar categorias de venda:', error)
+      logger.error('Erro ao carregar categorias de venda:', error)
     }
   }
 
@@ -293,7 +294,7 @@ const Financeiro = () => {
       const categorias = await financeiroService.getCategoriasComissaoVenda(userId)
       setCategoriasComissaoVenda(categorias)
     } catch (error) {
-      console.error('Erro ao carregar categorias de comissão de venda:', error)
+      logger.error('Erro ao carregar categorias de comissão de venda:', error)
     }
   }
 
@@ -302,19 +303,19 @@ const Financeiro = () => {
       const categorias = await financeiroService.getCategoriasComissaoCusto(userId)
       setCategoriasComissaoCusto(categorias)
     } catch (error) {
-      console.error('Erro ao carregar categorias de comissão de custo:', error)
+      logger.error('Erro ao carregar categorias de comissão de custo:', error)
     }
   }
 
   const carregarFormasPagamento = async (userId: string) => {
     setLoadingFormasPagamento(true)
     try {
-      console.log('Carregando formas de pagamento para usuário:', userId)
+      logger.debug('Carregando formas de pagamento para usuário:', { userId })
       const formas = await financeiroService.getFormasPagamento(userId)
-      console.log('Formas de pagamento carregadas:', formas)
+      logger.debug('Formas de pagamento carregadas', { count: Array.isArray(formas) ? formas.length : null, isArray: Array.isArray(formas) })
       setFormasPagamento(formas)
     } catch (error) {
-      console.error('Erro ao carregar formas de pagamento:', error)
+      logger.error('Erro ao carregar formas de pagamento:', error)
     } finally {
       setLoadingFormasPagamento(false)
     }
@@ -323,27 +324,24 @@ const Financeiro = () => {
   const carregarFornecedores = async (userId: string) => {
     setLoadingFornecedores(true)
     try {
-      console.log('🔍 [DEBUG] Iniciando carregamento de fornecedores')
-      console.log('🔍 [DEBUG] User ID:', userId)
-      console.log('🔍 [DEBUG] User empresa_id:', user?.empresa_id)
+      logger.debug('🔍 [DEBUG] Iniciando carregamento de fornecedores')
+      logger.debug('🔍 [DEBUG] User ID:', { userId })
+      logger.debug('🔍 [DEBUG] User empresa_id:', { empresa_id: user?.empresa_id })
       
       const fornecedores = await financeiroService.getFornecedores(userId)
       
-      console.log('✅ [DEBUG] Fornecedores retornados do service:', fornecedores)
-      console.log('✅ [DEBUG] Tipo do retorno:', typeof fornecedores)
-      console.log('✅ [DEBUG] É array?', Array.isArray(fornecedores))
-      console.log('✅ [DEBUG] Quantidade de fornecedores:', fornecedores?.length || 0)
+      logger.debug('✅ [DEBUG] Fornecedores retornados do service', { type: typeof fornecedores, isArray: Array.isArray(fornecedores), count: Array.isArray(fornecedores) ? fornecedores.length : null })
       
       if (fornecedores && Array.isArray(fornecedores)) {
         setFornecedores(fornecedores)
-        console.log('✅ [DEBUG] Estado fornecedores atualizado com:', fornecedores.length, 'fornecedores')
+        logger.debug('✅ [DEBUG] Estado fornecedores atualizado', { count: fornecedores.length })
       } else {
-        console.warn('⚠️ [DEBUG] Fornecedores não é um array válido:', fornecedores)
-        setFornecedores([])
-      }
+          logger.warn('⚠️ [DEBUG] Fornecedores não é um array válido', { receivedType: typeof fornecedores })
+          setFornecedores([])
+        }
     } catch (error) {
-      console.error('❌ [DEBUG] Erro ao carregar fornecedores:', error)
-      console.error('❌ [DEBUG] Detalhes do erro:', {
+      logger.error('❌ [DEBUG] Erro ao carregar fornecedores:', error)
+      logger.error('❌ [DEBUG] Detalhes do erro:', {
         message: error instanceof Error ? error.message : 'Erro desconhecido',
         stack: error instanceof Error ? error.stack : undefined
       })
@@ -351,14 +349,14 @@ const Financeiro = () => {
       setFornecedores([])
     } finally {
       setLoadingFornecedores(false)
-      console.log('🔍 [DEBUG] Carregamento de fornecedores finalizado')
+      logger.debug('🔍 [DEBUG] Carregamento de fornecedores finalizado')
     }
   }
 
   const carregarClientes = async (empresaId: string) => {
     setLoadingClientes(true)
     try {
-      console.log('🔍 Carregando clientes para empresa:', empresaId)
+      logger.debug('🔍 Carregando clientes para empresa:', { empresaId })
       
       const { data, error } = await supabase
         .from('clientes')
@@ -367,14 +365,14 @@ const Financeiro = () => {
         .order('nome')
       
       if (error) {
-        console.error('❌ Erro ao carregar clientes:', error)
+        logger.error('❌ Erro ao carregar clientes:', error)
         return
       }
       
-      console.log('✅ Clientes carregados:', data?.length || 0)
+      logger.debug('✅ Clientes carregados', { count: data?.length || 0 })
       setClientes(data || [])
     } catch (error) {
-      console.error('❌ Erro inesperado ao carregar clientes:', error)
+      logger.error('❌ Erro inesperado ao carregar clientes:', error)
     } finally {
       setLoadingClientes(false)
     }
@@ -390,21 +388,16 @@ const Financeiro = () => {
         contasPagarTotal: contas.length
       }))
     } catch (error) {
-      console.error('Erro ao carregar contas a pagar:', error)
+      logger.error('Erro ao carregar contas a pagar:', error)
     }
   }
 
   const carregarContasReceber = async (empresaId: string) => {
     try {
-      console.log('Carregando contas a receber para empresa:', empresaId);
+      logger.debug('Carregando contas a receber para empresa', { empresaId });
       const contas = await financeiroService.getContasReceber(empresaId);
-      console.log('Contas a receber carregadas:', contas);
-      console.log('Detalhes das contas:', contas.map(c => ({
-        id: c.id,
-        descricao: c.descricao,
-        valor: c.valor,
-        empresa_id: c.empresa_id
-      })));
+      logger.debug('Contas a receber carregadas', { count: Array.isArray(contas) ? contas.length : null });
+      logger.debug('Detalhes das contas resumidos', { ids: contas.map(c => c.id), empresaId });
       setContasReceber(contas);
       
       // Atualizar resumo com dados reais
@@ -414,7 +407,7 @@ const Financeiro = () => {
         contasReceberTotal: totalContasReceber
       }));
     } catch (error) {
-      console.error('Erro ao carregar contas a receber:', error);
+      logger.error('Erro ao carregar contas a receber:', error);
     }
   }
 
@@ -483,8 +476,8 @@ const Financeiro = () => {
   const handleSalvarContaPagar = async () => {
     if (!user) return
     
-    console.log('Iniciando salvamento de conta a pagar:', novaContaPagar)
-    console.log('Status atual:', novaContaPagar.status)
+    logger.debug('Iniciando salvamento de conta a pagar', { novaContaPagar })
+    logger.debug('Status atual', { status: novaContaPagar.status })
     
     // Validação básica
     if (novaContaPagar.categoria_id <= 0 || novaContaPagar.forma_pagamento_id <= 0 || !novaContaPagar.vencimento || novaContaPagar.valor <= 0) {
@@ -510,12 +503,12 @@ const Financeiro = () => {
         origem_id: novaContaPagar.origem_id || undefined
       }
       
-      console.log('Dados da conta a ser salva:', dadosConta)
-      console.log('Status sendo enviado:', dadosConta.status)
+      logger.debug('Dados da conta a ser salva', { dadosConta })
+      logger.debug('Status sendo enviado', { status: dadosConta.status })
       
       await financeiroService.criarContaPagar(user.id, dadosConta)
       
-      console.log('Conta a pagar salva com sucesso, recarregando dados...')
+      logger.info('Conta a pagar salva com sucesso, recarregando dados...')
       
       // Recarregar dados
       await carregarContasPagar(user.id)
@@ -535,7 +528,7 @@ const Financeiro = () => {
       })
       setModalNovaContaPagar(false)
     } catch (error) {
-      console.error('Erro ao salvar conta a pagar:', error)
+      logger.error('Erro ao salvar conta a pagar:', error)
       const errorMessage = error instanceof Error ? error.message : 'Tente novamente.'
       alert(`Erro ao salvar conta a pagar: ${errorMessage}`)
     } finally {
@@ -600,7 +593,7 @@ const Financeiro = () => {
       setNovaCategoria({ nome: '', descricao: '', tipo: 'CUSTO' })
       setModalNovaCategoria(false)
     } catch (error) {
-      console.error('Erro ao salvar categoria:', error)
+      logger.error('Erro ao salvar categoria:', error)
       alert('Erro ao salvar categoria. Tente novamente.')
     } finally {
       setSalvandoCategoria(false)
@@ -612,10 +605,7 @@ const Financeiro = () => {
     
     setSalvandoFormaPagamento(true)
     try {
-      console.log('Tentando salvar forma de pagamento:', {
-        nome: novaFormaPagamento.nome.trim(),
-        user_id: user.id
-      })
+      logger.debug('Tentando salvar forma de pagamento', { nome: novaFormaPagamento.nome.trim(), user_id: user.id })
       
       // Usar o método do serviço
       await financeiroService.adicionarFormaPagamento(novaFormaPagamento.nome.trim(), user.id)
@@ -627,7 +617,7 @@ const Financeiro = () => {
       setNovaFormaPagamento({ nome: '' })
       setModalNovaFormaPagamento(false)
     } catch (error) {
-      console.error('Erro ao salvar forma de pagamento:', error)
+      logger.error('Erro ao salvar forma de pagamento:', error)
       const errorMessage = error instanceof Error ? error.message : 'Tente novamente.'
       alert(`Erro ao salvar forma de pagamento: ${errorMessage}`)
     } finally {
@@ -640,10 +630,7 @@ const Financeiro = () => {
     
     setSalvandoFornecedor(true)
     try {
-      console.log('Tentando salvar fornecedor:', {
-        ...novoFornecedor,
-        user_id: user.id
-      })
+      logger.debug('Tentando salvar fornecedor', { nome: novoFornecedor.nome.trim(), cnpj: !!novoFornecedor.cnpj, email: !!novoFornecedor.email, telefone: !!novoFornecedor.telefone, user_id: user.id })
       
       // Usar o método do serviço
       await financeiroService.adicionarFornecedor(novoFornecedor, user.id)
@@ -660,7 +647,7 @@ const Financeiro = () => {
       })
       setModalNovoFornecedor(false)
     } catch (error) {
-      console.error('Erro ao salvar fornecedor:', error)
+      logger.error('Erro ao salvar fornecedor:', error)
       const errorMessage = error instanceof Error ? error.message : 'Tente novamente.'
       alert(`Erro ao salvar fornecedor: ${errorMessage}`)
     } finally {
@@ -751,8 +738,8 @@ const Financeiro = () => {
       return;
     }
     
-    console.log('Iniciando salvamento de conta a receber:', novaContaReceber);
-    console.log('Status atual:', novaContaReceber.status);
+    logger.debug('Iniciando salvamento de conta a receber', { novaContaReceber });
+    logger.debug('Status atual', { status: novaContaReceber.status });
     
     // Validação básica
     if (!novaContaReceber.categoria_id || !novaContaReceber.valor || !novaContaReceber.vencimento) {
@@ -770,9 +757,9 @@ const Financeiro = () => {
     }
     
     if (tipoReceberSelecionado === 'comissao' && !novaContaReceber.fornecedor_id) {
-      console.log('Debug - Tipo selecionado:', tipoReceberSelecionado);
-      console.log('Debug - Fornecedor ID:', novaContaReceber.fornecedor_id);
-      console.log('Debug - Estado completo:', novaContaReceber);
+      logger.debug('Debug - Tipo selecionado', { tipoReceberSelecionado });
+      logger.debug('Debug - Fornecedor ID', { fornecedor_id: novaContaReceber.fornecedor_id });
+      logger.debug('Debug - Estado completo', { novaContaReceber });
       alert('Por favor, selecione um fornecedor para a comissão.');
       return;
     }
@@ -780,12 +767,13 @@ const Financeiro = () => {
     setSalvandoContaReceber(true);
     try {
       // Buscar empresa_id do usuário logado
-      const { data: userEmpresa, error: errorEmpresa } = await supabase
+      const { data: userEmpresaRows, error: errorEmpresa } = await supabase
         .from('usuarios_empresas')
         .select('empresa_id')
         .eq('usuario_id', user.id)
-        .single();
-      if (errorEmpresa || !userEmpresa?.empresa_id) {
+        .limit(1);
+      const empresaId = Array.isArray(userEmpresaRows) && userEmpresaRows.length ? (userEmpresaRows[0] as any).empresa_id : null;
+      if (errorEmpresa || !empresaId) {
         alert('Não foi possível identificar a empresa do usuário.');
         return;
       }
@@ -801,7 +789,7 @@ const Financeiro = () => {
         status: novaContaReceber.status,
         forma_recebimento_id: novaContaReceber.forma_recebimento_id,
         observacoes: novaContaReceber.observacoes,
-        empresa_id: userEmpresa.empresa_id,
+        empresa_id: empresaId,
       };
       
       // Garantir que apenas um dos campos seja preenchido
@@ -811,11 +799,11 @@ const Financeiro = () => {
         novaConta.cliente_id = null;
       }
       
-      console.log('Tipo selecionado:', tipoReceberSelecionado);
-      console.log('Dados da nova conta:', novaConta);
-      console.log('cliente_id:', novaConta.cliente_id);
-      console.log('fornecedor_id:', novaConta.fornecedor_id);
-      console.log('Status sendo enviado:', novaConta.status);
+      logger.debug('Tipo selecionado', { tipoReceberSelecionado });
+      logger.debug('Dados da nova conta', { novaConta });
+      logger.debug('cliente_id', { cliente_id: novaConta.cliente_id });
+      logger.debug('fornecedor_id', { fornecedor_id: novaConta.fornecedor_id });
+      logger.debug('Status sendo enviado', { status: novaConta.status });
       
       // Inserir no banco
       const { error } = await supabase
@@ -827,7 +815,7 @@ const Financeiro = () => {
       }
       
       // Recarregar contas a receber
-      await carregarContasReceber(userEmpresa.empresa_id);
+      await carregarContasReceber(empresaId);
       
       // Limpar formulário e fechar modal
       setNovaContaReceber({
@@ -846,7 +834,7 @@ const Financeiro = () => {
       alert('Conta a receber salva com sucesso!');
     } catch (err) {
       alert('Erro inesperado ao salvar conta a receber.');
-      console.error(err);
+      logger.error('Erro inesperado ao salvar conta a receber:', err);
     } finally {
       setSalvandoContaReceber(false);
     }
@@ -894,13 +882,14 @@ const Financeiro = () => {
       setContaReceberSelecionada(null);
       // Recarregar contas
       if (user) {
-        const { data: userEmpresa } = await supabase
+        const { data: userEmpresaRows } = await supabase
           .from('usuarios_empresas')
           .select('empresa_id')
           .eq('usuario_id', user.id)
-          .single();
-        if (userEmpresa?.empresa_id) {
-          await carregarContasReceber(userEmpresa.empresa_id);
+          .limit(1);
+        const empresaId = Array.isArray(userEmpresaRows) && userEmpresaRows.length ? (userEmpresaRows[0] as any).empresa_id : null;
+        if (empresaId) {
+          await carregarContasReceber(empresaId);
         }
       }
     } catch (err) {
@@ -984,7 +973,7 @@ const Financeiro = () => {
       
       alert('Conta a pagar excluída com sucesso!');
     } catch (error) {
-      console.error('Erro ao excluir conta a pagar:', error);
+      logger.error('Erro ao excluir conta a pagar:', error);
       alert('Erro ao excluir conta a pagar. Tente novamente.');
     } finally {
       setExcluindoContaPagar(false);
@@ -1011,20 +1000,21 @@ const Financeiro = () => {
       
       // Recarregar contas - buscar empresa_id primeiro
       if (user) {
-        const { data: userEmpresa } = await supabase
+        const { data: userEmpresaRows } = await supabase
           .from('usuarios_empresas')
           .select('empresa_id')
           .eq('usuario_id', user.id)
-          .single()
+          .limit(1)
         
-        if (userEmpresa?.empresa_id) {
-          await carregarContasReceber(userEmpresa.empresa_id);
+        const empresaId = Array.isArray(userEmpresaRows) && userEmpresaRows.length ? (userEmpresaRows[0] as any).empresa_id : null
+        if (empresaId) {
+          await carregarContasReceber(empresaId);
         }
       }
       
       alert('Conta a receber excluída com sucesso!');
     } catch (error) {
-      console.error('Erro ao excluir conta a receber:', error);
+      logger.error('Erro ao excluir conta a receber:', error);
       alert('Erro ao excluir conta a receber. Tente novamente.');
     } finally {
       setExcluindoContaReceber(false);
@@ -1150,11 +1140,11 @@ const Financeiro = () => {
   useEffect(() => {
     const buscarDadosCategoria = async () => {
       if (tipoGraficoCategoria === 'receitas' && contasReceberFiltradas.length > 0) {
-        console.log('Contas a receber filtradas:', contasReceberFiltradas);
+        logger.debug('Contas a receber filtradas', { count: contasReceberFiltradas.length });
         
         // Buscar todos os categoria_ids únicos
         const categoriaIds = [...new Set(contasReceberFiltradas.map(conta => conta.categoria_id).filter(Boolean))];
-        console.log('Categoria IDs únicos:', categoriaIds);
+        logger.debug('Categoria IDs únicos', { count: categoriaIds.length });
         
         // Buscar os nomes das categorias diretamente da tabela
         const nomesCategorias: Record<number, string> = {};
@@ -1166,7 +1156,7 @@ const Financeiro = () => {
               .select('id, nome')
               .in('id', categoriaIds);
             
-            console.log('Dados das categorias:', categoriasData);
+            logger.debug('Dados das categorias carregados', { count: categoriasData?.length || 0 });
             
             if (!error && categoriasData) {
               categoriasData.forEach(cat => {
@@ -1174,11 +1164,11 @@ const Financeiro = () => {
               });
             }
           } catch (error) {
-            console.error('Erro ao buscar categorias:', error);
+            logger.error('Erro ao buscar categorias:', error);
           }
         }
         
-        console.log('Mapeamento de categorias:', nomesCategorias);
+        logger.debug('Mapeamento de categorias gerado', { keys: Object.keys(nomesCategorias), count: Object.keys(nomesCategorias).length });
         
         const categoriasReais = contasReceberFiltradas.reduce((acc, conta) => {
           // Buscar o nome da categoria usando o categoria_id
@@ -1190,7 +1180,7 @@ const Financeiro = () => {
           return acc;
         }, {} as Record<string, number>);
         
-        console.log('Categorias reais:', categoriasReais);
+        logger.debug('Categorias reais agregadas', { keys: Object.keys(categoriasReais), count: Object.keys(categoriasReais).length });
         
         const dadosFormatados = Object.entries(categoriasReais).map(([nome, valor], index) => ({
           nome,
@@ -1198,14 +1188,14 @@ const Financeiro = () => {
           cor: ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4', '#84CC16'][index % 7]
         }));
         
-        console.log('Dados formatados para o gráfico:', dadosFormatados);
+        logger.debug('Dados formatados para o gráfico', { count: dadosFormatados.length });
         setDadosPorCategoria(dadosFormatados);
       } else if (tipoGraficoCategoria === 'despesas' && contasPagarFiltradas.length > 0) {
-        console.log('Contas a pagar filtradas:', contasPagarFiltradas);
+        logger.debug('Contas a pagar filtradas', { count: contasPagarFiltradas.length });
         
         // Buscar todos os categoria_ids únicos das contas a pagar
         const categoriaIds = [...new Set(contasPagarFiltradas.map(conta => conta.categoria_id).filter(Boolean))];
-        console.log('Categoria IDs únicos (despesas):', categoriaIds);
+        logger.debug('Categoria IDs únicos (despesas)', { count: categoriaIds.length });
         
         // Buscar os nomes das categorias diretamente da tabela
         const nomesCategorias: Record<number, string> = {};
@@ -1217,7 +1207,7 @@ const Financeiro = () => {
               .select('id, nome')
               .in('id', categoriaIds);
             
-            console.log('Dados das categorias (despesas):', categoriasData);
+            logger.debug('Dados das categorias (despesas) carregados', { count: categoriasData?.length || 0 });
             
             if (!error && categoriasData) {
               categoriasData.forEach(cat => {
@@ -1225,11 +1215,11 @@ const Financeiro = () => {
               });
             }
           } catch (error) {
-            console.error('Erro ao buscar categorias:', error);
+            logger.error('Erro ao buscar categorias (despesas):', error);
           }
         }
         
-        console.log('Mapeamento de categorias (despesas):', nomesCategorias);
+        logger.debug('Mapeamento de categorias (despesas) gerado', { keys: Object.keys(nomesCategorias), count: Object.keys(nomesCategorias).length });
         
         const categoriasReais = contasPagarFiltradas.reduce((acc, conta) => {
           // Buscar o nome da categoria usando o categoria_id
@@ -1241,7 +1231,7 @@ const Financeiro = () => {
           return acc;
         }, {} as Record<string, number>);
         
-        console.log('Categorias reais (despesas):', categoriasReais);
+        logger.debug('Categorias reais (despesas) agregadas', { keys: Object.keys(categoriasReais), count: Object.keys(categoriasReais).length });
         
         const dadosFormatados = Object.entries(categoriasReais).map(([nome, valor], index) => ({
           nome,
@@ -1249,7 +1239,7 @@ const Financeiro = () => {
           cor: ['#EF4444', '#F59E0B', '#8B5CF6', '#06B6D4', '#84CC16', '#3B82F6', '#10B981'][index % 7]
         }));
         
-        console.log('Dados formatados para o gráfico (despesas):', dadosFormatados);
+        logger.debug('Dados formatados para o gráfico (despesas)', { count: dadosFormatados.length });
         setDadosPorCategoria(dadosFormatados);
       }
     };
@@ -1901,23 +1891,23 @@ const Financeiro = () => {
                                   <button className="p-1 text-yellow-600 hover:text-yellow-800 rounded" onClick={async () => {
                                     if (window.confirm('Tem certeza que deseja desfazer o pagamento desta conta?')) {
                                       try {
-                                        console.log('Desfazendo pagamento da conta:', conta.id);
+                                        logger.info('Desfazendo pagamento da conta', { id: conta.id });
                                         const { error } = await supabase
                                           .from('contas_pagar')
                                           .update({ status: 'PENDENTE', pago_em: null })
                                           .eq('id', conta.id);
                                         
                                         if (error) {
-                                          console.error('Erro ao desfazer pagamento:', error);
+                                          logger.error('Erro ao desfazer pagamento:', error);
                                           alert('Erro ao desfazer pagamento: ' + error.message);
                                           return;
                                         }
                                         
-                                        console.log('Pagamento desfeito com sucesso, recarregando dados...');
+                                        logger.info('Pagamento desfeito com sucesso, recarregando dados...');
                                         if (user) await carregarContasPagar(user.id);
                                         alert('Pagamento desfeito com sucesso!');
                                       } catch (err) {
-                                        console.error('Erro inesperado ao desfazer pagamento:', err);
+                                        logger.error('Erro inesperado ao desfazer pagamento:', err);
                                         alert('Erro inesperado ao desfazer pagamento.');
                                       }
                                     }
@@ -2231,7 +2221,7 @@ const Financeiro = () => {
                             value={novaContaPagar.fornecedor_id || ''}
                             onChange={(e) => setNovaContaPagar(prev => ({ ...prev, fornecedor_id: e.target.value ? parseInt(e.target.value) : null }))}
                             className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200 bg-white hover:border-gray-300"
-                            onFocus={() => console.log('Select de fornecedores focado. Estado atual:', fornecedores.length, 'fornecedores')}
+                            onFocus={() => logger.debug('Select de fornecedores focado', { count: fornecedores.length })}
                           >
                             <option value="">Selecione um fornecedor (opcional)</option>
                             {fornecedores.map((fornecedor) => (
@@ -2562,14 +2552,14 @@ const Financeiro = () => {
                             onChange={(e) => {
                               const fornecedorId = e.target.value ? parseInt(e.target.value) : null;
                               const fornecedorSelecionado = fornecedores.find(f => f.id === fornecedorId);
-                              console.log('Debug - Fornecedor selecionado:', fornecedorSelecionado);
-                              console.log('Debug - Fornecedor ID:', fornecedorId);
+                              logger.debug('Fornecedor selecionado', { id: fornecedorSelecionado?.id, nome: fornecedorSelecionado?.nome });
+                              logger.debug('Fornecedor ID', { fornecedorId });
                               setNovaContaReceber(prev => {
                                 const newState = { 
                                   ...prev, 
                                   fornecedor_id: fornecedorId
                                 };
-                                console.log('Debug - Novo estado:', newState);
+                                logger.debug('Novo estado', { fornecedor_id: newState.fornecedor_id });
                                 return newState;
                               });
                             }}

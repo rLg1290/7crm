@@ -1,18 +1,21 @@
 import { createClient } from '@supabase/supabase-js'
+import { logger } from '../utils/logger'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
-// Logs para debug em produção
-console.log('🔧 Debug Supabase Config:')
-console.log('📍 URL:', supabaseUrl ? '✅ Definida' : '❌ Não definida')
-console.log('🔑 Key:', supabaseAnonKey ? '✅ Definida' : '❌ Não definida')
-console.log('🌍 Environment:', import.meta.env.MODE)
+// Evitar exposição de URL/Key em produção
+if (import.meta.env.MODE === 'development') {
+  logger.debug('🔧 Supabase env carregado (dev)')
+  logger.debug('📍 URL definida?', Boolean(supabaseUrl))
+  logger.debug('🔑 Key definida?', Boolean(supabaseAnonKey))
+}
 
-// Fallback para desenvolvimento se as variáveis não estiverem carregadas
-const finalUrl = supabaseUrl || 'https://ethmgnxyrgpkzgmkocwk.supabase.co'
-const finalKey = supabaseAnonKey || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV0aG1nbnh5cmdwa3pnbWtvY3drIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg1NjUwNTgsImV4cCI6MjA2NDE0MTA1OH0.TiDO0RTtrPU4RCka2iTvWZDz4S8kELlqTVDm6NkSNeI'
+if (!supabaseUrl || !supabaseAnonKey) {
+  // Não usar fallback com chaves públicas; apenas alertar em dev
+  if (import.meta.env.MODE === 'development') {
+    logger.warn('⚠️ Variáveis VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY não definidas no ambiente de desenvolvimento')
+  }
+}
 
-console.log('🔗 Supabase conectado:', finalUrl.substring(0, 30) + '...')
-
-export const supabase = createClient(finalUrl, finalKey) 
+export const supabase = createClient(supabaseUrl, supabaseAnonKey)

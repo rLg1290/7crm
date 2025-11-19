@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase'
+import { logger } from '../utils/logger'
 
 export interface Transacao {
   id: string
@@ -31,6 +32,7 @@ export interface ContasPagar {
   origem: string
   origem_id?: string
   user_id: string
+  empresa_id?: string
   created_at: string
 }
 
@@ -118,6 +120,31 @@ export interface NovaContaReceber {
 }
 
 class FinanceiroService {
+  // ===== Helpers =====
+  private async resolveEmpresaId(userId: string): Promise<string | null> {
+    try {
+      const { data: auth } = await supabase.auth.getUser()
+      const metaEmpresaId = auth?.user?.user_metadata?.empresa_id as string | undefined
+      if (metaEmpresaId) return metaEmpresaId
+    } catch (e) {
+      logger.warn('resolveEmpresaId: falha ao obter user_metadata', { error: String(e) })
+    }
+
+    const { data, error } = await supabase
+      .from('usuarios_empresas')
+      .select('empresa_id')
+      .eq('usuario_id', userId)
+      .limit(1)
+
+    if (error) {
+      logger.warn('resolveEmpresaId: erro ao consultar usuarios_empresas', { message: (error as any)?.message })
+      return null
+    }
+
+    const empresaId = Array.isArray(data) && data.length ? (data[0] as any)?.empresa_id : null
+    return empresaId ?? null
+  }
+
   // ===== TRANSAÇÕES =====
   
   async getTransacoes(empresaId: string, filtros?: {
@@ -155,7 +182,7 @@ class FinanceiroService {
       if (error) throw error
       return data || []
     } catch (error) {
-      console.error('Erro ao buscar transações:', error)
+      logger.error('Erro ao buscar transações:', error)
       throw error
     }
   }
@@ -175,7 +202,7 @@ class FinanceiroService {
       if (error) throw error
       return data
     } catch (error) {
-      console.error('Erro ao criar transação:', error)
+      logger.error('Erro ao criar transação:', error)
       throw error
     }
   }
@@ -192,7 +219,7 @@ class FinanceiroService {
       if (error) throw error
       return data
     } catch (error) {
-      console.error('Erro ao atualizar transação:', error)
+      logger.error('Erro ao atualizar transação:', error)
       throw error
     }
   }
@@ -206,7 +233,7 @@ class FinanceiroService {
 
       if (error) throw error
     } catch (error) {
-      console.error('Erro ao deletar transação:', error)
+      logger.error('Erro ao deletar transação:', error)
       throw error
     }
   }
@@ -220,13 +247,21 @@ class FinanceiroService {
     categoria?: string
   }): Promise<ContasPagar[]> {
     try {
-      console.log('Buscando contas a pagar para usuário:', userId, 'com filtros:', filtros)
+      // Resolve empresa do usuário para buscar contas da empresa (não apenas do usuário)
+      const empresaId = await this.resolveEmpresaId(userId)
+      logger.debug('🔍 Buscando contas a pagar', { userId, empresaId, filtrosSet: Boolean(filtros) })
       
       let query = supabase
         .from('contas_pagar')
         .select('*')
-        .eq('user_id', userId)
         .order('vencimento', { ascending: true })
+
+      if (!empresaId) {
+        logger.warn('getContasPagar: empresa_id não identificada para o usuário. Retornando lista vazia para manter consistência por empresa_id. Vincule o usuário a uma empresa.')
+        return []
+      }
+
+      query = query.eq('empresa_id', empresaId)
 
       if (filtros?.status) {
         query = query.eq('status', filtros.status)
@@ -244,32 +279,41 @@ class FinanceiroService {
       const { data, error } = await query
 
       if (error) {
-        console.error('Erro do Supabase ao buscar contas a pagar:', error)
+        logger.error('Erro do Supabase ao buscar contas a pagar:', error)
         throw error
       }
       
-      console.log('Contas a pagar encontradas:', data)
+      logger.debug('✅ Contas a pagar encontradas', { count: (data as any)?.length || 0 })
       return data || []
     } catch (error) {
-      console.error('Erro ao buscar contas a pagar:', error)
+      logger.error('Erro ao buscar contas a pagar:', error)
       throw error
     }
   }
 
   async criarContaPagar(userId: string, conta: NovaContaPagar): Promise<ContasPagar> {
     try {
-      console.log('Criando conta a pagar:', { userId, conta })
-      console.log('Status recebido:', conta.status)
-      console.log('Status após fallback:', conta.status || 'PENDENTE')
+      logger.debug('Criando conta a pagar', { userId, conta })
+      logger.debug('Status recebido', { status: conta.status })
+        logger.debug('Status após fallback', { status: conta.status || 'PENDENTE' })
       
-      const dadosParaInserir = {
-          user_id: userId,
-          ...conta,
-          status: conta.status || 'PENDENTE',
-          origem: conta.origem || 'MANUAL'
+      // Buscar empresa_id do usuário através do helper (obrigatório)
+      const empresaId = await this.resolveEmpresaId(userId)
+      logger.debug('empresa_id obtido para criar conta a pagar', { empresaId })
+
+      if (!empresaId) {
+        throw new Error('Não foi possível identificar a empresa do usuário. Contas a pagar devem ser sempre vinculadas por empresa_id. Vincule o usuário em usuarios_empresas ou defina empresa_id no user_metadata.')
       }
       
-      console.log('Dados que serão inseridos no banco:', dadosParaInserir)
+      const dadosParaInserir: any = {
+        user_id: userId,
+        empresa_id: empresaId,
+        ...conta,
+        status: conta.status || 'PENDENTE',
+        origem: conta.origem || 'MANUAL'
+      }
+      
+      logger.debug('Dados que serão inseridos no banco', { dados: dadosParaInserir })
       
       const { data, error } = await supabase
         .from('contas_pagar')
@@ -278,16 +322,15 @@ class FinanceiroService {
         .single()
 
       if (error) {
-        console.error('Erro do Supabase ao criar conta a pagar:', error)
-        console.error('Detalhes do erro:', error.message, error.details, error.hint)
+        logger.error('Erro do Supabase ao criar conta a pagar:', error)
+        logger.error('Detalhes do erro', { message: (error as any).message, details: (error as any).details, hint: (error as any).hint })
         throw error
       }
       
-      console.log('Conta a pagar criada com sucesso:', data)
-      console.log('Status salvo no banco:', data.status)
-      return data
+      logger.debug('Conta a pagar criada com sucesso', { id: (data as any)?.id, status: (data as any)?.status })
+      return data as any
     } catch (error) {
-      console.error('Erro ao criar conta a pagar:', error)
+      logger.error('Erro ao criar conta a pagar:', error)
       throw error
     }
   }
@@ -304,7 +347,7 @@ class FinanceiroService {
       if (error) throw error
       return data
     } catch (error) {
-      console.error('Erro ao atualizar conta a pagar:', error)
+      logger.error('Erro ao atualizar conta a pagar:', error)
       throw error
     }
   }
@@ -323,7 +366,7 @@ class FinanceiroService {
       if (error) throw error
       return data
     } catch (error) {
-      console.error('Erro ao marcar conta como paga:', error)
+      logger.error('Erro ao marcar conta como paga:', error)
       throw error
     }
   }
@@ -337,7 +380,7 @@ class FinanceiroService {
 
       if (error) throw error
     } catch (error) {
-      console.error('Erro ao deletar conta a pagar:', error)
+      logger.error('Erro ao deletar conta a pagar:', error)
       throw error
     }
   }
@@ -351,7 +394,7 @@ class FinanceiroService {
     servico?: string
   }): Promise<ContasReceber[]> {
     try {
-      console.log('Buscando contas a receber para empresa:', empresaId, 'com filtros:', filtros)
+      logger.debug('🔍 Buscando contas a receber', { empresaId, filtrosSet: Boolean(filtros) })
       
       let query = supabase
         .from('contas_receber')
@@ -375,21 +418,21 @@ class FinanceiroService {
       const { data, error } = await query
 
       if (error) {
-        console.error('Erro do Supabase ao buscar contas a receber:', error)
+        logger.error('Erro do Supabase ao buscar contas a receber:', error)
         throw error
       }
       
-      console.log('Contas a receber encontradas:', data)
+      logger.debug('✅ Contas a receber encontradas', { count: (data as any)?.length || 0 })
       return data || []
     } catch (error) {
-      console.error('Erro ao buscar contas a receber:', error)
+      logger.error('Erro ao buscar contas a receber:', error)
       throw error
     }
   }
 
   async criarContaReceber(empresaId: string, conta: NovaContaReceber): Promise<ContasReceber> {
     try {
-      console.log('Criando conta a receber:', { empresaId, conta })
+      logger.debug('Criando conta a receber', { empresaId, conta })
       
       const { data, error } = await supabase
         .from('contas_receber')
@@ -402,14 +445,14 @@ class FinanceiroService {
         .single()
 
       if (error) {
-        console.error('Erro do Supabase ao criar conta a receber:', error)
+        logger.error('Erro do Supabase ao criar conta a receber:', error)
         throw error
       }
       
-      console.log('Conta a receber criada com sucesso:', data)
+      logger.debug('Conta a receber criada com sucesso', { id: (data as any)?.id, status: (data as any)?.status })
       return data
     } catch (error) {
-      console.error('Erro ao criar conta a receber:', error)
+      logger.error('Erro ao criar conta a receber:', error)
       throw error
     }
   }
@@ -426,7 +469,7 @@ class FinanceiroService {
       if (error) throw error
       return data
     } catch (error) {
-      console.error('Erro ao atualizar conta a receber:', error)
+      logger.error('Erro ao atualizar conta a receber:', error)
       throw error
     }
   }
@@ -447,7 +490,7 @@ class FinanceiroService {
       if (error) throw error
       return data
     } catch (error) {
-      console.error('Erro ao marcar conta como recebida:', error)
+      logger.error('Erro ao marcar conta como recebida:', error)
       throw error
     }
   }
@@ -461,7 +504,7 @@ class FinanceiroService {
 
       if (error) throw error
     } catch (error) {
-      console.error('Erro ao deletar conta a receber:', error)
+      logger.error('Erro ao deletar conta a receber:', error)
       throw error
     }
   }
@@ -486,7 +529,7 @@ class FinanceiroService {
       if (error) throw error
       return data || []
     } catch (error) {
-      console.error('Erro ao buscar categorias:', error)
+      logger.error('Erro ao buscar categorias:', error)
       throw error
     }
   }
@@ -503,7 +546,7 @@ class FinanceiroService {
       if (error) throw error
       return data || []
     } catch (error) {
-      console.error('Erro ao buscar categorias de custo:', error)
+      logger.error('Erro ao buscar categorias de custo:', error)
       throw error
     }
   }
@@ -520,7 +563,7 @@ class FinanceiroService {
       if (error) throw error
       return data || []
     } catch (error) {
-      console.error('Erro ao buscar categorias de venda:', error)
+      logger.error('Erro ao buscar categorias de venda:', error)
       throw error
     }
   }
@@ -537,7 +580,7 @@ class FinanceiroService {
       if (error) throw error
       return data || []
     } catch (error) {
-      console.error('Erro ao buscar categorias de comissão de venda:', error)
+      logger.error('Erro ao buscar categorias de comissão de venda:', error)
       throw error
     }
   }
@@ -554,14 +597,14 @@ class FinanceiroService {
       if (error) throw error
       return data || []
     } catch (error) {
-      console.error('Erro ao buscar categorias de comissão de custo:', error)
+      logger.error('Erro ao buscar categorias de comissão de custo:', error)
       throw error
     }
   }
 
   async getFormasPagamento(userId: string): Promise<{ id: number; nome: string; user_id?: string }[]> {
     try {
-      console.log('Buscando formas de pagamento para usuário:', userId)
+      logger.debug('Buscando formas de pagamento para usuário:', { userId })
       
       // Busca formas globais (user_id IS NULL) e do usuário
       const { data: globais, error: errorGlobais } = await supabase
@@ -571,7 +614,7 @@ class FinanceiroService {
         .order('nome')
       
       if (errorGlobais) {
-        console.error('Erro ao buscar formas globais:', errorGlobais)
+        logger.error('Erro ao buscar formas globais:', errorGlobais)
         throw errorGlobais
       }
 
@@ -582,22 +625,22 @@ class FinanceiroService {
         .order('nome')
       
       if (errorProprias) {
-        console.error('Erro ao buscar formas próprias:', errorProprias)
+        logger.error('Erro ao buscar formas próprias:', errorProprias)
         throw errorProprias
       }
 
       const resultado = [...(globais || []), ...(proprias || [])]
-      console.log('Formas de pagamento encontradas:', resultado)
+      logger.debug('Formas de pagamento encontradas:', { total: resultado.length })
       return resultado
     } catch (error) {
-      console.error('Erro ao buscar formas de pagamento:', error)
+      logger.error('Erro ao buscar formas de pagamento:', error)
       throw error
     }
   }
 
   async adicionarFormaPagamento(nome: string, userId: string): Promise<{ id: number; nome: string; user_id: string }> {
     try {
-      console.log('Adicionando forma de pagamento:', { nome, userId })
+      logger.debug('Adicionando forma de pagamento:', { nome, userId })
       
       const { data, error } = await supabase
         .from('formas_pagamento')
@@ -609,246 +652,230 @@ class FinanceiroService {
         .single()
       
       if (error) {
-        console.error('Erro do Supabase ao adicionar forma de pagamento:', error)
+        logger.error('Erro do Supabase ao adicionar forma de pagamento:', error)
         throw error
       }
       
-      console.log('Forma de pagamento adicionada com sucesso:', data)
+      logger.debug('Forma de pagamento adicionada com sucesso:', { id: data?.id, nome: data?.nome })
       return data
     } catch (error) {
-      console.error('Erro ao adicionar forma de pagamento:', error)
+      logger.error('Erro ao adicionar forma de pagamento:', error)
       throw error
     }
   }
 
   async getFornecedores(userId: string): Promise<{ id: number; nome: string; cnpj?: string; email?: string; telefone?: string; empresa_id?: string }[]> {
     try {
-      console.log('🔍 [SERVICE] Iniciando busca de fornecedores para usuário:', userId)
-      
-      // Primeiro, buscar a empresa do usuário
-      console.log('🔍 [SERVICE] Buscando empresa do usuário...')
-      const { data: userEmpresa, error: errorEmpresa } = await supabase
-        .from('usuarios_empresas')
-        .select('empresa_id')
-        .eq('usuario_id', userId)
-        .single()
-      
-      if (errorEmpresa) {
-        console.error('❌ [SERVICE] Erro ao buscar empresa do usuário:', errorEmpresa)
-        throw errorEmpresa
+      logger.debug('Iniciando busca de fornecedores para usuário:', { userId })
+      // Resolver a empresa do usuário sem usar .single()
+      logger.debug('Resolvendo empresa do usuário...')
+      const empresaId = await this.resolveEmpresaId(userId)
+      if (!empresaId) {
+        logger.warn('Empresa do usuário não encontrada. Carregando apenas fornecedores globais.', { userId })
       }
-      
-      const empresaId = userEmpresa?.empresa_id
-      console.log('✅ [SERVICE] Empresa do usuário:', empresaId)
-      
+
       // Busca fornecedores globais (empresa_id IS NULL)
-      console.log('🔍 [SERVICE] Buscando fornecedores globais...')
+      logger.debug('Buscando fornecedores globais...')
       const { data: globais, error: errorGlobais } = await supabase
         .from('fornecedores')
         .select('id, nome, cnpj, email, telefone, empresa_id')
         .is('empresa_id', null)
         .order('nome')
-      
+
       if (errorGlobais) {
-        console.error('❌ [SERVICE] Erro ao buscar fornecedores globais:', errorGlobais)
+        logger.error('Erro ao buscar fornecedores globais:', errorGlobais)
         throw errorGlobais
       }
-      
-      console.log('✅ [SERVICE] Fornecedores globais encontrados:', globais?.length || 0)
-      console.log('✅ [SERVICE] Detalhes globais:', globais)
 
-      // Busca fornecedores da empresa do usuário
-      console.log('🔍 [SERVICE] Buscando fornecedores da empresa...')
-      const { data: daEmpresa, error: errorFornecedoresEmpresa } = await supabase
-        .from('fornecedores')
-        .select('id, nome, cnpj, email, telefone, empresa_id')
-        .eq('empresa_id', empresaId)
-        .order('nome')
-      
-      if (errorFornecedoresEmpresa) {
-        console.error('❌ [SERVICE] Erro ao buscar fornecedores da empresa:', errorFornecedoresEmpresa)
-        throw errorFornecedoresEmpresa
+      // Busca fornecedores da empresa do usuário, somente se empresaId existir
+      logger.debug('Buscando fornecedores da empresa...', { empresaId })
+      let daEmpresa: { id: number; nome: string; cnpj?: string; email?: string; telefone?: string; empresa_id?: string }[] = []
+      if (empresaId) {
+        const { data: daEmp, error: errorFornecedoresEmpresa } = await supabase
+          .from('fornecedores')
+          .select('id, nome, cnpj, email, telefone, empresa_id')
+          .eq('empresa_id', empresaId)
+          .order('nome')
+
+        if (errorFornecedoresEmpresa) {
+          logger.error('Erro ao buscar fornecedores da empresa:', errorFornecedoresEmpresa)
+          throw errorFornecedoresEmpresa
+        }
+
+        daEmpresa = daEmp || []
+      } else {
+        logger.debug('Sem empresaId, pulando busca de fornecedores da empresa.')
       }
-      
-      console.log('✅ [SERVICE] Fornecedores da empresa encontrados:', daEmpresa?.length || 0)
-      console.log('✅ [SERVICE] Detalhes da empresa:', daEmpresa)
 
       // Combina os resultados
       const resultado = [...(globais || []), ...(daEmpresa || [])]
-      console.log('✅ [SERVICE] Total de fornecedores combinados:', resultado.length)
-      console.log('✅ [SERVICE] Resultado final:', resultado)
-      
+      logger.debug('Total de fornecedores combinados:', { total: resultado.length })
       return resultado
     } catch (error) {
-      console.error('❌ [SERVICE] Erro ao buscar fornecedores:', error)
-      console.error('❌ [SERVICE] Detalhes do erro:', {
-        message: error instanceof Error ? error.message : 'Erro desconhecido',
-        stack: error instanceof Error ? error.stack : undefined
-      })
+      logger.error('Erro ao buscar fornecedores:', error)
       throw error
     }
   }
 
-  async adicionarFornecedor(fornecedor: {
-    nome: string
-    cnpj?: string
-    email?: string
-    telefone?: string
-  }, userId: string): Promise<{ id: number; nome: string; cnpj?: string; email?: string; telefone?: string; empresa_id: string }> {
-    try {
-      console.log('🔧 [SERVICE] Adicionando fornecedor:', { fornecedor, userId })
-      
-      // Validar dados obrigatórios
-      if (!fornecedor.nome || fornecedor.nome.trim() === '') {
-        throw new Error('Nome do fornecedor é obrigatório')
+      async adicionarFornecedor(fornecedor: {
+        nome: string
+        cnpj?: string
+        email?: string
+        telefone?: string
+      }, userId: string): Promise<{ id: number; nome: string; cnpj?: string; email?: string; telefone?: string; empresa_id: string }> {
+        try {
+          logger.debug('Adicionando fornecedor:', { fornecedor, userId })
+          
+          // Validar dados obrigatórios
+          if (!fornecedor.nome || fornecedor.nome.trim() === '') {
+            throw new Error('Nome do fornecedor é obrigatório')
+          }
+          
+          // Resolver a empresa do usuário de forma robusta
+          logger.debug('Resolvendo empresa do usuário...')
+          const empresaId = await this.resolveEmpresaId(userId)
+          if (!empresaId) {
+            throw new Error('Não foi possível identificar a empresa do usuário. Vincule o usuário a uma empresa (usuarios_empresas) ou defina empresa_id no user_metadata.')
+          }
+          
+          console.log('✅ [SERVICE] Empresa do usuário:', empresaId)
+          
+          const dadosFornecedor = {
+            nome: fornecedor.nome.trim(),
+            cnpj: fornecedor.cnpj?.trim() || null,
+            email: fornecedor.email?.trim() || null,
+            telefone: fornecedor.telefone?.trim() || null,
+            empresa_id: empresaId
+          }
+          
+          console.log('🔧 [SERVICE] Dados a serem inseridos:', dadosFornecedor)
+          
+          const { data, error } = await supabase
+            .from('fornecedores')
+            .insert(dadosFornecedor)
+            .select('id, nome, cnpj, email, telefone, empresa_id')
+            .single()
+          
+          if (error) {
+            console.error('❌ [SERVICE] Erro do Supabase ao adicionar fornecedor:', error)
+            console.error('❌ [SERVICE] Detalhes do erro:', {
+              message: (error as any).message,
+              details: (error as any).details,
+              hint: (error as any).hint,
+              code: (error as any).code
+            })
+            throw error
+          }
+          
+          console.log('✅ [SERVICE] Fornecedor adicionado com sucesso:', data)
+          return data
+        } catch (error) {
+          console.error('❌ [SERVICE] Erro ao adicionar fornecedor:', error)
+          throw error
+        }
       }
-      
-      // Buscar a empresa do usuário
-      console.log('🔧 [SERVICE] Buscando empresa do usuário...')
-      const { data: userEmpresa, error: errorEmpresa } = await supabase
-        .from('usuarios_empresas')
-        .select('empresa_id')
-        .eq('usuario_id', userId)
-        .single()
-      
-      if (errorEmpresa || !userEmpresa?.empresa_id) {
-        console.error('❌ [SERVICE] Erro ao buscar empresa do usuário:', errorEmpresa)
-        throw new Error('Não foi possível identificar a empresa do usuário')
+
+      async criarCategoria(empresaId: string, categoria: Omit<CategoriaFinanceira, 'id' | 'empresa_id' | 'created_at' | 'updated_at'>): Promise<CategoriaFinanceira> {
+        try {
+          const { data, error } = await supabase
+            .from('categorias_financeiras')
+            .insert({
+              empresa_id: empresaId,
+              ...categoria
+            })
+            .select()
+            .single()
+
+          if (error) throw error
+          return data
+        } catch (error) {
+          console.error('Erro ao criar categoria:', error)
+          throw error
+        }
       }
-      
-      const empresaId = userEmpresa.empresa_id
-      console.log('✅ [SERVICE] Empresa do usuário:', empresaId)
-      
-      const dadosFornecedor = {
-        nome: fornecedor.nome.trim(),
-        cnpj: fornecedor.cnpj?.trim() || null,
-        email: fornecedor.email?.trim() || null,
-        telefone: fornecedor.telefone?.trim() || null,
-        empresa_id: empresaId
+
+      // ===== RESUMO FINANCEIRO =====
+
+      async getResumoFinanceiro(empresaId: string, mes: number, ano: number): Promise<ResumoFinanceiro> {
+        try {
+          const { data, error } = await supabase
+            .rpc('calcular_resumo_financeiro', {
+              p_empresa_id: empresaId,
+              p_mes: mes,
+              p_ano: ano
+            })
+
+          if (error) throw error
+          
+          return data?.[0] || {
+            saldo_atual: 0,
+            receitas_mes: 0,
+            despesas_mes: 0,
+            lucro_mes: 0,
+            contas_pagar_total: 0,
+            contas_receber_total: 0,
+            fluxo_caixa_projetado: 0
+          }
+        } catch (error) {
+          console.error('Erro ao buscar resumo financeiro:', error)
+          throw error
+        }
       }
-      
-      console.log('🔧 [SERVICE] Dados a serem inseridos:', dadosFornecedor)
-      
-      const { data, error } = await supabase
-        .from('fornecedores')
-        .insert(dadosFornecedor)
-        .select('id, nome, cnpj, email, telefone, empresa_id')
-        .single()
-      
-      if (error) {
-        console.error('❌ [SERVICE] Erro do Supabase ao adicionar fornecedor:', error)
-        console.error('❌ [SERVICE] Detalhes do erro:', {
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code
-        })
-        throw error
+
+      // ===== RELATÓRIOS =====
+
+      async getRelatorioReceitasDespesas(empresaId: string, dataInicio: string, dataFim: string) {
+        try {
+          const { data, error } = await supabase
+            .from('transacoes_financeiras')
+            .select('tipo, categoria, valor, data')
+            .eq('empresa_id', empresaId)
+            .gte('data', dataInicio)
+            .lte('data', dataFim)
+            .eq('status', 'pago')
+
+          if (error) throw error
+
+          const receitas = data?.filter(t => t.tipo === 'receita') || []
+          const despesas = data?.filter(t => t.tipo === 'despesa') || []
+
+          return {
+            receitas,
+            despesas,
+            totalReceitas: receitas.reduce((sum, r) => sum + r.valor, 0),
+            totalDespesas: despesas.reduce((sum, d) => sum + d.valor, 0)
+          }
+        } catch (error) {
+          console.error('Erro ao gerar relatório:', error)
+          throw error
+        }
       }
-      
-      console.log('✅ [SERVICE] Fornecedor adicionado com sucesso:', data)
-      return data
-    } catch (error) {
-      console.error('❌ [SERVICE] Erro ao adicionar fornecedor:', error)
-      throw error
-    }
-  }
 
-  async criarCategoria(empresaId: string, categoria: Omit<CategoriaFinanceira, 'id' | 'empresa_id' | 'created_at' | 'updated_at'>): Promise<CategoriaFinanceira> {
-    try {
-      const { data, error } = await supabase
-        .from('categorias_financeiras')
-        .insert({
-          empresa_id: empresaId,
-          ...categoria
-        })
-        .select()
-        .single()
+      async getContasVencidas(empresaId: string): Promise<{
+        contasPagar: ContasPagar[]
+        contasReceber: ContasReceber[]
+      }> {
+        try {
+          // Obter userId atual para reutilizar o helper de resolução de empresa em getContasPagar
+          const { data: auth } = await supabase.auth.getUser()
+          const userId = auth?.user?.id || ''
 
-      if (error) throw error
-      return data
-    } catch (error) {
-      console.error('Erro ao criar categoria:', error)
-      throw error
-    }
-  }
+          const [contasPagarResult, contasReceberResult] = await Promise.all([
+            // Para contas a pagar usamos status em MAIÚSCULAS (conforme UI/DB)
+            this.getContasPagar(userId || empresaId, { status: 'VENCIDA' }),
+            // Para contas a receber mantemos o status em minúsculas (conforme modelo)
+            this.getContasReceber(empresaId, { status: 'vencida' })
+          ])
 
-  // ===== RESUMO FINANCEIRO =====
-
-  async getResumoFinanceiro(empresaId: string, mes: number, ano: number): Promise<ResumoFinanceiro> {
-    try {
-      const { data, error } = await supabase
-        .rpc('calcular_resumo_financeiro', {
-          p_empresa_id: empresaId,
-          p_mes: mes,
-          p_ano: ano
-        })
-
-      if (error) throw error
-      
-      return data?.[0] || {
-        saldo_atual: 0,
-        receitas_mes: 0,
-        despesas_mes: 0,
-        lucro_mes: 0,
-        contas_pagar_total: 0,
-        contas_receber_total: 0,
-        fluxo_caixa_projetado: 0
+          return {
+            contasPagar: contasPagarResult,
+            contasReceber: contasReceberResult
+          }
+        } catch (error) {
+          console.error('Erro ao buscar contas vencidas:', error)
+          throw error
+        }
       }
-    } catch (error) {
-      console.error('Erro ao buscar resumo financeiro:', error)
-      throw error
-    }
-  }
-
-  // ===== RELATÓRIOS =====
-
-  async getRelatorioReceitasDespesas(empresaId: string, dataInicio: string, dataFim: string) {
-    try {
-      const { data, error } = await supabase
-        .from('transacoes_financeiras')
-        .select('tipo, categoria, valor, data')
-        .eq('empresa_id', empresaId)
-        .gte('data', dataInicio)
-        .lte('data', dataFim)
-        .eq('status', 'pago')
-
-      if (error) throw error
-
-      const receitas = data?.filter(t => t.tipo === 'receita') || []
-      const despesas = data?.filter(t => t.tipo === 'despesa') || []
-
-      return {
-        receitas,
-        despesas,
-        totalReceitas: receitas.reduce((sum, r) => sum + r.valor, 0),
-        totalDespesas: despesas.reduce((sum, d) => sum + d.valor, 0)
-      }
-    } catch (error) {
-      console.error('Erro ao gerar relatório:', error)
-      throw error
-    }
-  }
-
-  async getContasVencidas(empresaId: string): Promise<{
-    contasPagar: ContasPagar[]
-    contasReceber: ContasReceber[]
-  }> {
-    try {
-      const [contasPagarResult, contasReceberResult] = await Promise.all([
-        this.getContasPagar(empresaId, { status: 'vencida' }),
-        this.getContasReceber(empresaId, { status: 'vencida' })
-      ])
-
-      return {
-        contasPagar: contasPagarResult,
-        contasReceber: contasReceberResult
-      }
-    } catch (error) {
-      console.error('Erro ao buscar contas vencidas:', error)
-      throw error
-    }
-  }
 }
 
-export const financeiroService = new FinanceiroService() 
+export const financeiroService = new FinanceiroService()

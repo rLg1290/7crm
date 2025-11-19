@@ -1,4 +1,5 @@
 import { CalendarioService } from './calendarioService'
+import { logger } from '../utils/logger'
 
 export interface Notificacao {
   id: string
@@ -21,7 +22,7 @@ export class NotificationService {
   // 🔍 GERAR NOTIFICAÇÕES EM TEMPO REAL
   static async gerarNotificacoes(): Promise<Notificacao[]> {
     try {
-      console.log('🔔 Gerando notificações em tempo real...')
+      logger.debug('🔔 Gerando notificações em tempo real...')
       
       const [tarefas, compromissos] = await Promise.all([
         CalendarioService.listarTarefas(),
@@ -221,19 +222,21 @@ export class NotificationService {
         return tipoOrder[b.tipo] - tipoOrder[a.tipo]
       })
 
-      console.log(`🔔 ${notificacoes.length} notificações geradas`)
-      console.log('📊 Breakdown:', {
-        vencidas: tarefasVencidas.length,
-        urgentes: tarefasHoje.length,
-        proximosCompromissos: compromissosProximos.length,
-        compromissosHoje: compromissosHoje.length,
-        tarefasHoje: tarefasNormaisHoje.length
+      // Substituir logs verbosos por logger.debug para reduzir ruído em console
+      logger.debug(`🔔 ${notificacoes.length} notificações geradas`)
+      logger.debug('📊 Breakdown:', {
+        vencidas: notificacoes.filter(n => n.tipo === 'tarefa_vencida').length,
+        urgentes: notificacoes.filter(n => n.tipo === 'tarefa_urgente').length,
+        proximosCompromissos: notificacoes.filter(n => n.tipo === 'compromisso_proximo').length,
+        reunioesHoje: notificacoes.filter(n => n.tipo === 'reuniao_hoje').length,
+        compromissosHoje: notificacoes.filter(n => n.tipo === 'compromisso_hoje').length,
+        tarefasHoje: notificacoes.filter(n => n.tipo === 'tarefa_hoje').length,
       })
 
       return notificacoes
 
     } catch (error) {
-      console.error('❌ Erro ao gerar notificações:', error)
+      logger.error('❌ Erro ao gerar notificações', { error })
       return []
     }
   }
@@ -251,24 +254,14 @@ export class NotificationService {
   // 📖 CARREGAR NOTIFICAÇÕES DO STORAGE LOCAL
   static carregarNotificacoes(): Notificacao[] {
     try {
-      const stored = localStorage.getItem('crm_notifications')
+      const cache = localStorage.getItem('crm_notifications')
       const timestamp = localStorage.getItem('crm_notifications_timestamp')
-      
-      if (!stored || !timestamp) return []
-      
-      // Verificar se as notificações são recentes (últimos 5 minutos)
-      const agora = Date.now()
-      const timestampSalvo = parseInt(timestamp)
-      const cincoMinutos = 5 * 60 * 1000
-      
-      if (agora - timestampSalvo > cincoMinutos) {
-        console.log('🔄 Notificações expiradas, buscando novas...')
-        return []
-      }
-      
-      return JSON.parse(stored)
+      if (!cache || !timestamp) return []
+      const ageMinutes = Math.floor((Date.now() - Number(timestamp)) / (1000 * 60))
+      logger.debug('🗄️ Carregando notificações do cache', { ageMinutes })
+      return JSON.parse(cache)
     } catch (error) {
-      console.error('❌ Erro ao carregar notificações:', error)
+      logger.error('❌ Erro ao carregar notificações do cache:', error)
       return []
     }
   }
@@ -276,14 +269,13 @@ export class NotificationService {
   // ✅ MARCAR NOTIFICAÇÃO COMO LIDA
   static marcarComoLida(notificacaoId: string) {
     try {
-      const notificacoes = this.carregarNotificacoes()
-      const notificacoesAtualizadas = notificacoes.map(n => 
-        n.id === notificacaoId ? { ...n, lida: true } : n
-      )
-      this.salvarNotificacoes(notificacoesAtualizadas)
-      return notificacoesAtualizadas
+      const cache = NotificationService.carregarNotificacoes()
+      const atualizadas = cache.map(n => n.id === notificacaoId ? ({ ...n, lida: true }) : n)
+      NotificationService.salvarNotificacoes(atualizadas)
+      logger.debug('✅ Notificação marcada como lida', { id: notificacaoId })
+      return atualizadas
     } catch (error) {
-      console.error('❌ Erro ao marcar notificação como lida:', error)
+      logger.error('❌ Erro ao marcar notificação como lida:', error)
       return []
     }
   }
@@ -291,12 +283,13 @@ export class NotificationService {
   // ✅ MARCAR TODAS COMO LIDAS
   static marcarTodasComoLidas() {
     try {
-      const notificacoes = this.carregarNotificacoes()
-      const notificacoesAtualizadas = notificacoes.map(n => ({ ...n, lida: true }))
-      this.salvarNotificacoes(notificacoesAtualizadas)
-      return notificacoesAtualizadas
+      const cache = NotificationService.carregarNotificacoes()
+      const atualizadas = cache.map(n => ({ ...n, lida: true }))
+      NotificationService.salvarNotificacoes(atualizadas)
+      logger.debug('✅ Todas as notificações marcadas como lidas')
+      return atualizadas
     } catch (error) {
-      console.error('❌ Erro ao marcar todas como lidas:', error)
+      logger.error('❌ Erro ao marcar todas como lidas:', error)
       return []
     }
   }
@@ -304,22 +297,23 @@ export class NotificationService {
   // 🗑️ REMOVER NOTIFICAÇÃO
   static removerNotificacao(notificacaoId: string) {
     try {
-      const notificacoes = this.carregarNotificacoes()
-      const notificacoesAtualizadas = notificacoes.filter(n => n.id !== notificacaoId)
-      this.salvarNotificacoes(notificacoesAtualizadas)
-      return notificacoesAtualizadas
+      const cache = NotificationService.carregarNotificacoes()
+      const atualizadas = cache.filter(n => n.id !== notificacaoId)
+      NotificationService.salvarNotificacoes(atualizadas)
+      logger.debug('🗑️ Notificação removida', { id: notificacaoId })
+      return atualizadas
     } catch (error) {
-      console.error('❌ Erro ao remover notificação:', error)
+      logger.error('❌ Erro ao remover notificação:', error)
       return []
     }
   }
 
   // 🔄 ATUALIZAR NOTIFICAÇÕES (FORÇA REFRESH)
   static async atualizarNotificacoes(): Promise<Notificacao[]> {
-    console.log('🔄 Forçando atualização de notificações...')
-    const novasNotificacoes = await this.gerarNotificacoes()
-    this.salvarNotificacoes(novasNotificacoes)
-    return novasNotificacoes
+    const notificacoes = await NotificationService.gerarNotificacoes()
+    NotificationService.salvarNotificacoes(notificacoes)
+    logger.debug('🔄 Atualização de notificações concluída', { count: notificacoes.length })
+    return notificacoes
   }
 
   // 📊 OBTER ESTATÍSTICAS DE NOTIFICAÇÕES
@@ -340,4 +334,4 @@ export class NotificationService {
       }
     }
   }
-} 
+}

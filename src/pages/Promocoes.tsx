@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Download, Eye, Edit, MapPin, Calendar, Tag, Star, Plane, Building, X } from 'lucide-react'
 import { User as SupabaseUser } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
+import logger from '../utils/logger'
 
 interface PromocoesProps {
   user: SupabaseUser
@@ -51,13 +52,13 @@ const Promocoes: React.FC<PromocoesProps> = ({ user }) => {
         .order('created_at', { ascending: false })
 
       if (error) {
-        console.error('Erro ao carregar promoções:', error)
+        logger.error('Erro ao carregar promoções:', error)
         throw error
       }
 
       setPromocoes(promocoesData || [])
     } catch (error) {
-      console.error('Erro ao carregar promoções:', error)
+      logger.error('Erro ao carregar promoções:', error)
       alert('Erro ao carregar promoções. Tente novamente.')
     } finally {
       setLoading(false)
@@ -67,8 +68,8 @@ const Promocoes: React.FC<PromocoesProps> = ({ user }) => {
   const carregarConfigEmpresa = async () => {
     try {
       const empresaId = user.user_metadata?.empresa_id
-      console.log('🔍 Buscando empresa com ID:', empresaId)
-      console.log('👤 User metadata completo:', user.user_metadata)
+      logger.debug('🔍 Buscando empresa com ID:', { empresaId })
+      logger.debug('👤 User metadata completo:', { user_metadata: user.user_metadata })
       
       const { data: empresa, error } = await supabase
         .from('empresas')
@@ -76,12 +77,12 @@ const Promocoes: React.FC<PromocoesProps> = ({ user }) => {
         .eq('id', empresaId)
         .single()
 
-      console.log('📊 Resposta do Supabase:', { data: empresa, error })
+      logger.debug('📊 Resposta do Supabase:', { data: empresa, error })
 
       if (empresa) {
-        console.log('🏢 Dados da empresa carregados:', empresa)
-        console.log('🎨 Cor personalizada:', empresa.cor_personalizada)
-        console.log('🖼️ Logotipo:', empresa.logotipo)
+        logger.debug('🏢 Dados da empresa carregados:', empresa)
+        logger.debug('🎨 Cor personalizada:', empresa.cor_personalizada)
+        logger.debug('🖼️ Logotipo:', empresa.logotipo)
         setEmpresaConfig(empresa)
       } else {
         // Configuração padrão para demonstração
@@ -95,7 +96,7 @@ const Promocoes: React.FC<PromocoesProps> = ({ user }) => {
         })
       }
     } catch (error) {
-      console.error('Erro ao carregar configuração da empresa:', error)
+      logger.error('Erro ao carregar configuração da empresa:', error)
       setEmpresaConfig({
         nome: 'Sua Agência',
         cor_secundaria: '#1E40AF',
@@ -179,13 +180,13 @@ const Promocoes: React.FC<PromocoesProps> = ({ user }) => {
     const primaryColor = empresaConfig.cor_primaria || '#3B82F6'
     const secondaryColor = empresaConfig.cor_secundaria || '#1E40AF'
     
-    console.log('🎨 Usando cor primária das promoções:', primaryColor)
-    console.log('🏢 Config da empresa:', empresaConfig)
+    logger.debug('🎨 Usando cor primária das promoções:', { primaryColor })
+    logger.debug('🏢 Config da empresa:', empresaConfig)
 
     try {
         // Verificar se a URL da imagem é válida
         const imageUrl = promocao.imagem || 'https://picsum.photos/800/600?random=1'
-        console.log('🖼️ Carregando imagem do preview:', imageUrl)
+        logger.debug('🖼️ Carregando imagem do preview:', imageUrl)
         
         const destinoImg = await loadImage(imageUrl)
         
@@ -214,8 +215,8 @@ const Promocoes: React.FC<PromocoesProps> = ({ user }) => {
         
       } catch (error) {
         // Se não conseguir carregar a imagem, usar gradiente
-        console.error('❌ Erro ao carregar imagem do preview:', error)
-        console.log('🔄 Usando gradiente como fallback')
+        logger.error('❌ Erro ao carregar imagem do preview:', error)
+        logger.warn('🔄 Usando gradiente como fallback')
         const imgGradient = ctx.createLinearGradient(0, 0, 0, originalHeight * scale)
         imgGradient.addColorStop(0, primaryColor)
         imgGradient.addColorStop(1, secondaryColor)
@@ -248,8 +249,8 @@ const Promocoes: React.FC<PromocoesProps> = ({ user }) => {
     // Tentar carregar logo da agência (usando logotipo_2 para promoções)
     const logoUrl = empresaConfig.logotipo_2
     
-    console.log('🖼️ URL da logo a ser usada:', logoUrl)
-    console.log('🖼️ Logotipo_2 da empresa:', empresaConfig.logotipo_2)
+    logger.debug('🖼️ URL da logo a ser usada:', logoUrl)
+    logger.debug('🖼️ Logotipo_2 da empresa:', empresaConfig.logotipo_2)
     
     if (logoUrl) {
       try {
@@ -261,7 +262,7 @@ const Promocoes: React.FC<PromocoesProps> = ({ user }) => {
         // Desenhar logo da agência centralizada no badge
         ctx.drawImage(logoImg, logoX, logoY, logoSize, logoSize)
       } catch (error) {
-        console.log('Erro ao carregar logo:', error)
+        logger.error('Erro ao carregar logo:', error)
         // Se não conseguir carregar a logo, mostrar nome da empresa
         ctx.fillStyle = '#FFFFFF'
         ctx.font = `bold ${16 * scale}px Arial`
@@ -559,7 +560,7 @@ const Promocoes: React.FC<PromocoesProps> = ({ user }) => {
       try {
         // Verificar se a URL da imagem é válida
         const imageUrl = promocaoSelecionada.imagem || 'https://picsum.photos/800/600?random=1'
-        console.log('🖼️ Carregando imagem do download:', imageUrl)
+        logger.debug('🖼️ Carregando imagem do download:', imageUrl)
         
         const destinoImg = await loadImage(imageUrl)
         
@@ -587,8 +588,8 @@ const Promocoes: React.FC<PromocoesProps> = ({ user }) => {
         ctx.drawImage(destinoImg, drawX, drawY, drawWidth, drawHeight)
         
       } catch (error) {
-        console.error('❌ Erro ao carregar imagem do download:', error)
-        console.log('🔄 Usando gradiente como fallback no download')
+        logger.error('❌ Erro ao carregar imagem do download:', error)
+        logger.warn('🔄 Usando gradiente como fallback no download')
         // Fallback: fundo gradiente
         const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height)
         gradient.addColorStop(0, primaryColor)
@@ -633,7 +634,7 @@ const Promocoes: React.FC<PromocoesProps> = ({ user }) => {
           // Desenhar logo da agência centralizada no badge
           ctx.drawImage(logoImg, logoX, logoY, logoSize, logoSize)
         } catch (error) {
-          console.log('Erro ao carregar logo:', error)
+          logger.error('Erro ao carregar logo:', error)
           // Se não conseguir carregar a logo, mostrar nome da empresa
           ctx.fillStyle = '#FFFFFF'
           ctx.font = `bold ${16 * scale}px Arial`
@@ -886,7 +887,7 @@ const Promocoes: React.FC<PromocoesProps> = ({ user }) => {
       }, 'image/png')
 
     } catch (error) {
-      console.error('Erro ao gerar imagem:', error)
+      logger.error('Erro ao gerar imagem:', error)
       alert('Erro ao gerar a imagem. Tente novamente.')
     }
   }

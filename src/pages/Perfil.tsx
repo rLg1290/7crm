@@ -3,6 +3,7 @@ import { User, Building, Mail, Save, ArrowLeft, Hash, FileText, Lock, Link, Copy
 import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
 import { User as SupabaseUser } from '@supabase/supabase-js'
+import logger from '../utils/logger'
 
 interface EmpresaInfo {
   id: string
@@ -45,7 +46,7 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
   useEffect(() => {
     const fetchEmpresaInfo = async () => {
       const empresaId = user.user_metadata?.empresa_id
-      console.log('🏢 Carregando empresa para usuário:', { empresaId, user_metadata: user.user_metadata })
+      logger.debug('🏢 Carregando empresa para usuário:', { empresaId, user_metadata: user.user_metadata })
       
       if (empresaId) {
         try {
@@ -55,41 +56,41 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
             .eq('id', empresaId)
             .single()
 
-          console.log('📥 Dados da empresa carregados:', { data, error })
+          logger.debug('📥 Dados da empresa carregados:', { data, error })
 
           if (data && !error) {
             setEmpresaInfo(data)
             // Definir cor personalizada se existir
             if (data.cor_personalizada) {
-              console.log('🎨 Cor personalizada encontrada:', data.cor_personalizada)
+              logger.debug('🎨 Cor personalizada encontrada:', data.cor_personalizada)
               setCorPersonalizada(data.cor_personalizada)
             } else {
-              console.log('🎨 Nenhuma cor personalizada encontrada, usando padrão')
+              logger.debug('🎨 Nenhuma cor personalizada encontrada, usando padrão')
             }
             
             // Definir cor secundária se existir
             if (data.cor_secundaria) {
-              console.log('🎨 Cor secundária encontrada:', data.cor_secundaria)
+              logger.debug('🎨 Cor secundária encontrada:', data.cor_secundaria)
               setCorSecundaria(data.cor_secundaria)
             } else {
-              console.log('🎨 Nenhuma cor secundária encontrada, usando padrão')
+              logger.debug('🎨 Nenhuma cor secundária encontrada, usando padrão')
             }
             
             // Definir cor primária se existir
             if (data.cor_primaria) {
-              console.log('🎨 Cor primária encontrada:', data.cor_primaria)
+              logger.debug('🎨 Cor primária encontrada:', data.cor_primaria)
               setCorPrimaria(data.cor_primaria)
             } else {
-              console.log('🎨 Nenhuma cor primária encontrada, usando padrão')
+              logger.debug('🎨 Nenhuma cor primária encontrada, usando padrão')
             }
           } else if (error) {
-            console.error('❌ Erro ao carregar empresa:', error)
+            logger.error('❌ Erro ao carregar empresa:', error)
           }
         } catch (error) {
-          console.error('💥 Erro inesperado ao carregar empresa:', error)
+          logger.error('💥 Erro inesperado ao carregar empresa:', error)
         }
       } else {
-        console.log('❌ Empresa ID não encontrado nos metadados do usuário')
+        logger.warn('❌ Empresa ID não encontrado nos metadados do usuário')
       }
     }
 
@@ -148,7 +149,7 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
       setLinkCopiado(true)
       setTimeout(() => setLinkCopiado(false), 2000)
     } catch (error) {
-      console.error('Erro ao copiar link:', error)
+      logger.error('Erro ao copiar link:', error)
     }
   }
 
@@ -156,7 +157,7 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
 
   // Função para salvar cor personalizada da página
   const salvarCores = async () => {
-    console.log('🎨 Iniciando salvamento da cor personalizada:', { 
+    logger.debug('🎨 Iniciando salvamento da cor personalizada:', { 
       empresaInfo, 
       corPersonalizada,
       empresaId: empresaInfo?.id,
@@ -164,7 +165,7 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
     })
     
     if (!empresaInfo?.id) {
-      console.log('❌ Erro: empresaInfo.id não encontrado', empresaInfo)
+      logger.warn('❌ Erro: empresaInfo.id não encontrado', empresaInfo)
       setMessage('Erro: Informações da empresa não encontradas')
       return
     }
@@ -172,14 +173,14 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
     // Validar formato da cor
     const corRegex = /^#[0-9A-Fa-f]{6}$/
     if (!corRegex.test(corPersonalizada)) {
-      console.log('❌ Formato de cor personalizada inválido:', corPersonalizada)
+      logger.warn('❌ Formato de cor personalizada inválido:', corPersonalizada)
       setMessage('Erro: Formato de cor personalizada inválido. Use o formato #RRGGBB')
       return
     }
 
     setSalvandoCor(true)
     try {
-      console.log('📤 Enviando cor personalizada para Supabase:', {
+      logger.debug('📤 Enviando cor personalizada para Supabase:', {
         cor_personalizada: corPersonalizada,
         empresa_id: empresaInfo.id,
         timestamp: new Date().toISOString()
@@ -192,11 +193,11 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
         .eq('id', empresaInfo.id)
         .single()
 
-      console.log('🔍 Empresa encontrada:', { empresaExistente, errorBusca })
+      logger.debug('🔍 Empresa encontrada:', { empresaExistente, errorBusca })
 
       if (errorBusca && errorBusca.code === 'PGRST116') {
         // Empresa não encontrada - vamos criá-la
-        console.log('⚠️ Empresa não encontrada, criando nova empresa...')
+        logger.warn('⚠️ Empresa não encontrada, criando nova empresa...')
         
         const novaEmpresa = {
           id: empresaInfo.id,
@@ -213,15 +214,15 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
           .select()
           .single()
 
-        console.log('📝 Resultado da criação:', { empresaCriada, errorCriacao })
+        logger.debug('📝 Resultado da criação:', { empresaCriada, errorCriacao })
 
         if (errorCriacao) {
-          console.error('❌ Erro ao criar empresa:', errorCriacao)
+          logger.error('❌ Erro ao criar empresa:', errorCriacao)
           setMessage('Erro ao criar registro da empresa: ' + errorCriacao.message)
           return
         }
 
-        console.log('✅ Empresa criada e cor personalizada salva com sucesso!')
+        logger.info('✅ Empresa criada e cor personalizada salva com sucesso!')
         setMessage('Empresa criada e cor personalizada salva com sucesso!')
         setTimeout(() => setMessage(''), 3000)
         
@@ -229,7 +230,7 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
         setEmpresaInfo(prev => prev ? { ...prev, cor_personalizada: corPersonalizada } : prev)
         return
       } else if (errorBusca) {
-        console.error('❌ Erro ao buscar empresa:', errorBusca)
+        logger.error('❌ Erro ao buscar empresa:', errorBusca)
         setMessage('Erro ao buscar dados da empresa: ' + errorBusca.message)
         return
       }
@@ -244,7 +245,7 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
         .eq('id', empresaInfo.id)
         .select('id, nome, cor_personalizada')
 
-      console.log('📥 Resposta do update da cor personalizada:', { 
+      logger.debug('📥 Resposta do update da cor personalizada:', { 
         data, 
         error,
         dataLength: data?.length,
@@ -252,27 +253,27 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
       })
 
       if (error) {
-        console.error('❌ Erro do Supabase no update da cor personalizada:', error)
+        logger.error('❌ Erro do Supabase no update da cor personalizada:', error)
         setMessage('Erro ao salvar cor personalizada: ' + error.message)
         return
       }
 
       if (!data || data.length === 0) {
-        console.error('❌ Nenhum registro foi atualizado')
+        logger.error('❌ Nenhum registro foi atualizado')
         setMessage('Erro: Nenhum registro foi atualizado. Verifique as permissões.')
         return
       }
 
       // Verificar se a cor foi realmente salva
       const corPersonalizadaSalva = data[0]?.cor_personalizada
-      console.log('🔍 Verificando cor salva:', { 
+      logger.debug('🔍 Verificando cor salva:', { 
         corPersonalizadaEnviada: corPersonalizada,
         corPersonalizadaSalva: corPersonalizadaSalva,
         iguais: corPersonalizada === corPersonalizadaSalva
       })
 
       if (corPersonalizada !== corPersonalizadaSalva) {
-        console.error('❌ Cor não foi salva corretamente:', { 
+        logger.error('❌ Cor não foi salva corretamente:', { 
           corPersonalizadaEnviada: corPersonalizada, 
           corPersonalizadaSalva: corPersonalizadaSalva
         })
@@ -280,7 +281,7 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
         return
       }
 
-      console.log('✅ Cor personalizada salva com sucesso!', data[0])
+      logger.info('✅ Cor personalizada salva com sucesso!', data[0])
       setMessage('Cor personalizada salva com sucesso!')
       setTimeout(() => setMessage(''), 3000)
       
@@ -288,7 +289,7 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
       setEmpresaInfo(prev => prev ? { ...prev, cor_personalizada: corPersonalizada } : prev)
 
     } catch (error) {
-      console.error('💥 Erro inesperado ao salvar cor personalizada:', error)
+      logger.error('💥 Erro inesperado ao salvar cor personalizada:', error)
       setMessage('Erro inesperado ao salvar cor personalizada: ' + (error as Error).message)
     } finally {
       setSalvandoCor(false)
@@ -297,7 +298,7 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
 
   // Função para salvar cores das promoções
   const salvarPromocoes = async () => {
-    console.log('🎨 Iniciando salvamento das cores das promoções:', { 
+    logger.debug('🎨 Iniciando salvamento das cores das promoções:', { 
       empresaInfo, 
       corPrimaria,
       corSecundaria,
@@ -306,7 +307,7 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
     })
     
     if (!empresaInfo?.id) {
-      console.log('❌ Erro: empresaInfo.id não encontrado', empresaInfo)
+      logger.warn('❌ Erro: empresaInfo.id não encontrado', empresaInfo)
       setMessage('Erro: Informações da empresa não encontradas')
       return
     }
@@ -314,19 +315,19 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
     // Validar formato das cores
     const corRegex = /^#[0-9A-Fa-f]{6}$/
     if (!corRegex.test(corPrimaria)) {
-      console.log('❌ Formato de cor primária inválido:', corPrimaria)
+      logger.warn('❌ Formato de cor primária inválido:', corPrimaria)
       setMessage('Erro: Formato de cor primária inválido. Use o formato #RRGGBB')
       return
     }
     if (!corRegex.test(corSecundaria)) {
-      console.log('❌ Formato de cor secundária inválido:', corSecundaria)
+      logger.warn('❌ Formato de cor secundária inválido:', corSecundaria)
       setMessage('Erro: Formato de cor secundária inválido. Use o formato #RRGGBB')
       return
     }
 
     setSalvandoPromocoes(true)
     try {
-      console.log('📤 Enviando cores das promoções para Supabase:', {
+      logger.debug('📤 Enviando cores das promoções para Supabase:', {
         cor_primaria: corPrimaria,
         cor_secundaria: corSecundaria,
         empresa_id: empresaInfo.id,
@@ -344,7 +345,7 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
         .eq('id', empresaInfo.id)
         .select('id, nome, cor_primaria, cor_secundaria')
 
-      console.log('📥 Resposta do update das cores das promoções:', { 
+      logger.debug('📥 Resposta do update das cores das promoções:', { 
         data, 
         error,
         dataLength: data?.length,
@@ -352,18 +353,18 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
       })
 
       if (error) {
-        console.error('❌ Erro do Supabase no update das cores das promoções:', error)
+        logger.error('❌ Erro do Supabase no update das cores das promoções:', error)
         setMessage('Erro ao salvar cores das promoções: ' + error.message)
         return
       }
 
       if (!data || data.length === 0) {
-        console.error('❌ Nenhum registro foi atualizado')
+        logger.error('❌ Nenhum registro foi atualizado')
         setMessage('Erro: Nenhum registro foi atualizado. Verifique as permissões.')
         return
       }
 
-      console.log('✅ Cores das promoções salvas com sucesso!', data[0])
+      logger.info('✅ Cores das promoções salvas com sucesso!', data[0])
       setMessage('Cores das promoções salvas com sucesso!')
       setTimeout(() => setMessage(''), 3000)
       
@@ -371,7 +372,7 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
       setEmpresaInfo(prev => prev ? { ...prev, cor_primaria: corPrimaria, cor_secundaria: corSecundaria } : prev)
 
     } catch (error) {
-      console.error('💥 Erro inesperado ao salvar cores das promoções:', error)
+      logger.error('💥 Erro inesperado ao salvar cores das promoções:', error)
       setMessage('Erro inesperado ao salvar cores das promoções: ' + (error as Error).message)
     } finally {
       setSalvandoPromocoes(false)

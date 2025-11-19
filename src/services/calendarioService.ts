@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase'
+import { logger } from '../utils/logger'
 
 export interface Tarefa {
   id?: string
@@ -94,11 +95,11 @@ export class CalendarioService {
       const empresa_id = user.user_metadata?.empresa_id
       
       if (!empresa_id) {
-        console.error('❌ Empresa ID não encontrado para listar tarefas')
+        logger.error('❌ Empresa ID não encontrado para listar tarefas')
         throw new Error('Empresa não encontrada no perfil do usuário')
       }
 
-      console.log('🔍 Buscando tarefas para empresa:', empresa_id)
+      logger.debug('🔍 Buscando tarefas para empresa', { empresa_id })
 
       let query = supabase
         .from('tarefas')
@@ -127,11 +128,11 @@ export class CalendarioService {
       const { data, error } = await query
 
       if (error) {
-        console.error('Erro ao listar tarefas:', error)
+        logger.error('Erro ao listar tarefas:', error)
         throw error
       }
 
-      console.log('✅ Tarefas encontradas:', data?.length || 0)
+      logger.debug('✅ Tarefas encontradas', { count: data?.length || 0 })
       return data || []
     } catch (error) {
       console.error('Erro no serviço de listagem de tarefas:', error)
@@ -242,11 +243,12 @@ export class CalendarioService {
       const empresa_id = user.user_metadata?.empresa_id
       
       if (!empresa_id) {
-        console.error('❌ Empresa ID não encontrado para listar compromissos')
+        logger.error('❌ Empresa ID não encontrado para listar compromissos')
         throw new Error('Empresa não encontrada no perfil do usuário')
       }
 
-      console.log('🔍 Buscando compromissos para empresa:', empresa_id)
+      // Substituir log verboso por logger.debug condicionado ao ambiente
+      logger.debug('🔍 Buscando compromissos para empresa', { empresa_id })
 
       let query = supabase
         .from('compromissos')
@@ -275,11 +277,11 @@ export class CalendarioService {
       const { data, error } = await query
 
       if (error) {
-        console.error('Erro ao listar compromissos:', error)
+        logger.error('Erro ao listar compromissos:', error)
         throw error
       }
 
-      console.log('✅ Compromissos encontrados:', data?.length || 0)
+      logger.debug('✅ Compromissos encontrados', { count: data?.length || 0 })
       return data || []
     } catch (error) {
       console.error('Erro no serviço de listagem de compromissos:', error)
@@ -431,4 +433,4 @@ export class CalendarioService {
       throw error
     }
   }
-} 
+}

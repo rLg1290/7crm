@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Calendar, Clock, Plus, Check, X, Edit, Trash2, AlertCircle, CheckCircle, Undo2, Filter, Bell, ChevronLeft, ChevronRight, TrendingUp, Users, FileText, AlertTriangle, CalendarDays } from 'lucide-react'
 import { CalendarioService, Tarefa, Compromisso } from '../services/calendarioService'
+import { logger } from '../utils/logger'
 
 interface ModalData {
   tipo: 'tarefa' | 'compromisso'
@@ -164,7 +165,7 @@ export default function Calendario() {
       setTarefas(tarefasData)
       setCompromissos(compromissosData)
     } catch (error) {
-      console.error('Erro ao carregar dados:', error)
+      logger.error('Erro ao carregar dados:', error)
     } finally {
       setLoading(false)
     }
@@ -175,10 +176,7 @@ export default function Calendario() {
     const proximos7DiasData = obterDataAmanhaSemana(7)
     const proximos7DiasString = `${proximos7DiasData.getFullYear()}-${String(proximos7DiasData.getMonth() + 1).padStart(2, '0')}-${String(proximos7DiasData.getDate()).padStart(2, '0')}`
     
-    console.log('📅 Calculando estatísticas...')
-    console.log('🔍 Data de hoje:', hoje)
-    console.log('📊 Total de tarefas:', tarefas.length)
-    console.log('📊 Total de compromissos:', compromissos.length)
+    logger.debug('📅 Calculando estatísticas...', { hoje, totalTarefas: tarefas.length, totalCompromissos: compromissos.length })
 
     // Calcular estatísticas
     const tarefasPendentes = tarefas.filter(t => t.status !== 'concluida' && t.status !== 'cancelada').length
@@ -197,11 +195,7 @@ export default function Calendario() {
       t.prioridade === 'alta' && t.status !== 'concluida'
     ).length
 
-    console.log('📊 Estatísticas calculadas:')
-    console.log('  - Tarefas pendentes:', tarefasPendentes)
-    console.log('  - Tarefas em atraso:', tarefasEmAtraso)
-    console.log('  - Compromissos hoje:', compromissosHoje)
-    console.log('  - Tarefas urgentes:', tarefasUrgentes)
+    logger.debug('📊 Estatísticas calculadas', { tarefasPendentes, tarefasEmAtraso, compromissosHoje, tarefasUrgentes })
 
     // Próximos eventos (próximos 7 dias)
     const proximosEventos: EventoCalendario[] = []
@@ -312,9 +306,7 @@ export default function Calendario() {
       return dataB.localeCompare(dataA)
     })
 
-    console.log('📝 Próximos eventos encontrados:', proximosEventos.length)
-    console.log('⚠️ Tarefas atrasadas encontradas:', tarefasAtrasadas.length)
-    console.log('🔄 Concluídos recentemente encontrados:', concluidosRecentemente.length)
+    logger.debug('📋 Resumo eventos', { proximosEventos: proximosEventos.length, tarefasAtrasadas: tarefasAtrasadas.length, concluidosRecentemente: concluidosRecentemente.length })
 
     setEstatisticas({
       tarefasPendentes,
@@ -446,7 +438,7 @@ export default function Calendario() {
       fecharModal()
       carregarDados()
     } catch (error) {
-      console.error('Erro ao salvar:', error)
+      logger.error('Erro ao salvar:', error)
       alert('Erro ao salvar item')
     }
   }
@@ -459,10 +451,10 @@ export default function Calendario() {
         
         // Log para debug
         if (tarefa.status === 'concluida') {
-          console.log('🔄 Desfazendo conclusão da tarefa:', tarefa.titulo)
+          logger.debug('🔄 Desfazendo conclusão da tarefa', { titulo: tarefa.titulo })
           alert('✅ Conclusão desfeita! A tarefa foi marcada como pendente.')
         } else {
-          console.log('✅ Marcando tarefa como concluída:', tarefa.titulo)
+          logger.debug('✅ Marcando tarefa como concluída', { titulo: tarefa.titulo })
         }
         
         await CalendarioService.atualizarTarefa(tarefa.id!, { status: novoStatus })
@@ -472,17 +464,17 @@ export default function Calendario() {
         
         // Log para debug
         if (compromisso.status === 'realizado') {
-          console.log('🔄 Desfazendo realização do compromisso:', compromisso.titulo)
+          logger.debug('🔄 Desfazendo realização do compromisso', { titulo: compromisso.titulo })
           alert('✅ Realização desfeita! O compromisso foi marcado como agendado.')
         } else {
-          console.log('✅ Marcando compromisso como realizado:', compromisso.titulo)
+          logger.debug('✅ Marcando compromisso como realizado', { titulo: compromisso.titulo })
         }
         
         await CalendarioService.atualizarCompromisso(compromisso.id!, { status: novoStatus })
       }
       carregarDados()
     } catch (error) {
-      console.error('Erro ao alterar status:', error)
+      logger.error('Erro ao alterar status:', error)
       alert('❌ Erro ao alterar status do item')
     }
   }
@@ -498,7 +490,7 @@ export default function Calendario() {
       }
       carregarDados()
     } catch (error) {
-      console.error('Erro ao excluir:', error)
+      logger.error('Erro ao excluir:', error)
     }
   }
 
@@ -949,8 +941,8 @@ export default function Calendario() {
             {/* Calendário Grid */}
             <div className="grid grid-cols-7 gap-1">
               {/* Cabeçalho dos dias */}
-              {diasSemana.map((dia) => (
-                <div key={dia} className="p-2 text-center text-xs font-medium text-gray-500">
+              {diasSemana.map((dia, idx) => (
+                <div key={`dow-${idx}`} className="p-2 text-center text-xs font-medium text-gray-500">
                   {dia}
                 </div>
               ))}
@@ -1458,4 +1450,4 @@ export default function Calendario() {
       )}
     </div>
   )
-} 
+}

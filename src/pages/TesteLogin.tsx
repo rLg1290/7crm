@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
+import logger from '../utils/logger'
 import { Wrench, Database, Calendar, CheckCircle, AlertTriangle, ArrowLeft } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
@@ -13,7 +14,7 @@ const TesteLogin = () => {
     setResultado('Testando tabelas do calendário...')
     
     try {
-      console.log('📅 Verificando se tabelas tarefas e compromissos existem...')
+      logger.debug('📅 Verificando se tabelas tarefas e compromissos existem...')
       
       // Teste 1: Verificar se tabela tarefas existe
       const { data: tarefasTest, error: tarefasError } = await supabase
@@ -22,14 +23,14 @@ const TesteLogin = () => {
         .limit(1)
       
       if (tarefasError) {
-        console.error('❌ Erro ao consultar tabela tarefas:', tarefasError)
+        logger.error('❌ Erro ao consultar tabela tarefas:', tarefasError)
         setResultado(`❌ Tabela tarefas não existe ou tem erro: ${tarefasError.message}
         
 SOLUÇÃO: Execute o script supabase_calendario_tables.sql no SQL Editor do Supabase`)
         return
       }
       
-      console.log('✅ Tabela tarefas existe e é acessível')
+      logger.debug('✅ Tabela tarefas existe e é acessível')
       
       // Teste 2: Verificar se tabela compromissos existe  
       const { data: compromissosTest, error: compromissosError } = await supabase
@@ -38,14 +39,14 @@ SOLUÇÃO: Execute o script supabase_calendario_tables.sql no SQL Editor do Supa
         .limit(1)
       
       if (compromissosError) {
-        console.error('❌ Erro ao consultar tabela compromissos:', compromissosError)
+        logger.error('❌ Erro ao consultar tabela compromissos:', compromissosError)
         setResultado(`❌ Tabela compromissos não existe ou tem erro: ${compromissosError.message}
         
 SOLUÇÃO: Execute o script supabase_calendario_tables.sql no SQL Editor do Supabase`)
         return
       }
       
-      console.log('✅ Tabela compromissos existe e é acessível')
+      logger.debug('✅ Tabela compromissos existe e é acessível')
       
       setResultado(`✅ Todas as tabelas do calendário existem!
       
@@ -56,7 +57,7 @@ Registros encontrados:
 - Compromissos: ${compromissosTest?.length || 0}`)
       
     } catch (error) {
-      console.error('💥 Erro inesperado:', error)
+      logger.error('💥 Erro inesperado:', error)
       setResultado(`💥 Erro inesperado: ${error}`)
     } finally {
       setLoading(false)
@@ -68,7 +69,7 @@ Registros encontrados:
     setResultado('Testando criação de tarefa diretamente...')
     
     try {
-      console.log('📝 Testando criação de tarefa...')
+      logger.debug('📝 Testando criação de tarefa...')
       
       // Verificar se usuário está logado
       const { data: { user } } = await supabase.auth.getUser()
@@ -82,8 +83,8 @@ Para testar criação de tarefas, você precisa:
         return
       }
       
-      console.log('✅ Usuário logado:', user.email)
-      console.log('📋 Metadados do usuário:', user.user_metadata)
+      logger.debug('✅ Usuário logado:', user.email)
+      logger.debug('📋 Metadados do usuário:', user.user_metadata)
       
       // Verificar se tem empresa_id
       if (!user.user_metadata?.empresa_id) {
@@ -112,7 +113,7 @@ PROBLEMA: O usuário foi criado sem empresa_id vinculada.`)
         usuario_id: user.id
       }
       
-      console.log('📝 Criando tarefa:', novaTarefa)
+      logger.debug('📝 Criando tarefa:', novaTarefa)
       
       const { data: tarefaCriada, error: erroTarefa } = await supabase
         .from('tarefas')
@@ -121,7 +122,7 @@ PROBLEMA: O usuário foi criado sem empresa_id vinculada.`)
         .single()
       
       if (erroTarefa) {
-        console.error('❌ Erro ao criar tarefa:', erroTarefa)
+        logger.error('❌ Erro ao criar tarefa:', erroTarefa)
         setResultado(`❌ Erro ao criar tarefa: ${erroTarefa.message}
         
 Código: ${erroTarefa.code}
@@ -130,7 +131,7 @@ Dica: ${erroTarefa.hint}`)
         return
       }
       
-      console.log('✅ Tarefa criada com sucesso:', tarefaCriada)
+      logger.debug('✅ Tarefa criada com sucesso:', tarefaCriada)
       
       setResultado(`✅ Tarefa criada com sucesso!
       
@@ -140,7 +141,7 @@ Tarefa ID: ${tarefaCriada.id}
 Título: ${tarefaCriada.titulo}`)
       
     } catch (error) {
-      console.error('❌ Erro ao criar tarefa:', error)
+      logger.error('❌ Erro ao criar tarefa:', error)
       setResultado(`❌ Erro ao criar tarefa: ${error}
       
 Detalhes completos no Console (F12)`)
@@ -154,7 +155,7 @@ Detalhes completos no Console (F12)`)
     setResultado('Testando criação de compromisso diretamente...')
     
     try {
-      console.log('📅 Testando criação de compromisso...')
+      logger.debug('📅 Testando criação de compromisso...')
       
       // Verificar se usuário está logado
       const { data: { user } } = await supabase.auth.getUser()
@@ -188,7 +189,7 @@ Para testar criação de compromissos, você precisa:
         usuario_id: user.id
       }
       
-      console.log('📅 Criando compromisso:', novoCompromisso)
+      logger.debug('📅 Criando compromisso:', novoCompromisso)
       
       const { data: compromissoCriado, error: erroCompromisso } = await supabase
         .from('compromissos')
@@ -197,7 +198,7 @@ Para testar criação de compromissos, você precisa:
         .single()
       
       if (erroCompromisso) {
-        console.error('❌ Erro ao criar compromisso:', erroCompromisso)
+        logger.error('❌ Erro ao criar compromisso:', erroCompromisso)
         setResultado(`❌ Erro ao criar compromisso: ${erroCompromisso.message}
         
 Código: ${erroCompromisso.code}
@@ -206,7 +207,7 @@ Dica: ${erroCompromisso.hint}`)
         return
       }
       
-      console.log('✅ Compromisso criado com sucesso:', compromissoCriado)
+      logger.debug('✅ Compromisso criado com sucesso:', compromissoCriado)
       
       setResultado(`✅ Compromisso criado com sucesso!
       
@@ -216,7 +217,7 @@ Título: ${compromissoCriado.titulo}
 Data: ${compromissoCriado.data}`)
       
     } catch (error) {
-      console.error('❌ Erro ao criar compromisso:', error)
+      logger.error('❌ Erro ao criar compromisso:', error)
       setResultado(`❌ Erro ao criar compromisso: ${error}`)
     } finally {
       setLoading(false)

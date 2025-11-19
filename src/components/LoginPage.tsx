@@ -48,6 +48,87 @@ const LoginPage = () => {
     }
   }
 
+  // Vincular automaticamente o usuário à empresa ao logar (ou após signUp quando houver sessão)
+  const ensureUsuarioEmpresaLink = async () => {
+    try {
+      const { data: userData } = await supabase.auth.getUser()
+      const user = userData?.user
+      if (!user) return
+
+      // Tentar obter empresa_id dos metadados, profiles ou via codigo_agencia
+      let empresaId: number | null | undefined = user.user_metadata?.empresa_id
+
+      if (!empresaId) {
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('empresa_id')
+          .eq('id', user.id)
+          .limit(1)
+        if (profileData && profileData.length > 0) {
+          empresaId = profileData[0].empresa_id
+        }
+      }
+
+      if (!empresaId && user.user_metadata?.codigo_agencia) {
+        const { data: empresasData } = await supabase
+          .from('empresas')
+          .select('id')
+          .eq('codigo_agencia', user.user_metadata.codigo_agencia)
+          .eq('ativo', true)
+          .limit(1)
+        if (empresasData && empresasData.length > 0) {
+          empresaId = empresasData[0].id
+        }
+      }
+
+      if (!empresaId) return
+
+      // Verificar se já existe vínculo
+      const { data: vinculo } = await supabase
+        .from('usuarios_empresas')
+        .select('usuario_id')
+        .eq('usuario_id', user.id)
+        .eq('empresa_id', empresaId)
+        .limit(1)
+
+      if (!vinculo || vinculo.length === 0) {
+        await supabase
+          .from('usuarios_empresas')
+          .insert({ usuario_id: user.id, empresa_id: empresaId })
+      }
+    } catch (err) {
+      console.warn('Falha ao vincular usuário à empresa automaticamente:', err)
+    }
+  }
+
+  // Criar vínculo imediatamente após o signUp, mesmo sem sessão (via RPC com SECURITY DEFINER) ou fallback insert
+  const linkUsuarioEmpresa = async (usuarioId: string, empresaId: number) => {
+    // Tenta via RPC (recomendado). Requer função link_usuario_empresa no banco com SECURITY DEFINER.
+    try {
+      const { error: rpcError } = await supabase.rpc('link_usuario_empresa', {
+        p_usuario_id: usuarioId,
+        p_empresa_id: empresaId
+      })
+      if (!rpcError) return true
+      console.warn('RPC link_usuario_empresa retornou erro, tentando fallback insert:', rpcError)
+    } catch (rpcEx) {
+      console.warn('Falha RPC link_usuario_empresa, tentando fallback insert:', rpcEx)
+    }
+
+    // Fallback: tentar inserir direto (funciona se houver sessão do usuário)
+    try {
+      const { error: insertError } = await supabase
+        .from('usuarios_empresas')
+        .insert({ usuario_id: usuarioId, empresa_id: empresaId })
+      if (!insertError) return true
+      console.warn('Falha insert usuarios_empresas:', insertError)
+    } catch (insEx) {
+      console.warn('Exceção ao inserir usuarios_empresas:', insEx)
+    }
+
+    return false
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
@@ -74,6 +155,9 @@ const LoginPage = () => {
 
         if (error) {
           setMessage('Erro no login: ' + error.message)
+        } else {
+          // Após login, vincular automaticamente o usuário à empresa
+          await ensureUsuarioEmpresaLink()
         }
       } else {
         // Cadastro - Validar código de agência primeiro
@@ -92,7 +176,7 @@ const LoginPage = () => {
         }
 
         // Cadastrar usuário
-        const { error } = await supabase.auth.signUp({
+        const { data: signUpData, error } = await supabase.auth.signUp({
           email: formData.email,
           password: formData.password,
           options: {
@@ -109,6 +193,16 @@ const LoginPage = () => {
           setMessage('Erro no cadastro: ' + error.message)
         } else {
           setMessage('Cadastro realizado com sucesso! Verifique seu email para confirmar a conta.')
+
+          // Criar vínculo usuarios_empresas imediatamente usando o id retornado pelo signUp
+          if (signUpData?.user && empresa?.id) {
+            await linkUsuarioEmpresa(signUpData.user.id, empresa.id)
+          }
+
+          // Se houver sessão (confirmação desativada), também garantir vínculo pelo fluxo padrão
+          if (signUpData?.session) {
+            await ensureUsuarioEmpresaLink()
+          }
         }
       }
     } catch (error) {
@@ -401,4 +495,4 @@ const LoginPage = () => {
   )
 }
 
-export default LoginPage 
+export default LoginPage

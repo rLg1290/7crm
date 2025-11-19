@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { NotificationService, Notificacao } from '../services/notificationService'
+import { logger } from '../utils/logger'
 
 interface UseNotificationsReturn {
   notificacoes: Notificacao[]
@@ -28,7 +29,7 @@ export const useNotifications = (autoRefreshInterval = 2 * 60 * 1000): UseNotifi
       
       if (forcarRefresh) {
         // Forçar busca no banco de dados
-        console.log('🔄 Forçando refresh das notificações...')
+        logger.debug('🔄 Forçando refresh das notificações...')
         notificacoesCarregadas = await NotificationService.atualizarNotificacoes()
       } else {
         // Tentar carregar do cache primeiro
@@ -36,18 +37,18 @@ export const useNotifications = (autoRefreshInterval = 2 * 60 * 1000): UseNotifi
         
         // Se não houver cache, buscar do banco
         if (notificacoesCarregadas.length === 0) {
-          console.log('📱 Cache vazio, buscando notificações do banco...')
+          logger.debug('📱 Cache vazio, buscando notificações do banco...')
           notificacoesCarregadas = await NotificationService.gerarNotificacoes()
           NotificationService.salvarNotificacoes(notificacoesCarregadas)
         } else {
-          console.log('📱 Carregando notificações do cache...')
+          logger.debug('📱 Carregando notificações do cache...')
         }
       }
       
       setNotificacoes(notificacoesCarregadas)
       
     } catch (error) {
-      console.error('❌ Erro ao carregar notificações:', error)
+      logger.error('❌ Erro ao carregar notificações:', error)
       setError('Erro ao carregar notificações')
       setNotificacoes([])
     } finally {
@@ -65,7 +66,7 @@ export const useNotifications = (autoRefreshInterval = 2 * 60 * 1000): UseNotifi
     if (!autoRefreshInterval) return
 
     const interval = setInterval(() => {
-      console.log('🔄 Auto-refresh das notificações...')
+      logger.debug('🔄 Auto-refresh das notificações...')
       carregarNotificacoes()
     }, autoRefreshInterval)
 
@@ -74,19 +75,19 @@ export const useNotifications = (autoRefreshInterval = 2 * 60 * 1000): UseNotifi
 
   // 🎯 FUNÇÕES DE MANIPULAÇÃO
   const marcarComoLida = useCallback((id: string) => {
-    console.log(`✅ Marcando notificação como lida: ${id}`)
+    logger.debug('✅ Marcando notificação como lida', { id })
     const notificacoesAtualizadas = NotificationService.marcarComoLida(id)
     setNotificacoes(notificacoesAtualizadas)
   }, [])
 
   const marcarTodasComoLidas = useCallback(() => {
-    console.log('✅ Marcando todas as notificações como lidas')
+    logger.debug('✅ Marcando todas as notificações como lidas')
     const notificacoesAtualizadas = NotificationService.marcarTodasComoLidas()
     setNotificacoes(notificacoesAtualizadas)
   }, [])
 
   const remover = useCallback((id: string) => {
-    console.log(`🗑️ Removendo notificação: ${id}`)
+    logger.debug('🗑️ Removendo notificação', { id })
     const notificacoesAtualizadas = NotificationService.removerNotificacao(id)
     setNotificacoes(notificacoesAtualizadas)
   }, [])
@@ -110,4 +111,4 @@ export const useNotifications = (autoRefreshInterval = 2 * 60 * 1000): UseNotifi
     marcarTodasComoLidas,
     remover
   }
-} 
+}

@@ -13,16 +13,7 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api/hotelbeds': {
-        target: 'https://api.test.hotelbeds.com',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/hotelbeds/, ''),
-        configure: (proxy, options) => {
-          proxy.on('proxyReq', (proxyReq, req, res) => {
-            console.log('🔄 Proxy request:', req.method, req.url)
-          })
-        }
-      }
+      // Integração com Hotelbeds desativada
     }
   }
 })

@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Users, Search, Plus, Mail, Phone, Edit, Trash2, X, ChevronLeft, ChevronRight, FileText, User, MessageCircle, Calendar, CreditCard, Globe } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import logger from '../utils/logger'
 import { User as SupabaseUser } from '@supabase/supabase-js'
 
 interface Cliente {
@@ -67,6 +68,8 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
     observacoes: ''
   })
 
+  const lastEmpresaIdRef = useRef<string | null>(null)
+
   const steps = [
     { number: 1, title: 'Documentos', icon: FileText, description: 'Dados pessoais e documentação' },
     { number: 2, title: 'Contato', icon: User, description: 'Informações de contato e endereço' },
@@ -79,11 +82,11 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
       const empresaId = user.user_metadata?.empresa_id
       
       if (!empresaId) {
-        console.error('Empresa ID não encontrado nos metadados do usuário')
+        logger.error('Empresa ID não encontrado nos metadados do usuário')
         return
       }
       
-      console.log('🔍 Buscando clientes para empresa:', empresaId)
+      logger.debug('🔍 Buscando clientes para empresa', { empresaId })
       
       const { data, error } = await supabase
         .from('clientes')
@@ -92,19 +95,26 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
         .order('created_at', { ascending: false })
 
       if (error) {
-        console.error('❌ Erro ao buscar clientes:', error)
+        logger.error('❌ Erro ao buscar clientes', error)
         return
       }
 
-      console.log('✅ Clientes encontrados:', data?.length || 0)
+      logger.debug('✅ Clientes encontrados', { total: data?.length || 0 })
       setClientes(data || [])
     } catch (error) {
-      console.error('💥 Erro inesperado:', error)
+      logger.error('💥 Erro inesperado ao buscar clientes', error)
     }
   }
 
   // Carregar clientes ao montar o componente
   useEffect(() => {
+    const empresaId = user?.user_metadata?.empresa_id || null
+    // Evitar efeito duplicado em desenvolvimento (React 18 StrictMode)
+    if (import.meta.env.DEV && lastEmpresaIdRef.current === empresaId) {
+      logger.debug('StrictMode dev: evitando re-fetch duplicado de clientes', { empresaId })
+      return
+    }
+    lastEmpresaIdRef.current = empresaId
     fetchClientes()
   }, [user])
 
@@ -120,7 +130,7 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
       const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
       return date.toLocaleDateString('pt-BR')
     } catch (error) {
-      console.error('Erro ao formatar data:', dateString, error)
+      logger.error('Erro ao formatar data', { dateString, error })
       return 'Data inválida'
     }
   }
@@ -133,13 +143,13 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
       const empresaId = user.user_metadata?.empresa_id
       
       if (!empresaId) {
-        console.error('❌ Empresa ID não encontrado nos metadados:', user.user_metadata)
+        logger.error('❌ Empresa ID não encontrado nos metadados', user.user_metadata)
         alert('Erro: Empresa ID não encontrado. Faça login novamente.')
         setLoading(false)
         return
       }
       
-      console.log('💾 Salvando cliente para empresa:', empresaId)
+      logger.debug('💾 Salvando cliente para empresa', { empresaId })
       
       const clienteData = {
         nome: formData.nome,
@@ -158,7 +168,7 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
         empresa_id: empresaId
       }
 
-      console.log('📄 Dados do cliente a serem salvos:', clienteData)
+      logger.debug('📄 Dados do cliente a serem salvos', clienteData)
 
       const { data, error } = await supabase
         .from('clientes')
@@ -166,12 +176,12 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
         .select()
 
       if (error) {
-        console.error('❌ Erro detalhado ao salvar cliente:', error)
+        logger.error('❌ Erro ao salvar cliente', error)
         alert('Erro ao salvar cliente: ' + error.message)
         return
       }
 
-      console.log('✅ Cliente salvo com sucesso:', data)
+      logger.info('✅ Cliente salvo com sucesso', { count: Array.isArray(data) ? data.length : 0 })
 
       // Recarregar a lista de clientes
       await fetchClientes()
@@ -181,7 +191,7 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
       
       alert('Cliente salvo com sucesso! 🎉')
     } catch (error) {
-      console.error('💥 Erro inesperado ao salvar cliente:', error)
+      logger.error('💥 Erro inesperado ao salvar cliente', error)
       alert('Erro inesperado ao salvar cliente.')
     } finally {
       setLoading(false)
@@ -196,20 +206,20 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
       const empresaId = user.user_metadata?.empresa_id
       
       if (!empresaId) {
-        console.error('❌ Empresa ID não encontrado nos metadados:', user.user_metadata)
+        logger.error('❌ Empresa ID não encontrado nos metadados', user.user_metadata)
         alert('Erro: Empresa ID não encontrado. Faça login novamente.')
         setLoading(false)
         return
       }
       
       if (!editingClient) {
-        console.error('❌ Cliente para edição não encontrado')
+        logger.error('❌ Cliente para edição não encontrado')
         alert('Erro: Cliente para edição não encontrado.')
         setLoading(false)
         return
       }
       
-      console.log('✏️ Editando cliente ID:', editingClient.id)
+      logger.debug('✏️ Editando cliente', { id: editingClient.id })
       
       const clienteData = {
         nome: formData.nome,
@@ -227,7 +237,7 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
         observacoes: formData.observacoes || null
       }
 
-      console.log('📄 Dados do cliente a serem atualizados:', clienteData)
+      logger.debug('📄 Dados do cliente a serem atualizados', clienteData)
 
       const { data, error } = await supabase
         .from('clientes')
@@ -237,12 +247,12 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
         .select()
 
       if (error) {
-        console.error('❌ Erro detalhado ao editar cliente:', error)
+        logger.error('❌ Erro ao editar cliente', error)
         alert('Erro ao editar cliente: ' + error.message)
         return
       }
 
-      console.log('✅ Cliente editado com sucesso:', data)
+      logger.info('✅ Cliente editado com sucesso', { count: Array.isArray(data) ? data.length : 0 })
 
       // Recarregar a lista de clientes
       await fetchClientes()
@@ -253,7 +263,7 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
       
       alert('Cliente editado com sucesso! ✏️')
     } catch (error) {
-      console.error('💥 Erro inesperado ao editar cliente:', error)
+      logger.error('💥 Erro inesperado ao editar cliente', error)
       alert('Erro inesperado ao editar cliente.')
     } finally {
       setLoading(false)
@@ -375,7 +385,7 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
 
     try {
       setLoading(true)
-      console.log('🗑️ Verificando dependências do cliente:', cliente.id)
+      logger.debug('🗑️ Verificando dependências do cliente', { clienteId: cliente.id })
 
       // Verificar se o cliente tem contas a receber
       const { data: contasReceber, error: contasError } = await supabase
@@ -384,7 +394,7 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
         .eq('cliente_id', cliente.id)
 
       if (contasError) {
-        console.error('❌ Erro ao verificar contas a receber:', contasError)
+        logger.error('❌ Erro ao verificar contas a receber', contasError)
         alert('Erro ao verificar dependências do cliente.')
         return
       }
@@ -402,7 +412,7 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
         }
       }
 
-      console.log('🗑️ Excluindo cliente:', cliente.id)
+      logger.debug('🗑️ Excluindo cliente', { id: cliente.id })
 
       const { error } = await supabase
         .from('clientes')
@@ -410,7 +420,7 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
         .eq('id', cliente.id)
 
       if (error) {
-        console.error('❌ Erro ao excluir cliente:', error)
+        logger.error('❌ Erro ao excluir cliente', error)
         
         if (error.code === '23503') {
           const opcao = confirm('Não é possível excluir este cliente porque ele possui contas a receber vinculadas.\n\nDeseja visualizar as contas a receber deste cliente?')
@@ -423,14 +433,14 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
         return
       }
 
-      console.log('✅ Cliente excluído com sucesso')
+      logger.info('✅ Cliente excluído com sucesso', { id: cliente.id })
       
       // Remover cliente da lista local
       setClientes(prev => prev.filter(c => c.id !== cliente.id))
       
       alert('Cliente excluído com sucesso!')
     } catch (error) {
-      console.error('💥 Erro inesperado ao excluir:', error)
+      logger.error('💥 Erro inesperado ao excluir cliente', error)
       alert('Erro inesperado ao excluir cliente.')
     } finally {
       setLoading(false)

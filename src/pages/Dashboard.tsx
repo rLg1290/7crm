@@ -21,6 +21,7 @@ import type { ContasPagar, ContasReceber } from '../services/financeiroService'
 import { CalendarioService } from '../services/calendarioService'
 import NotificationCenter from '../components/NotificationCenter'
 import { ToastContainer } from '../components/ToastNotification'
+import logger from '../utils/logger'
 
 
 
@@ -89,20 +90,13 @@ const Dashboard = () => {
         .order('data_criacao', { ascending: false })
 
       if (error) {
-        console.error('Erro ao carregar cotações emitidas:', error)
+        logger.error('Erro ao carregar cotações emitidas:', error)
         return
       }
 
-      console.log('🔍 Cotações retornadas da query:', {
+      logger.debug('Cotações emitidas retornadas', {
         empresaId: empresaId,
-        totalRetornadas: cotacoes?.length || 0,
-        cotações: cotacoes?.map(c => ({
-          id: c.id,
-          valor: c.valor,
-          status: c.status,
-          empresa_id: c.empresa_id,
-          data: c.data_criacao
-        }))
+        totalRetornadas: cotacoes?.length || 0
       })
 
       setCotacoesEmitidas(cotacoes || [])
@@ -126,25 +120,11 @@ const Dashboard = () => {
       
       const vendasHoje = cotacoesHoje.reduce((total, cotacao) => total + (cotacao.valor || 0), 0)
       
-      console.log('📊 Vendas de hoje:', {
+      logger.debug('Resumo vendas de hoje', {
         dataHoje: hojeStr,
         totalCotacoes: cotacoes?.length || 0,
         cotacoesHoje: cotacoesHoje.length,
-        vendasHoje: vendasHoje,
-        cotacoesHojeDetalhes: cotacoesHoje.map(c => ({ 
-          id: c.id, 
-          valor: c.valor, 
-          data: c.data_criacao,
-          dataLocal: new Date(c.data_criacao).toLocaleDateString('pt-BR'),
-          status: c.status 
-        })),
-        todasCotacoes: cotacoes?.map(c => ({ 
-          id: c.id, 
-          valor: c.valor, 
-          data: c.data_criacao,
-          dataLocal: new Date(c.data_criacao).toLocaleDateString('pt-BR'),
-          status: c.status 
-        }))
+        vendasHoje
       })
 
       // Calcular vendas da semana
@@ -181,16 +161,10 @@ const Dashboard = () => {
         ? cotacoes.reduce((total, cotacao) => total + (cotacao.valor || 0), 0) / cotacoes.length 
         : 0
       
-      console.log('🎫 Ticket médio calculado:', {
+      logger.debug('Ticket médio calculado', {
         totalCotacoesEmitidas: cotacoes?.length || 0,
         valorTotal: cotacoes?.reduce((total, cotacao) => total + (cotacao.valor || 0), 0) || 0,
-        ticketMedio: ticketMedio,
-        detalhesCotacoes: cotacoes?.map(c => ({
-          id: c.id,
-          valor: c.valor,
-          status: c.status,
-          data: c.data_criacao
-        }))
+        ticketMedio: ticketMedio
       })
 
       // Atualizar dados financeiros
@@ -200,16 +174,15 @@ const Dashboard = () => {
           vendasHoje,
           ticketMedio
         }
-        console.log('💰 Dados financeiros atualizados:', {
+        logger.debug('Dados financeiros atualizados', {
           vendasHoje: novosDados.vendasHoje,
-          ticketMedio: novosDados.ticketMedio,
-          dadosAnteriores: prev
+          ticketMedio: novosDados.ticketMedio
         })
         return novosDados
       })
 
     } catch (error) {
-      console.error('Erro ao carregar cotações emitidas:', error)
+      logger.error('Erro ao carregar cotações emitidas:', error)
     }
   }
 
@@ -241,39 +214,40 @@ const Dashboard = () => {
           setContasPagar(contasPagarData)
 
           // Fetch contas a receber (need to get empresa_id first)
-          const { data: userEmpresa } = await supabase
+          const { data: userEmpresaRows } = await supabase
             .from('usuarios_empresas')
             .select('empresa_id')
             .eq('usuario_id', userData.user.id)
-            .single()
+            .limit(1)
           
           let contasReceberData: ContasReceber[] = []
+          const empresaId = Array.isArray(userEmpresaRows) && userEmpresaRows.length ? (userEmpresaRows[0] as any).empresa_id : null
           
-          if (userEmpresa?.empresa_id) {
-            contasReceberData = await financeiroService.getContasReceber(userEmpresa.empresa_id)
+          if (empresaId) {
+            contasReceberData = await financeiroService.getContasReceber(empresaId)
             setContasReceber(contasReceberData)
             
             // Buscar clientes ativos da empresa
             const { data: clientesData, error: clientesError } = await supabase
               .from('clientes')
               .select('id')
-              .eq('empresa_id', userEmpresa.empresa_id)
+              .eq('empresa_id', empresaId)
             
             if (!clientesError && clientesData) {
               setClientesAtivos(clientesData.length)
             }
             
             // Buscar tarefas de check-in próximas
-            await carregarCheckinsProximos(userEmpresa.empresa_id)
+            await carregarCheckinsProximos(empresaId)
             
             // Gerar notificações reais
-            await gerarNotificacoesReais(userEmpresa.empresa_id)
+            await gerarNotificacoesReais(empresaId)
             
             // Carregar tarefas do dia
-            await carregarTarefasDoDia(userEmpresa.empresa_id)
+            await carregarTarefasDoDia(empresaId)
             
             // Carregar cotações emitidas para vendas
-            await carregarCotacoesEmitidas(userEmpresa.empresa_id)
+            await carregarCotacoesEmitidas(empresaId)
           }
 
           // Calculate financial data
@@ -336,7 +310,7 @@ const Dashboard = () => {
         }
 
       } catch (error) {
-        console.error('Error fetching data:', error)
+        logger.error('Error fetching data:', error)
       } finally {
         setLoading(false)
       }
@@ -425,7 +399,7 @@ const Dashboard = () => {
               label: acaoLabel,
               onClick: () => {
                 // Aqui você pode implementar a navegação para a tarefa específica
-                console.log(`Navegar para tarefa: ${tarefa.id}`)
+                logger.info('Navegar para tarefa', { tarefaId: tarefa.id })
                 // Por exemplo: window.location.href = `/tarefas/${tarefa.id}`
               }
             }
@@ -469,7 +443,7 @@ const Dashboard = () => {
               action: {
                 label: 'Fazer Check-in',
                 onClick: () => {
-                  console.log(`Navegar para check-in: ${checkin.id}`)
+                  logger.info('Navegar para check-in', { checkinId: checkin.id })
                 }
               }
             })
@@ -487,7 +461,7 @@ const Dashboard = () => {
       setToasts(notificacoes.slice(0, 5))
 
     } catch (error) {
-      console.error('Erro ao gerar notificações reais:', error)
+      logger.error('Erro ao gerar notificações reais:', error)
     }
   }
 
@@ -518,16 +492,16 @@ const Dashboard = () => {
         .order('hora_vencimento', { ascending: true })
 
       if (tarefasError) {
-        console.error('Erro ao buscar tarefas do dia:', tarefasError)
+        logger.error('Erro ao buscar tarefas do dia:', tarefasError)
         return
       }
 
       if (tarefasData) {
         setTarefas(tarefasData)
-        console.log('📋 Tarefas do dia carregadas:', tarefasData.length)
+        logger.info('Tarefas do dia carregadas', { count: tarefasData.length })
       }
     } catch (error) {
-      console.error('Erro ao carregar tarefas do dia:', error)
+      logger.error('Erro ao carregar tarefas do dia:', error)
     }
   }
 
@@ -567,7 +541,7 @@ const Dashboard = () => {
         .order('hora_vencimento', { ascending: true })
 
       if (tarefasError) {
-        console.error('Erro ao buscar tarefas de check-in:', tarefasError)
+        logger.error('Erro ao buscar tarefas de check-in:', tarefasError)
         return
       }
 
@@ -623,7 +597,7 @@ const Dashboard = () => {
         setCheckinsProximos([])
       }
     } catch (error) {
-      console.error('Erro ao carregar check-ins próximos:', error)
+      logger.error('Erro ao carregar check-ins próximos:', error)
     }
   }
 
@@ -703,13 +677,13 @@ const Dashboard = () => {
 
       // Log para debug
       if (novoStatus === 'concluida') {
-        console.log('✅ Tarefa marcada como concluída no dashboard:', tarefaId)
-        console.log('📅 Agora aparecerá na seção "Concluídos Recentemente" do calendário')
+        logger.info('✅ Tarefa marcada como concluída no dashboard:', tarefaId)
+        logger.info('📅 Agora aparecerá na seção "Concluídos Recentemente" do calendário')
       } else {
-        console.log('🔄 Tarefa marcada como pendente no dashboard:', tarefaId)
+        logger.info('🔄 Tarefa marcada como pendente no dashboard:', tarefaId)
       }
     } catch (error) {
-      console.error('Erro ao alternar status da tarefa:', error)
+      logger.error('Erro ao alternar status da tarefa:', error)
     }
   }
 

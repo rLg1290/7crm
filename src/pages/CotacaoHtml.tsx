@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Printer } from 'lucide-react';
+import logger from '../utils/logger'
 
 const CotacaoHtml: React.FC = () => {
   const { id } = useParams();
@@ -17,7 +18,7 @@ const CotacaoHtml: React.FC = () => {
     if (!id) return;
     
     try {
-      console.log('🔍 Buscando dados da cotação:', id);
+      logger.debug('🔍 Buscando dados da cotação', { id });
       
       // Buscar cotação
       const { data: cotacaoData, error: cotacaoError } = await supabase
@@ -27,12 +28,12 @@ const CotacaoHtml: React.FC = () => {
         .single();
       
       if (cotacaoError) {
-        console.error('Erro ao buscar cotação:', cotacaoError);
+        logger.error('Erro ao buscar cotação', cotacaoError);
         return;
       }
       
       setCotacao(cotacaoData);
-      console.log('✅ Cotação carregada:', cotacaoData);
+      logger.debug('✅ Cotação carregada', { id: cotacaoData?.id });
       
       // Buscar cliente
       if (cotacaoData.cliente_id) {

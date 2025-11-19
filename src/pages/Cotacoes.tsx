@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { FileText, Plus, User, Calendar, Eye, Edit, Trash2, MoreVertical, Clock, CheckCircle, XCircle, AlertCircle, Target, GripVertical, Plane, Building, MapPin, Route, Users, DollarSign, ChevronLeft, ChevronRight, X, Search, ArrowRight, ArrowLeft, CheckSquare, ChevronDown, Printer } from 'lucide-react'
 import { User as SupabaseUser } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
+import logger from '../utils/logger'
 import { useNavigate } from 'react-router-dom'
 
 interface Cliente {
@@ -341,11 +342,11 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
       const empresaId = user?.user_metadata?.empresa_id;
       
       if (!empresaId) {
-        console.error('❌ Empresa ID não encontrado para carregar leads');
+        logger.error('❌ Empresa ID não encontrado para carregar leads');
         return;
       }
       
-      console.log('🔍 Buscando leads para empresa:', empresaId);
+      logger.debug('🔍 Buscando leads para empresa', { empresaId });
       
       const { data, error } = await supabase
         .from('leads')
@@ -357,14 +358,14 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         .order('created_at', { ascending: false })
 
       if (error) {
-        console.error('Erro ao carregar leads:', error)
+        logger.error('Erro ao carregar leads:', error)
         return
       }
 
-      console.log('✅ Leads carregados do Supabase:', data?.length || 0)
+      logger.info('Leads carregados do Supabase', { count: data?.length || 0 })
       setLeads(data || [])
     } catch (err) {
-      console.error('Erro inesperado ao carregar leads:', err)
+      logger.error('Erro inesperado ao carregar leads:', err)
     }
   }
 
@@ -394,19 +395,19 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         .select()
 
       if (error) {
-        console.error('Erro ao salvar lead:', error)
+        logger.error('Erro ao salvar lead:', error)
         alert('Erro ao salvar lead. Tente novamente.')
         return
       }
 
-      console.log('✅ Lead salvo com sucesso:', data)
+      logger.info('Lead salvo com sucesso', { inserted: (Array.isArray(data) ? data.length : 0) })
       await carregarLeads()
       setShowModalLead(false)
       setClienteSelecionado(null)
       setObservacaoLead('')
       alert('Lead criado com sucesso!')
     } catch (err) {
-      console.error('Erro inesperado ao salvar lead:', err)
+      logger.error('Erro inesperado ao salvar lead:', err)
       alert('Erro inesperado ao salvar lead.')
     } finally {
       setLoading(false)
@@ -457,22 +458,22 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         .single()
 
       if (errorCotacao) {
-        console.error('Erro ao criar cotação:', errorCotacao)
+        logger.error('Erro ao criar cotação:', errorCotacao)
         alert('Erro ao converter lead em cotação')
         return
       }
 
       // Remover tarefas vinculadas ao lead primeiro
       // Remover tarefas do lead (se existirem)
-      console.log('Verificando se há tarefas para remover do lead com ID:', lead.id)
+      logger.debug('Verificando se há tarefas para remover do lead', { leadId: lead.id })
       // Como não há mais lead_id, não precisamos remover tarefas específicas
-      console.log('Tarefas não precisam ser removidas (não há lead_id)')
+      logger.debug('Tarefas não precisam ser removidas (não há lead_id)')
 
       // Remover lead
-      console.log('Removendo lead com ID:', lead.id)
+      logger.info('Removendo lead', { leadId: lead.id })
       const leadIdNum = Number(lead.id)
       if (!Number.isFinite(leadIdNum)) {
-        console.error('ID de lead inválido para exclusão:', lead.id)
+        logger.warn('ID de lead inválido para exclusão', { leadId: lead.id })
       } else {
         const { error: errorLead } = await supabase
           .from('leads')
@@ -480,11 +481,11 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
           .eq('id', leadIdNum)
 
         if (errorLead) {
-          console.error('Erro ao remover lead:', errorLead)
+          logger.error('Erro ao remover lead:', errorLead)
           alert(`Erro ao remover lead: ${errorLead.message}`)
           // Não falhar se não conseguir remover o lead
         } else {
-          console.log('Lead removido com sucesso')
+          logger.info('Lead removido com sucesso', { leadId: leadIdNum })
         }
       }
 
@@ -492,10 +493,10 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
       await carregarLeads()
       await carregarCotacoes()
 
-      console.log('Lead convertido em cotação com sucesso')
+      logger.info('Lead convertido em cotação com sucesso', { leadId: lead.id })
       alert('Lead convertido em cotação com sucesso!')
     } catch (err) {
-      console.error('Erro inesperado ao converter lead:', err)
+      logger.error('Erro inesperado ao converter lead:', err)
       alert('Erro inesperado ao converter lead em cotação')
     }
   }
@@ -556,12 +557,12 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
       const empresaId = user?.user_metadata?.empresa_id;
       
       if (!empresaId) {
-        console.error('❌ Empresa ID não encontrado para carregar clientes');
+        logger.error('❌ Empresa ID não encontrado para carregar clientes');
         alert('Erro: empresa_id não encontrado. Faça login novamente.');
         return;
       }
       
-      console.log('🔍 Buscando clientes para empresa:', empresaId);
+      logger.debug('🔍 Buscando clientes para empresa', { empresaId });
       
       const { data, error } = await supabase
         .from('clientes')
@@ -570,15 +571,15 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         .order('nome')
       
       if (error) {
-        console.error('Erro ao carregar clientes:', error)
+        logger.error('Erro ao carregar clientes:', error)
         alert('Erro ao carregar clientes: ' + error.message)
         return
       }
       
-      console.log('✅ Clientes carregados com sucesso:', data?.length || 0, 'clientes')
+      logger.info('Clientes carregados com sucesso', { count: data?.length || 0 })
       setClientes(data || [])
     } catch (error) {
-      console.error('Erro inesperado ao carregar clientes:', error)
+      logger.error('Erro inesperado ao carregar clientes:', error)
       alert('Erro inesperado ao carregar clientes')
     } finally {
       setLoadingClientes(false)
@@ -1050,7 +1051,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
           .update(updateData)
           .eq('id', parseInt(itemId));
         if (error) {
-          console.error('Erro ao atualizar status da cotação:', error);
+          logger.error('Erro ao atualizar status da cotação:', error);
           alert('Erro ao atualizar status da cotação');
           return;
         }
@@ -1062,10 +1063,10 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
               : cotacao
           )
         );
-        console.log(`Cotação ${itemId} movida para ${novoStatus}`);
+        logger.info('Cotação movida para novo status', { itemId, novoStatus });
       }
     } catch (err) {
-      console.error('Erro inesperado ao atualizar status:', err);
+      logger.error('Erro inesperado ao atualizar status:', err);
       alert('Erro inesperado ao atualizar status');
     }
     setDraggedItem(null);
@@ -1137,7 +1138,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         .eq('cotacao_id', cotacaoId)
       
       if (error) {
-        console.error('Erro ao carregar voos:', error)
+        logger.error('Erro ao carregar voos:', error)
         return
       }
       
@@ -1168,7 +1169,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         setVoosSalvos(voosFormatados)
       }
     } catch (error) {
-      console.error('Erro ao carregar voos:', error)
+      logger.error('Erro ao carregar voos:', error)
     }
   }
 
@@ -1195,7 +1196,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         .eq('cotacao_id', cotacaoId)
       
       if (error) {
-        console.error('Erro ao carregar passageiros:', error)
+        logger.error('Erro ao carregar passageiros:', error)
         return
       }
       
@@ -1219,17 +1220,17 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
           passageiros: passageirosFormatados
         }))
         
-        console.log('Passageiros carregados:', passageirosFormatados)
+        logger.info('Passageiros carregados', { count: passageirosFormatados?.length || 0 })
       }
     } catch (error) {
-      console.error('Erro ao carregar passageiros:', error)
+      logger.error('Erro ao carregar passageiros:', error)
     }
   }
 
   const handleDeleteCotacao = async (cotacao: Cotacao) => {
     if (confirm(`Tem certeza que deseja excluir a cotação "${cotacao.titulo}"?`)) {
       try {
-        console.log('Tentando deletar cotação:', cotacao)
+        logger.info('Tentando deletar cotação', { idBanco: cotacao.idBanco, idLocal: cotacao.id })
         
         // Se for um lead representado como cartão, deletar da tabela 'leads' no banco
         if (cotacao.isLead) {
@@ -1245,7 +1246,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
           const leadId = Number.isInteger(leadIdFromData) ? leadIdFromData : leadIdFromString
 
           if (!Number.isInteger(leadId)) {
-            console.error('ID inválido para exclusão de lead:', cotacao.id, 'leadData.id:', cotacao.leadData?.id)
+            logger.warn('ID inválido para exclusão de lead', { cotacaoId: cotacao.id, leadId: cotacao.leadData?.id })
             alert('Erro: ID inválido do lead. Recarregue a página e tente novamente.')
             return
           }
@@ -1256,7 +1257,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
             .eq('id', leadId)
 
           if (deleteLeadError) {
-            console.error('Erro ao deletar lead:', deleteLeadError)
+            logger.error('Erro ao deletar lead:', deleteLeadError)
             alert('Erro ao deletar lead: ' + deleteLeadError.message)
             return
           }
@@ -1265,14 +1266,14 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
           setLeads(prev => prev.filter(l => l.id !== leadId))
           setCotacoes(prev => prev.filter(c => c.id !== cotacao.id))
           await carregarLeads()
-          console.log(`Lead ${leadId} deletado com sucesso do banco e removido da visualização`)
+          logger.info('Lead deletado com sucesso', { leadId })
           return
         }
 
         // Usar idBanco numérico para exclusão
         const cotacaoIdNum = Number.isInteger(cotacao.idBanco) ? cotacao.idBanco : Number(cotacao.id)
         if (!Number.isInteger(cotacaoIdNum)) {
-          console.error('ID inválido para exclusão de cotação:', cotacao.id, 'idBanco:', cotacao.idBanco)
+          logger.warn('ID inválido para exclusão de cotação', { idLocal: cotacao.id, idBanco: cotacao.idBanco })
           alert('Erro: ID inválido da cotação. Recarregue a página e tente novamente.')
           return
         }
@@ -1283,16 +1284,16 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
           .eq('id', cotacaoIdNum)
         
         if (error) {
-          console.error('Erro ao deletar cotação:', error)
+          logger.error('Erro ao deletar cotação:', error)
           alert('Erro ao deletar cotação: ' + error.message)
           return
         }
         
         // Atualizar estado local
         setCotacoes(prev => prev.filter(c => c.idBanco !== cotacaoIdNum))
-        console.log(`Cotação ${cotacao.id} deletada com sucesso`)
+        logger.info('Cotação deletada com sucesso', { idLocal: cotacao.id, idBanco: cotacaoIdNum })
       } catch (err) {
-        console.error('Erro inesperado ao deletar cotação:', err)
+        logger.error('Erro inesperado ao deletar cotação:', err)
         alert('Erro inesperado ao deletar cotação')
       }
     }
@@ -1381,7 +1382,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                 <button 
                   onClick={(e) => { 
                     e.stopPropagation(); 
-                    console.log('Abrindo modal de tarefas para lead:', cotacao.leadData);
+                    logger.debug('Abrindo modal de tarefas para lead', { id: cotacao.leadData.id });
                     setLeadSelecionado(cotacao.leadData);
                     setShowModalTarefas(true);
                     carregarTarefas(cotacao.leadData.id);
@@ -1920,7 +1921,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
       printWindow.document.close();
 
     } catch (error) {
-      console.error('Erro ao abrir pop-up de impressão:', error);
+      logger.error('Erro ao abrir pop-up de impressão', error);
       alert('Erro ao carregar dados da cotação');
     }
   };
@@ -1932,7 +1933,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
     try {
       // Extrair código IATA do formato "MCO - Orlando"
       const codigoIATA = codigoAeroporto.split(' - ')[0].trim().toUpperCase();
-      console.log('🌍 Buscando horário local para aeroporto:', codigoIATA);
+      logger.debug('🌍 Buscando horário local para aeroporto', { codigoIATA });
       
       // Buscar horário local via API AeroDataBox
       const url = `https://prod.api.market/api/v1/aedbx/aerodatabox/airports/iata/${codigoIATA}/time/local`;
@@ -1944,12 +1945,12 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
       });
 
       if (!response.ok) {
-        console.warn(`⚠️ Não foi possível obter horário local para ${codigoIATA}, usando fallback`);
+        logger.warn('⚠️ Não foi possível obter horário local para aeroporto, usando fallback', { codigoIATA });
         return null;
       }
 
       const dados = await response.json();
-      console.log('📡 Dados de horário local da API AeroDataBox:', dados);
+      logger.debug('📡 Dados de horário local da API AeroDataBox', { hasLocalTime: Boolean(dados?.localTime), hasUtcTime: Boolean(dados?.utcTime), timezone: dados?.timezone });
       
       // A API retorna localTime e utcTime, calcular offset
       if (dados.localTime && dados.utcTime) {
@@ -1957,7 +1958,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         const utcTime = new Date(dados.utcTime);
         const offsetHours = (localTime.getTime() - utcTime.getTime()) / (1000 * 60 * 60);
         
-        console.log('⏰ Offset calculado:', offsetHours, 'horas');
+        logger.debug('⏰ Offset calculado', { offsetHours });
         
         return {
           timezone: dados.timezone || 'UTC',
@@ -1968,14 +1969,17 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
       return null;
       
     } catch (error) {
-      console.error('❌ Erro ao buscar horário local do aeroporto:', error);
+      logger.error('❌ Erro ao buscar horário local do aeroporto', error);
       return null;
     }
   };
 
   const calcularDataCheckin = async (voo: Voo, opcaoCheckin: string): Promise<string | null> => {
-    console.log('🔍 DEBUG calcularDataCheckin - INÍCIO:', {
-      voo: { id: voo.id, origem: voo.origem, dataIda: voo.dataIda, horarioPartida: voo.horarioPartida },
+    logger.debug('🔍 calcularDataCheckin - início', {
+      vooId: voo.id,
+      origem: voo.origem,
+      dataIda: voo.dataIda,
+      horarioPartida: voo.horarioPartida,
       opcaoCheckin,
       embarqueData,
       embarqueHora
@@ -1993,7 +1997,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
       const horarioVoo = voo.horarioPartida || embarqueHora;
 
       if (!dataVoo || !horarioVoo) {
-        console.log('❌ Dados insuficientes:', { dataVoo, horarioVoo });
+        logger.warn('❌ Dados insuficientes para calcular check-in', { hasDataVoo: Boolean(dataVoo), hasHorarioVoo: Boolean(horarioVoo) });
         return null;
       }
 
@@ -2003,15 +2007,15 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
       // Validar formato do horário
       const regexHorario = /^\d{2}:\d{2}(:\d{2})?$/;
       if (!regexHorario.test(horarioVoo)) {
-        console.log('❌ DEBUG: Formato de horário inválido:', horarioVoo);
+        logger.warn('Formato de horário inválido', { horarioVoo });
         return null;
       }
 
-      console.log('📊 DEBUG: Dados validados:', { dataVoo, horarioLimpo, horasAntes });
+      logger.debug('📊 Dados validados', { dataVoo, horarioLimpo, horasAntes });
 
       // 🎯 **SOLUÇÃO PRÁTICA - Usar UTC da API AeroDataBox**
       if (voo.companhia && voo.numeroVoo && dataVoo) {
-        console.log('🔍 Buscando UTC da API AeroDataBox...');
+        logger.info('🔍 Buscando UTC da API AeroDataBox');
         
         try {
           // Buscar código IATA da companhia no banco
@@ -2041,35 +2045,35 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                 const vooApi = json?.[0];
                 
                 if (vooApi?.departure?.scheduledTime?.utc) {
-                  console.log('✅ UTC encontrado na API:', vooApi.departure.scheduledTime.utc);
+                  logger.info('✅ UTC encontrado na API');
                   
                   // **USAR DIRETAMENTE O UTC DA API**
                   const vooUTC = new Date(vooApi.departure.scheduledTime.utc);
-                  console.log('🕐 Voo UTC:', vooUTC.toISOString());
+                  logger.debug('🕐 Voo UTC', { iso: vooUTC.toISOString() });
                   
                   // Subtrair horas de check-in direto do UTC
                   const checkinUTC = new Date(vooUTC.getTime() - (horasAntes * 60 * 60 * 1000));
-                  console.log('⏰ Check-in UTC:', checkinUTC.toISOString());
+                  logger.debug('⏰ Check-in UTC', { iso: checkinUTC.toISOString() });
                   
                   // Converter para Brasil (UTC-3)
                   const checkinBrasil = new Date(checkinUTC.getTime() - (3 * 60 * 60 * 1000));
-                  console.log('🇧🇷 Check-in Brasil:', checkinBrasil.toISOString());
+                  logger.debug('🇧🇷 Check-in Brasil', { iso: checkinBrasil.toISOString() });
                   
                   // Formatar como timestamp simples YYYY-MM-DD HH:MM:SS
                   const resultado = checkinBrasil.toISOString().slice(0, 19).replace('T', ' ');
-                  console.log('✅ Resultado final com UTC da API:', resultado);
+                  logger.info('✅ Resultado final com UTC da API', { resultado });
                   return resultado;
                 }
               }
             }
           }
         } catch (apiError) {
-          console.log('⚠️ Erro na API, usando fallback:', apiError);
+          logger.warn('⚠️ Erro na API, usando fallback', apiError);
         }
       }
 
       // **FALLBACK SIMPLES**
-      console.log('🔄 API não disponível, usando cálculo direto...');
+      logger.info('🔄 API não disponível, usando cálculo direto...');
       
       // Criar timestamp simples assumindo horário local
       const dataHoraLocal = new Date(`${dataVoo}T${horarioLimpo}:00`);
@@ -2079,11 +2083,11 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
       
       // Formatar como timestamp simples
       const resultado = checkinLocal.toISOString().slice(0, 19).replace('T', ' ');
-      console.log('✅ Resultado fallback:', resultado);
+      logger.info('✅ Resultado fallback', { resultado });
       return resultado;
 
     } catch (error) {
-      console.error('❌ Erro ao calcular check-in:', error);
+      logger.error('❌ Erro ao calcular check-in', error);
       return null;
     }
   };
@@ -3362,7 +3366,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         // Código não existe, pode usar
         return codigo;
       } else if (error) {
-        console.error('Erro ao verificar código:', error);
+        logger.error('Erro ao verificar código', error);
         return codigo; // Em caso de erro, retorna o código gerado
       }
       
@@ -3425,7 +3429,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
 
   // Função específica para atualizar apenas os valores da cotação
   const atualizarValoresCotacao = async () => {
-    console.log('🎯 INICIO: atualizarValoresCotacao chamada');
+    logger.debug('🎯 INICIO: atualizarValoresCotacao chamada');
     
     try {
       if (!editingCotacao?.id) {
@@ -3443,7 +3447,12 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         parcelamento: formData.parcelamento || '1'
       };
       
-      console.log('📊 Dados para atualização:', dadosAtualizacao);
+      logger.debug('📊 Dados para atualização', {
+        custo: dadosAtualizacao.custo,
+        valor: dadosAtualizacao.valor,
+        formaPagamentoDefinida: Boolean(dadosAtualizacao.formapagid),
+        parcelamento: dadosAtualizacao.parcelamento,
+      });
       
       // Atualizar no Supabase
       const { error } = await supabase
@@ -3452,7 +3461,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         .eq('id', editingCotacao.id);
         
       if (error) {
-        console.error('❌ Erro ao atualizar valores:', error);
+        logger.error('❌ Erro ao atualizar valores', error);
         alert('Erro ao atualizar valores da cotação: ' + error.message);
         return;
       }
@@ -3467,11 +3476,11 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
       // Atualizar cotação em edição
       setEditingCotacao(prev => prev ? { ...prev, ...dadosAtualizacao } : null);
       
-      console.log('✅ Valores atualizados com sucesso');
+      logger.info('✅ Valores atualizados com sucesso');
       alert('Valores da cotação atualizados com sucesso!');
       
     } catch (error) {
-      console.error('💥 Erro inesperado:', error);
+      logger.error('💥 Erro inesperado ao atualizar valores', error);
       alert('Erro inesperado ao atualizar valores.');
     } finally {
       setLoading(false);
@@ -3479,73 +3488,66 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
   };
 
   const salvarCotacao = async () => {
-    console.log('🎯 INICIO: salvarCotacao chamada');
+    logger.debug('🎯 salvarCotacao - início', {
+      cliente: formData.cliente,
+      status: formData.status,
+      editingCotacaoId: editingCotacao?.id,
+    });
     
     try {
-      console.log('🔄 PASSO 1: Verificando dados iniciais');
-      console.log('📋 formData.cliente:', formData.cliente);
-      console.log('📊 formData.status:', formData.status);
-      console.log('🔧 editingCotacao:', editingCotacao?.id);
       
       // Validação básica
       if (!formData.cliente) {
-        console.log('❌ ERRO: Cliente não selecionado');
+        logger.warn('❌ Cliente não selecionado');
         alert('Selecione um cliente para a cotação.');
         return null;
       }
 
-      console.log('🔄 PASSO 2: Validação inicial OK');
+      logger.debug('🔄 PASSO 2: Validação inicial OK');
       
       // Buscar cliente pelo ID
-      console.log('🔍 PASSO 3: Buscando cliente pelo ID');
-      console.log('👥 Array de clientes disponível:', clientes.length);
+      logger.debug('🔍 PASSO 3: Buscando cliente pelo ID', { totalClientes: clientes.length });
       
       // Buscar cliente pelo ID
       const clienteObj = clientes.find(c => String(c.id) === String(formData.cliente));
       
       if (!clienteObj) {
-        console.log('❌ ERRO: Cliente não encontrado no array');
-        console.log('🔍 Procurando por ID:', formData.cliente);
-        console.log('📝 Clientes disponíveis por nome completo:', clientes.map(c => `${c.nome}${c.sobrenome ? ' ' + c.sobrenome : ''}`));
+        logger.warn('❌ Cliente não encontrado no array', { clienteId: formData.cliente, totalClientes: clientes.length });
         alert('Cliente não encontrado. Selecione um cliente válido.');
         return null;
       }
       
-      console.log('✅ PASSO 4: Cliente encontrado:', clienteObj.nome, 'ID:', clienteObj.id);
+      logger.debug('✅ PASSO 4: Cliente encontrado', { nome: clienteObj.nome, id: clienteObj.id });
       
       // Verificar empresa_id
-      console.log('🔄 PASSO 5: Verificando empresa_id');
+      logger.debug('🔄 PASSO 5: Verificando empresa_id');
       const empresaId = user?.user_metadata?.empresa_id;
       if (!empresaId) {
-        console.log('❌ ERRO: empresa_id não encontrado');
+        logger.error('❌ empresa_id não encontrado');
         alert('Erro: empresa_id não encontrado. Faça login novamente.');
         return null;
       }
-      console.log('🏢 empresa_id encontrado:', empresaId);
+      logger.debug('🏢 empresa_id encontrado', { empresaId });
 
       // Gerar código único apenas para novas cotações
-      console.log('🔄 PASSO 6: Verificando código único');
+      logger.debug('🔄 PASSO 6: Verificando código único');
       let codigoUnico = '';
       if (!editingCotacao?.id) {
-        console.log('🆕 Gerando código para nova cotação');
+        logger.debug('🆕 Gerando código para nova cotação');
         codigoUnico = await gerarCodigoUnico();
-        console.log('🔤 Código gerado:', codigoUnico);
+        logger.debug('🔤 Código gerado', { codigoUnico });
       } else {
-        console.log('✏️ Editando cotação existente, não precisa de código');
+        logger.debug('✏️ Editando cotação existente, não precisa de código');
       }
 
       // Preparar dados
-      console.log('🔄 PASSO 7: Preparando dados da cotação');
+      logger.debug('🔄 PASSO 7: Preparando dados da cotação');
       const dataAtual = new Date().toLocaleDateString('pt-BR');
       const titulo = `${clienteObj.nome} - ${dataAtual}`;
 
       // Debug do custo
       const custoCalculado = formData.status === 'APROVADO' ? calcularTotalCusto() : parseFloat(valorCustoSimples) || 0;
-      console.log('🔍 DEBUG CUSTO:');
-      console.log('📊 Status da cotação:', formData.status);
-      console.log('💰 valorCustoSimples:', valorCustoSimples);
-      console.log('🧮 calcularTotalCusto():', calcularTotalCusto());
-      console.log('💸 Custo final que será salvo:', custoCalculado);
+      logger.debug('Custo calculado', { status: formData.status, valorCustoSimples, custoCalculado });
       
       const cotacaoData: any = {
         titulo: titulo,
@@ -3568,14 +3570,14 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         cotacaoData.codigo = codigoUnico;
       }
 
-      console.log('📦 PASSO 8: Dados preparados:', cotacaoData);
+      logger.debug('📦 PASSO 8: Dados preparados', { valor: cotacaoData.valor, custo: cotacaoData.custo, status: cotacaoData.status, parcelamento: cotacaoData.parcelamento, hasObservacoes: !!cotacaoData.observacoes });
 
       // Salvar no banco
-      console.log('🔄 PASSO 9: Salvando no banco');
+      logger.info('🔄 PASSO 9: Salvando no banco');
       let cotacaoId;
       
       if (editingCotacao?.id) {
-        console.log('✏️ Atualizando cotação ID:', editingCotacao.id);
+        logger.debug('✏️ Atualizando cotação', { id: editingCotacao.id });
         const { data, error } = await supabase
           .from('cotacoes')
           .update(cotacaoData)
@@ -3583,13 +3585,13 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
           .select('id');
         
         if (error) {
-          console.error('❌ Erro no update:', error);
+          logger.error('❌ Erro no update', error);
           throw error;
         }
         cotacaoId = editingCotacao.id;
-        console.log('✅ Update realizado com sucesso');
+        logger.info('✅ Update realizado com sucesso');
       } else {
-        console.log('🆕 Criando nova cotação');
+        logger.debug('🆕 Criando nova cotação');
         const { data, error } = await supabase
           .from('cotacoes')
           .insert([cotacaoData])
@@ -3597,37 +3599,37 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
           .single();
         
         if (error) {
-          console.error('❌ Erro no insert:', error);
+          logger.error('❌ Erro no insert', error);
           throw error;
         }
         cotacaoId = data.id;
-        console.log('✅ Insert realizado com sucesso, ID:', cotacaoId);
+        logger.info('✅ Insert realizado com sucesso', { id: cotacaoId });
       }
 
       // Salvar passageiros
-      console.log('🔄 PASSO 10: Verificando passageiros');
+      logger.debug('🔄 PASSO 10: Verificando passageiros');
       if (formData.passageiros.length > 0) {
-        console.log('👥 Salvando', formData.passageiros.length, 'passageiros');
+        logger.debug('👥 Salvando passageiros', { quantidade: formData.passageiros.length });
         await salvarPassageiros(cotacaoId);
-        console.log('✅ Passageiros salvos');
+        logger.info('✅ Passageiros salvos');
       } else {
-        console.log('ℹ️ Nenhum passageiro para salvar');
+        logger.debug('ℹ️ Nenhum passageiro para salvar');
       }
 
-      console.log('🎉 SUCESSO: Cotação salva, ID:', cotacaoId);
+      logger.info('🎉 SUCESSO: Cotação salva', { id: cotacaoId });
       alert('Cotação salva com sucesso!');
       
       // Recarregar e fechar
-      console.log('🔄 PASSO 11: Recarregando cotações');
+      logger.debug('🔄 PASSO 11: Recarregando cotações');
       await carregarCotacoes();
-      console.log('🔄 PASSO 12: Fechando modal');
+      logger.debug('🔄 PASSO 12: Fechando modal');
       handleCloseModal();
       
-      console.log('✅ FIM: Processo concluído com sucesso');
+      logger.info('✅ FIM: Processo concluído com sucesso');
       return cotacaoId;
       
     } catch (err: any) {
-      console.error('💥 ERRO CAPTURADO:', err);
+      logger.error('💥 ERRO CAPTURADO', err);
       
       // Tratamento de erro mais detalhado
       let errorMessage = 'Erro desconhecido ao salvar cotação';
@@ -3659,7 +3661,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         .eq('cotacao_id', cotacaoId);
       
       if (deleteError) {
-        console.error('Erro ao remover passageiros existentes:', deleteError);
+        logger.error('Erro ao remover passageiros existentes', deleteError);
       }
 
       // Preparar dados dos passageiros para inserção
@@ -3671,7 +3673,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
           tipo: passageiro.tipo
         }));
 
-      console.log('Dados dos passageiros a serem salvos:', passageirosData);
+      logger.debug('Dados dos passageiros a serem salvos', { quantidade: passageirosData.length });
 
       // Inserir novos passageiros
       if (passageirosData.length > 0) {
@@ -3680,14 +3682,14 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
           .insert(passageirosData);
         
         if (insertError) {
-          console.error('Erro ao salvar passageiros:', insertError);
+          logger.error('Erro ao salvar passageiros', insertError);
           throw new Error(`Erro ao salvar passageiros: ${insertError.message}`);
         }
       }
 
-      console.log('Passageiros salvos com sucesso');
+      logger.info('Passageiros salvos com sucesso');
     } catch (error) {
-      console.error('Erro ao salvar passageiros:', error);
+      logger.error('Erro ao salvar passageiros', error);
       throw error;
     }
   };
@@ -3702,7 +3704,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
     
     // Limpar estado de edição quando adicionar novo voo
     setVooEditandoId(null);
-    console.log('➕ Adicionando novo voo, limpando estado de edição');
+    logger.debug('➕ Adicionando novo voo, limpando estado de edição', { direcao });
     
     // Adicionar novo voo
     const novoVoo: Voo = {
@@ -3742,7 +3744,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
     }
 
     // Calcular data de abertura do check-in (agora usando API real)
-    console.log('🔄 DEBUG salvarVoo - Antes de calcular check-in:', {
+    logger.debug('🔄 salvarVoo - Antes de calcular check-in', {
       voo: {
         id: voo.id,
         direcao: voo.direcao,
@@ -3751,15 +3753,14 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         dataVolta: voo.dataVolta,
         horarioPartida: voo.horarioPartida
       },
-      notificacaoCheckin: notificacaoCheckin
+      notificacaoCheckin
     });
 
     const dataCheckin = await calcularDataCheckin(voo, notificacaoCheckin);
     
-    console.log('📊 DEBUG salvarVoo - Resultado do cálculo:', {
-      dataCheckin: dataCheckin,
-      dataCheckinType: typeof dataCheckin,
-      dataCheckinLength: dataCheckin?.length
+    logger.debug('📊 salvarVoo - Resultado do cálculo', {
+      hasDataCheckin: !!dataCheckin,
+      length: dataCheckin?.length
     });
 
     // Converter bagagem para números inteiros
@@ -3790,22 +3791,17 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         bagagem_mao: quantidadeMao
       };
 
-      console.log('🛫 Dados do voo a serem salvos:', vooData);
-      console.log('📅 Data de check-in calculada:', dataCheckin);
-      console.log('🧳 Quantidades de bagagem:', { despachada: quantidadeDespachada, mao: quantidadeMao });
-      console.log('🔧 ID de edição:', vooEditandoId);
-      console.log('💾 DEBUG: Campo abertura_checkin no vooData:', {
-        abertura_checkin: vooData.abertura_checkin,
-        isNull: vooData.abertura_checkin === null,
-        isUndefined: vooData.abertura_checkin === undefined,
-        type: typeof vooData.abertura_checkin
-      });
+      logger.debug('🛫 Dados do voo a serem salvos', { cotacao_id: vooData.cotacao_id, direcao: vooData.direcao, numero_voo: vooData.numero_voo });
+      logger.debug('📅 Check-in calculado', { hasDataCheckin: !!dataCheckin });
+      logger.debug('🧳 Quantidades de bagagem', { despachada: quantidadeDespachada, mao: quantidadeMao });
+      logger.debug('🔧 ID de edição', { vooEditandoId });
+      logger.debug('💾 abertura_checkin', { isNull: vooData.abertura_checkin === null, isUndefined: vooData.abertura_checkin === undefined, type: typeof vooData.abertura_checkin });
 
       let error;
       
       // Verificar se estamos editando um voo existente
       if (vooEditandoId) {
-        console.log('📝 Atualizando voo existente ID:', vooEditandoId);
+        logger.debug('📝 Atualizando voo existente', { id: vooEditandoId });
         const { error: updateError } = await supabase
           .from('voos')
           .update(vooData)
@@ -3815,7 +3811,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         // Resetar o ID de edição após salvar
         setVooEditandoId(null);
       } else {
-        console.log('➕ Criando novo voo');
+        logger.debug('➕ Criando novo voo');
         const { error: insertError } = await supabase
           .from('voos')
           .insert([vooData]);
@@ -3823,7 +3819,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
       }
 
       if (error) {
-        console.error('Erro ao salvar voo:', error);
+        logger.error('Erro ao salvar voo', error);
         alert('Erro ao salvar voo no banco: ' + error.message);
         return false;
       }
@@ -3862,7 +3858,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
   };
 
   const editarVooSalvo = (voo: Voo) => {
-    console.log('🔧 Iniciando edição do voo:', voo);
+    logger.debug('🔧 Iniciando edição do voo', { id: voo.id, idBanco: voo.idBanco });
     
     // Definir que estamos editando este voo específico
     setVooEditandoId(voo.idBanco?.toString() || voo.id);
@@ -3907,14 +3903,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
     
     setFormData(prev => ({ ...prev, voos: [vooCompleto] }));
     
-    console.log('📝 Voo movido para edição com dados completos:', {
-      id: voo.id,
-      idBanco: voo.idBanco,
-      dataIda: voo.dataIda,
-      dataVolta: voo.dataVolta,
-      horarioPartida: voo.horarioPartida,
-      horarioChegada: voo.horarioChegada
-    });
+    logger.debug('📝 Voo movido para edição', { id: voo.id, idBanco: voo.idBanco });
   };
 
   // Adicione o carregamento das cias aéreas:
@@ -4010,12 +3999,12 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
       const empresaId = user?.user_metadata?.empresa_id;
       
       if (!empresaId) {
-        console.error('❌ Empresa ID não encontrado para carregar cotações');
+        logger.error('❌ Empresa ID não encontrado para carregar cotações');
         alert('Erro: empresa_id não encontrado. Faça login novamente.');
         return;
       }
       
-      console.log('🔍 Buscando cotações para empresa:', empresaId);
+      logger.debug('🔍 Buscando cotações para empresa', { empresaId });
       
       const { data, error } = await supabase
         .from('cotacoes')
@@ -4032,15 +4021,15 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         .order('data_criacao', { ascending: false });
       
       if (error) {
-        console.error('Erro ao carregar cotações:', error);
+        logger.error('Erro ao carregar cotações', error);
         return;
       }
       
-      console.log('✅ Cotações carregadas do Supabase com clientes:', data?.length || 0);
+      logger.info('✅ Cotações carregadas do Supabase com clientes', { quantidade: data?.length || 0 });
       
       // Converter dados do Supabase para o formato esperado pelo componente
       const cotacoesFormatadas = (data || []).map(cotacao => {
-        console.log('Cotação individual com cliente_id:', cotacao.cliente_id);
+        logger.debug('Processando cotação', { id: cotacao.id });
         
         // Buscar nome completo do cliente se cliente_id existir
         let nomeCompletoCliente = cotacao.cliente; // fallback para o campo texto
@@ -4050,7 +4039,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         
         const idBanco = Number(cotacao.id);
         if (!Number.isInteger(idBanco)) {
-          console.warn('Descartando cotação com id inválido:', cotacao.id);
+          logger.warn('Descartando cotação com id inválido', { id: cotacao.id });
           return null;
         }
         return {
@@ -4072,10 +4061,10 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         };
       }).filter(Boolean) as Cotacao[];
       
-      console.log('✅ Cotações formatadas com nomes completos:', cotacoesFormatadas.length);
+      logger.info('✅ Cotações formatadas com nomes completos', { quantidade: cotacoesFormatadas.length });
       setCotacoes(cotacoesFormatadas);
     } catch (err) {
-      console.error('Erro inesperado ao carregar cotações:', err);
+      logger.error('Erro inesperado ao carregar cotações', err);
     }
   }
 
@@ -4883,10 +4872,24 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
     console.log('formVenda.cliente:', formVenda.cliente);
     console.log('editingCotacao:', editingCotacao);
     
+    // Determinar empresa_id do usuário para vincular financeiro corretamente (RLS)
+    const empresa_id_meta = user?.user_metadata?.empresa_id || null;
+    let empresa_id = empresa_id_meta;
+    if (!empresa_id && user?.id) {
+      const { data: userEmpresa } = await supabase
+        .from('usuarios_empresas')
+        .select('empresa_id')
+        .eq('usuario_id', user.id)
+        .single();
+      empresa_id = userEmpresa?.empresa_id || null;
+    }
+    
     const dataCriacao = dataVenda;
     // Lançar contas a pagar (custos)
     for (const item of itensCusto) {
-      const { data: contaPagarData, error: contaPagarError } = await supabase.from('contas_pagar').insert({
+      // Tenta inserir com empresa_id (preferido). Se a coluna não existir (PGRST204), faz fallback sem empresa_id
+      let contaPagarErrorMsg = '';
+      let { data: contaPagarData, error: contaPagarError } = await supabase.from('contas_pagar').insert({
         descricao: item.descricao,
         valor: item.valor,
         fornecedor_id: item.fornecedor || null,
@@ -4898,33 +4901,44 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         origem: 'COTACAO',
         origem_id: editingCotacao?.id || null,
         user_id: user.id,
+        empresa_id: empresa_id,
         created_at: dataCriacao
       });
+      if (contaPagarError && (contaPagarError.code === 'PGRST204' || String(contaPagarError.message).includes("empresa_id"))) {
+        // Fallback: reexecuta sem empresa_id para compatibilidade com bases antigas
+        contaPagarErrorMsg = `Compat fallback acionado: ${contaPagarError.message}`;
+        const res2 = await supabase.from('contas_pagar').insert({
+          descricao: item.descricao,
+          valor: item.valor,
+          fornecedor_id: item.fornecedor || null,
+          categoria_id: item.categoria || null,
+          forma_pagamento_id: getIdFormaPagamento(item.forma) || null,
+          parcelas: item.parcelas,
+          vencimento: item.vencimento,
+          status: 'PENDENTE',
+          origem: 'COTACAO',
+          origem_id: editingCotacao?.id || null,
+          user_id: user.id,
+          created_at: dataCriacao
+        });
+        contaPagarData = res2.data as any;
+        contaPagarError = res2.error as any;
+      }
       
       if (contaPagarError) {
         console.error('❌ Erro ao salvar conta a pagar:', contaPagarError);
+        if (contaPagarErrorMsg) console.warn(contaPagarErrorMsg);
         alert(`Erro ao salvar conta a pagar: ${contaPagarError.message}`);
         return;
       } else {
         console.log('✅ Conta a pagar salva com sucesso:', contaPagarData);
+        if (contaPagarErrorMsg) console.log(contaPagarErrorMsg);
       }
     }
     // Lançar contas a receber (vendas)
     for (const item of itensVenda) {
       const clienteIdToSave = formVenda.cliente ? Number(formVenda.cliente) : null;
       console.log('cliente_id sendo salvo:', clienteIdToSave);
-      
-      // Buscar empresa_id do usuário
-      const empresa_id_meta = user?.user_metadata?.empresa_id || null;
-      let empresa_id = empresa_id_meta;
-      if (!empresa_id && user?.id) {
-        const { data: userEmpresa } = await supabase
-          .from('usuarios_empresas')
-          .select('empresa_id')
-          .eq('usuario_id', user.id)
-          .single();
-        empresa_id = userEmpresa?.empresa_id || null;
-      }
       
       // Buscar nome do cliente (apenas para logs/depuração)
       const clienteNome = getNomeCompletoCliente(clienteIdToSave?.toString()) || 'Cliente não identificado';

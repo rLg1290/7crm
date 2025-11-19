@@ -9,7 +9,7 @@ import Clientes from './pages/Clientes'
 import Financeiro from './pages/Financeiro'
 import Calendario from './pages/Calendario'
 import Aereo from './pages/Aereo'
-import Hotelaria from './pages/Hotelaria'
+// Removendo import da página Hotelaria (não será utilizada por enquanto)
 import QuadroVoos from './pages/QuadroVoos'
 import Perfil from './pages/Perfil'
 import TesteLogin from './pages/TesteLogin'
@@ -17,7 +17,7 @@ import CotacaoPrint from './pages/CotacaoPrint'
 import CotacaoHtml from './pages/CotacaoHtml'
 import CotacaoPrintRaw from './pages/CotacaoPrintRaw'
 import CotacaoView from './pages/CotacaoView'
-
+import { logger } from './utils/logger'
 import SolicitacaoOrcamento from './pages/SolicitacaoOrcamento'
 import Promocoes from './pages/Promocoes'
 import { User } from '@supabase/supabase-js'
@@ -26,13 +26,13 @@ function App() {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
 
-  console.log('🚀 App component rendering, loading:', loading, 'user:', user)
+  logger.debug('🚀 App component rendering', { loading, user: Boolean(user) })
 
   useEffect(() => {
-    console.log('🔍 Checking authentication...')
+    logger.debug('🔍 Checking authentication...')
     // Verificar se há usuário logado
     supabase.auth.getUser().then(({ data: { user } }) => {
-      console.log('👤 User from auth:', user)
+      logger.debug('👤 User from auth', { user: Boolean(user) })
       setUser(user)
       setLoading(false)
     })
@@ -40,7 +40,7 @@ function App() {
     // Escutar mudanças na autenticação
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
-        console.log('🔄 Auth state changed:', event, session?.user)
+        logger.debug('🔄 Auth state changed', { event, user: Boolean(session?.user) })
         setUser(session?.user ?? null)
         setLoading(false)
       }
@@ -50,7 +50,7 @@ function App() {
   }, [])
 
   if (loading) {
-    console.log('⏳ Showing loading screen...')
+    logger.debug('⏳ Showing loading screen...')
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -61,12 +61,12 @@ function App() {
     )
   }
 
-  console.log('🎯 Rendering main app, user:', user)
+  logger.debug('🎯 Rendering main app', { user: Boolean(user) })
 
   // Usa basename coerente com o base do Vite
   const basename = (import.meta as any).env.BASE_URL || '/'
   return (
-    <Router basename={basename}>
+    <Router basename={basename} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <Routes>
         {/* Rota especial para teste - acessível sem login */}
         <Route path="/teste" element={<TesteLogin />} />
@@ -93,7 +93,7 @@ function App() {
                 <Route path="/financeiro" element={<Financeiro />} />
                 <Route path="/calendario" element={<Calendario />} />
                 <Route path="/aereo" element={<Aereo />} />
-                <Route path="/hotelaria" element={<Hotelaria />} />
+                // Removendo rota /hotelaria do roteador
                 <Route path="/quadro-voos" element={<QuadroVoos />} />
                 <Route path="/promocoes" element={<Promocoes user={user} />} />
                 <Route path="/perfil" element={<Perfil user={user} />} />
