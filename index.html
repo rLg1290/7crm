@@ -5,13 +5,18 @@
     <link rel="icon" type="image/svg+xml" href="./vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Sistema CRM</title>
-    <!-- Google Analytics GA4 -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-9Q6H0QETRF"></script>
-    <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);} 
-      gtag('js', new Date());
-      gtag('config', 'G-9Q6H0QETRF');
+    <!-- Google Analytics GA4 (somente em produção) -->
+    <script type="module">
+      if (import.meta.env.MODE === 'production') {
+        const s = document.createElement('script');
+        s.async = true;
+        s.src = 'https://www.googletagmanager.com/gtag/js?id=G-9Q6H0QETRF';
+        document.head.appendChild(s);
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){window.dataLayer.push(arguments);} 
+        gtag('js', new Date());
+        gtag('config', 'G-9Q6H0QETRF');
+      }
     </script>
   </head>
   <body>

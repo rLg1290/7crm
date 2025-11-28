@@ -41,6 +41,7 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
   const [corSecundaria, setCorSecundaria] = useState('#10B981') // Verde padrão
   const [salvandoCor, setSalvandoCor] = useState(false)
   const [salvandoPromocoes, setSalvandoPromocoes] = useState(false)
+  const [tab, setTab] = useState<'leads'|'promocoes'|'dados'>('leads')
 
   // Buscar informações da empresa
   useEffect(() => {
@@ -401,10 +402,14 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
               <p className="text-gray-600 mt-1">Gerencie suas informações pessoais</p>
             </div>
           </div>
+          <div className="flex gap-2 mb-6">
+            <button onClick={() => setTab('leads')} className={`px-4 py-2 rounded-lg text-sm font-medium border ${tab==='leads' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-blue-600 border-blue-200 hover:bg-blue-50'}`}>Página de Leads</button>
+            <button onClick={() => setTab('promocoes')} className={`px-4 py-2 rounded-lg text-sm font-medium border ${tab==='promocoes' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-blue-600 border-blue-200 hover:bg-blue-50'}`}>Promoções Personalizada</button>
+            <button onClick={() => setTab('dados')} className={`px-4 py-2 rounded-lg text-sm font-medium border ${tab==='dados' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-blue-600 border-blue-200 hover:bg-blue-50'}`}>Dados Gerais</button>
+          </div>
         </div>
 
-        {/* Informações da Empresa */}
-        {empresaInfo && (
+        {tab==='dados' && empresaInfo && (
           <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-200 mb-6">
             <h3 className="text-lg font-semibold text-blue-900 mb-4 flex items-center">
               <Building className="h-5 w-5 mr-2" />
@@ -451,8 +456,7 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
           </div>
         )}
 
-        {/* Página Pública de Solicitação de Orçamento */}
-        {empresaInfo && empresaInfo.slug && (
+        {tab==='leads' && empresaInfo && empresaInfo.slug && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-6">
             <div className="p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
@@ -551,112 +555,6 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
                   {salvandoCor ? 'Salvando Cor...' : 'Salvar Cor da Página'}
                 </button>
               </div>
-
-              {/* Promoções Personalizadas */}
-              <div className="mt-8 pt-6 border-t border-gray-200">
-                <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                  <Palette className="h-5 w-5 mr-2 text-green-600" />
-                  Promoções Personalizadas
-                </h4>
-                <p className="text-sm text-gray-600 mb-6">
-                  Configure as cores que serão usadas nas suas promoções e materiais de marketing.
-                </p>
-
-                {/* Cor Primária das Promoções */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      <Palette className="h-4 w-4 inline mr-1" />
-                      Cor Primária
-                    </label>
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="color"
-                        value={corPrimaria}
-                        onChange={(e) => setCorPrimaria(e.target.value)}
-                        className="w-16 h-10 border border-gray-300 rounded-lg cursor-pointer"
-                      />
-                      <div className="flex-1">
-                        <input
-                          type="text"
-                          value={corPrimaria}
-                          onChange={(e) => setCorPrimaria(e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm"
-                          placeholder="#3B82F6"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Prévia da Cor Primária
-                    </label>
-                    <div 
-                      className="w-full h-10 rounded-lg border border-gray-300 flex items-center justify-center text-white font-medium text-sm"
-                      style={{ backgroundColor: corPrimaria }}
-                    >
-                      Cor Primária das Promoções
-                    </div>
-                  </div>
-                </div>
-
-                {/* Cor Secundária das Promoções */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      <Palette className="h-4 w-4 inline mr-1" />
-                      Cor Secundária
-                    </label>
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="color"
-                        value={corSecundaria}
-                        onChange={(e) => setCorSecundaria(e.target.value)}
-                        className="w-16 h-10 border border-gray-300 rounded-lg cursor-pointer"
-                      />
-                      <div className="flex-1">
-                        <input
-                          type="text"
-                          value={corSecundaria}
-                          onChange={(e) => setCorSecundaria(e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm"
-                          placeholder="#10B981"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Prévia da Cor Secundária
-                    </label>
-                    <div 
-                      className="w-full h-10 rounded-lg border border-gray-300 flex items-center justify-center text-white font-medium text-sm"
-                      style={{ backgroundColor: corSecundaria }}
-                    >
-                      Cor Secundária das Promoções
-                    </div>
-                  </div>
-                </div>
-
-                {/* Botão Salvar Cores das Promoções */}
-                <div className="flex justify-center mb-6">
-                  <button
-                    onClick={salvarPromocoes}
-                    disabled={salvandoPromocoes}
-                    className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-green-600 to-blue-600 text-white font-medium rounded-lg hover:from-green-700 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
-                  >
-                    {salvandoPromocoes ? (
-                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                    ) : (
-                      <Palette className="h-5 w-5 mr-2" />
-                    )}
-                    {salvandoPromocoes ? 'Salvando Cores...' : 'Salvar Cores das Promoções'}
-                  </button>
-                </div>
-              </div>
-
               {/* Informações Adicionais */}
               <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
                 <div className="flex items-start">
@@ -678,7 +576,7 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
           </div>
         )}
 
-        {/* Formulário */}
+        {tab==='dados' && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-6">Dados Pessoais</h3>
@@ -787,8 +685,9 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
             </form>
           </div>
         </div>
+        )}
 
-        {/* Informações Adicionais da Conta */}
+        {tab==='dados' && (
         <div className="mt-6 bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg p-6 border border-gray-200">
           <h3 className="text-lg font-semibold text-gray-800 mb-4">
             📋 Informações da Conta
@@ -816,6 +715,54 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
             </div>
           </div>
         </div>
+        )}
+        {tab==='promocoes' && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-6">
+            <div className="p-6">
+              <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                <Palette className="h-5 w-5 mr-2 text-green-600" />
+                Promoções Personalizadas
+              </h4>
+              <p className="text-sm text-gray-600 mb-6">Configure as cores usadas nas suas promoções.</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2"><Palette className="h-4 w-4 inline mr-1" />Cor Primária</label>
+                  <div className="flex items-center gap-3">
+                    <input type="color" value={corPrimaria} onChange={(e) => setCorPrimaria(e.target.value)} className="w-16 h-10 border border-gray-300 rounded-lg cursor-pointer" />
+                    <div className="flex-1">
+                      <input type="text" value={corPrimaria} onChange={(e) => setCorPrimaria(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm" placeholder="#3B82F6" />
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Prévia da Cor Primária</label>
+                  <div className="w-full h-10 rounded-lg border border-gray-300 flex items-center justify-center text-white font-medium text-sm" style={{ backgroundColor: corPrimaria }}>Cor Primária das Promoções</div>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2"><Palette className="h-4 w-4 inline mr-1" />Cor Secundária</label>
+                  <div className="flex items-center gap-3">
+                    <input type="color" value={corSecundaria} onChange={(e) => setCorSecundaria(e.target.value)} className="w-16 h-10 border border-gray-300 rounded-lg cursor-pointer" />
+                    <div className="flex-1">
+                      <input type="text" value={corSecundaria} onChange={(e) => setCorSecundaria(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm" placeholder="#10B981" />
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Prévia da Cor Secundária</label>
+                  <div className="w-full h-10 rounded-lg border border-gray-300 flex items-center justify-center text-white font-medium text-sm" style={{ backgroundColor: corSecundaria }}>Cor Secundária das Promoções</div>
+                </div>
+              </div>
+              <div className="flex justify-center">
+                <button onClick={salvarPromocoes} disabled={salvandoPromocoes} className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-green-600 to-blue-600 text-white font-medium rounded-lg hover:from-green-700 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg">
+                  {salvandoPromocoes ? (<div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>) : (<Palette className="h-5 w-5 mr-2" />)}
+                  {salvandoPromocoes ? 'Salvando Cores...' : 'Salvar Cores das Promoções'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

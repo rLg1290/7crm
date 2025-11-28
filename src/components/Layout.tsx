@@ -14,10 +14,12 @@ import {
   DollarSign,
   Menu,
   X,
-  Tag
+  Tag,
+  BookOpen
 } from 'lucide-react'
 import { User } from '@supabase/supabase-js'
 import NotificationCenter from './NotificationCenter'
+import TopAnnouncementBar from './TopAnnouncementBar'
 
 interface LayoutProps {
   user: User
@@ -31,6 +33,7 @@ interface EmpresaLogo {
 const Layout: React.FC<LayoutProps> = ({ user, children }) => {
   const location = useLocation()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [showEducacaoHint, setShowEducacaoHint] = useState(false)
   const [empresaLogo, setEmpresaLogo] = useState<string | null>(null)
 
   // Buscar logo da empresa
@@ -58,6 +61,13 @@ const Layout: React.FC<LayoutProps> = ({ user, children }) => {
     fetchEmpresaLogo()
   }, [user])
 
+  useEffect(() => {
+    const seen = localStorage.getItem('educacao_hint_seen')
+    if (!seen) {
+      setTimeout(() => setShowEducacaoHint(true), 600)
+    }
+  }, [])
+
   const handleLogout = async () => {
     await supabase.auth.signOut()
   }
@@ -74,6 +84,7 @@ const Layout: React.FC<LayoutProps> = ({ user, children }) => {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <TopAnnouncementBar />
       {/* Header Moderno */}
       <header className="bg-white shadow-lg border-b border-gray-100 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
@@ -145,6 +156,33 @@ const Layout: React.FC<LayoutProps> = ({ user, children }) => {
               
               {/* Notification Center */}
               <NotificationCenter />
+
+              {/* Base de conhecimento - ícone curto */}
+              <div className="relative">
+                <Link
+                  to="/educacao"
+                  className="inline-flex h-10 w-10 items-center justify-center text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
+                  title="Base de conhecimento"
+                  onClick={() => { localStorage.setItem('educacao_hint_seen','1'); setShowEducacaoHint(false) }}
+                >
+                  <BookOpen className="h-5 w-5" />
+                </Link>
+                <div className="pointer-events-none absolute -top-3 -right-3 z-50" aria-hidden="true">
+                  <span className="inline-flex px-2 py-[2px] text-[9px] font-semibold rounded-full bg-blue-600 text-white shadow-sm">Novo</span>
+                </div>
+                {showEducacaoHint && (
+                  <div className="absolute right-0 mt-2 z-50">
+                    <div className="relative bg-white border border-blue-200 shadow-lg rounded-xl p-3 w-64">
+                      <div className="text-xs font-semibold text-blue-700 uppercase">Novo</div>
+                      <div className="mt-1 text-sm text-gray-900">Base de conhecimento: vídeos e lives gravadas para educação corporativa.</div>
+                      <div className="mt-2 flex justify-end">
+                        <button className="px-3 py-1 text-sm bg-blue-600 text-white rounded" onClick={() => { localStorage.setItem('educacao_hint_seen','1'); setShowEducacaoHint(false) }}>Entendi</button>
+                      </div>
+                      <div className="absolute -top-2 right-6 w-3 h-3 bg-white border border-blue-200 rotate-45"></div>
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* User Profile */}
               <Link to="/perfil" className="hidden sm:flex items-center space-x-3 group">

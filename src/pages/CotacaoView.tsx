@@ -31,6 +31,41 @@ function formatarHorario(horario: string): string {
   return horario;
 }
 
+function formatarDataSemana(dateString?: string): string {
+  if (!dateString) return '-';
+  const d = new Date(dateString);
+  if (isNaN(d.getTime())) return '-';
+  const semanaRaw = d.toLocaleDateString('pt-BR', { weekday: 'long' });
+  const semana = semanaRaw.charAt(0).toUpperCase() + semanaRaw.slice(1);
+  const [ano, mes, dia] = dateString.slice(0,10).split('-');
+  return `${semana}, ${dia}/${mes}/${ano}`;
+}
+
+function dataPorDirecao(voos: any[], direcao: 'IDA'|'VOLTA'|'INTERNO'): string {
+  const lista = voos.filter(v => v.direcao === direcao);
+  if (!lista.length) return '';
+  const datas: string[] = [];
+  lista.forEach(v => {
+    const segs = obterSegmentosDoVoo(v as any);
+    let d = ''
+    if (Array.isArray(segs) && segs.length) {
+      const primeiro = segs[0]
+      const ultimo = segs[segs.length - 1]
+      d = direcao === 'VOLTA'
+        ? String(ultimo?.chegada || '').substring(0,10)
+        : String(primeiro?.partida || '').substring(0,10)
+    }
+    if (!d) {
+      d = direcao === 'VOLTA'
+        ? String(v.data_volta || v.dataVolta || '').slice(0,10)
+        : String(v.data_ida || v.dataIda || '').slice(0,10)
+    }
+    if (d) datas.push(d);
+  });
+  if (!datas.length) return '';
+  return datas.sort()[0];
+}
+
 // Função utilitária para escurecer a cor
 function escurecerCor(hex: string, fator = 0.8) {
   if (!hex) return '#000';
@@ -73,6 +108,15 @@ const CotacaoView: React.FC = () => {
   const [passageiros, setPassageiros] = useState<any[]>([]);
   const [ciasAereas, setCiasAereas] = useState<any[]>([]);
   const [formaPagamentoNome, setFormaPagamentoNome] = useState<string>('');
+  const [conexoes, setConexoes] = useState<Record<string, any[]>>({})
+  const [segmentosPorTrecho, setSegmentosPorTrecho] = useState<Record<string, any[]>>({})
+  const [segmentosPorNumero, setSegmentosPorNumero] = useState<Record<string, any[]>>({})
+  const [segmentosPorOpcaoMap, setSegmentosPorOpcaoMap] = useState<Record<number, any[]>>({})
+  const [segmentosPorVooId, setSegmentosPorVooId] = useState<Record<number, any[]>>({})
+  const [opcoesList, setOpcoesList] = useState<any[]>([])
+  const [pagamentos, setPagamentos] = useState<Array<{id:string, formapagid:string, parcelas:string, valor:number, descricao?:string, links?: Array<{n:number, valor:number}>}>>([])
+  const [formasPagamentoMap, setFormasPagamentoMap] = useState<Record<string, string>>({})
+  const [mostrarPagamentosInvestimento, setMostrarPagamentosInvestimento] = useState(true)
 
   useEffect(() => {
     const buscarDados = async () => {
@@ -80,6 +124,22 @@ const CotacaoView: React.FC = () => {
       // Buscar cotação
       const { data: cot } = await supabase.from('cotacoes').select('*').eq('codigo', codigo).single();
       setCotacao(cot);
+      const obs = String(cot?.observacoes || '')
+      const linha = obs.split('\n').find(l => l.startsWith('__PAGAMENTOS__='))
+      const linhaMostrar = obs.split('\n').find(l => l.startsWith('__MOSTRAR_PAGAMENTOS__='))
+      if (linhaMostrar) {
+        const v = linhaMostrar.substring('__MOSTRAR_PAGAMENTOS__='.length)
+        setMostrarPagamentosInvestimento(String(v) === 'true')
+      } else {
+        setMostrarPagamentosInvestimento(true)
+      }
+      let arr: any[] = []
+      if (linha) {
+        const j = linha.substring('__PAGAMENTOS__='.length)
+        try { const val = JSON.parse(j); if (Array.isArray(val)) arr = val } catch {}
+      }
+      const pagos = arr.map(e => ({ id: String(e.id || Date.now()), formapagid: String(e.formapagid || ''), parcelas: String(e.parcelas || '1'), valor: Number(e.valor || 0), descricao: e.descricao ? String(e.descricao) : undefined, links: Array.isArray(e.links) ? e.links.map((l:any) => ({ n: Number(l.n||0), valor: Number(l.valor||0) })) : undefined }))
+      setPagamentos(pagos)
       // Empresa
       if (cot?.empresa_id) {
         const { data: emp } = await supabase.from('empresas').select('*').eq('id', cot.empresa_id).single();
@@ -93,6 +153,51 @@ const CotacaoView: React.FC = () => {
       // Voos
       const { data: voosData } = await supabase.from('voos').select('*').eq('cotacao_id', cot?.id);
       setVoos(voosData || []);
+      // Opções e segmentos (conexões) — consulta sem depender de coluna opcional
+      const { data: opData } = await supabase
+        .from('cotacao_opcoes_voo')
+        .select('id, trecho, preco_total, voo_id')
+        .eq('cotacao_id', cot?.id)
+      const opcoes: any[] = Array.isArray(opData) ? opData : []
+      setOpcoesList(opcoes)
+      let segmentosPorOpcao: Record<number, any[]> = {}
+      if (opcoes && opcoes.length) {
+        const ids = opcoes.map(o => o.id)
+        let segs: any[] = []
+        if (ids.length > 0) {
+          const { data: segData } = await supabase
+            .from('cotacao_opcao_segmentos')
+            .select('*')
+            .in('opcao_id', ids)
+            .order('ordem')
+          segs = Array.isArray(segData) ? segData : []
+        }
+        (segs || []).forEach(s => {
+          const k = s.opcao_id as number
+          if (!segmentosPorOpcao[k]) segmentosPorOpcao[k] = []
+          segmentosPorOpcao[k].push(s)
+        })
+      }
+      // Mapear por voo_id para uso no render
+      const conexoesMap: Record<string, any[]> = {}
+      const opList = Array.isArray(opcoes) ? opcoes : []
+      const porTrecho: Record<string, any[]> = {}
+      const porNumero: Record<string, any[]> = {}
+      const porVooId: Record<number, any[]> = {}
+      opList.forEach(o => {
+        const lista = segmentosPorOpcao[o.id] || []
+        if (o.trecho) porTrecho[o.trecho] = lista
+        if (o.voo_id) {
+          porVooId[Number(o.voo_id)] = lista
+        }
+        const primeiroNum = (lista[0]?.numero_voo || lista[0]?.numeroVoo || '') as string
+        if (primeiroNum) porNumero[String(primeiroNum)] = lista
+      })
+      setSegmentosPorTrecho(porTrecho)
+      setSegmentosPorNumero(porNumero)
+      setSegmentosPorOpcaoMap(segmentosPorOpcao)
+      setSegmentosPorVooId(porVooId)
+      setConexoes(conexoesMap)
       // Passageiros (cotacao_passageiros)
       const { data: passData } = await supabase.from('cotacao_passageiros').select('*').eq('cotacao_id', cot?.id);
       // Buscar clientes detalhados
@@ -122,6 +227,13 @@ const CotacaoView: React.FC = () => {
         const { data: formaPagamento } = await supabase.from('formas_pagamento').select('nome').eq('id', cot.formapagid).single();
         setFormaPagamentoNome(formaPagamento?.nome || '-');
       }
+      const ids = pagos.map(p => p.formapagid).filter(Boolean)
+      if (ids.length) {
+        const { data: formas } = await supabase.from('formas_pagamento').select('id,nome').in('id', ids.map(x => isNaN(Number(x)) ? x : Number(x)))
+        const map: Record<string,string> = {}
+        ;(formas || []).forEach((f:any) => { map[String(f.id)] = String(f.nome || '') })
+        setFormasPagamentoMap(map)
+      }
       setLoading(false);
     };
     buscarDados();
@@ -138,6 +250,81 @@ const CotacaoView: React.FC = () => {
   const corEmpresa = empresa?.cor_personalizada || '#2563eb';
   const corEmpresaEscura = escurecerCor(corEmpresa, 0.8);
   const corEmpresaEscuraVolta = escurecerCor(corEmpresa, 0.6);
+
+  const BagagemEmoji = ({ emoji, count, active, color }:{ emoji: string, count: number, active: boolean, color: string }) => (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 16 }}>
+      <div style={{ fontSize: 7, fontWeight: 800, color: active ? color : '#9ca3af', marginBottom: 0, lineHeight: 1 }}>{Number(count || 0)}</div>
+      <span style={{ fontSize: 11, filter: active ? 'none' : 'grayscale(100%) opacity(0.4)', lineHeight: 1 }}>{emoji}</span>
+    </div>
+  )
+
+  function renderLinksGrid(links: Array<{n:number, valor:number}>) {
+    const arr = Array.isArray(links) ? links.slice().sort((a,b) => Number(a.n) - Number(b.n)) : []
+    const odd = arr.filter(l => Number(l.n) % 2 === 1)
+    const even = arr.filter(l => Number(l.n) % 2 === 0)
+    const cols = Math.max(1, Math.ceil(arr.length / 2))
+    return (
+      <div style={{marginTop:6, display:'flex', flexDirection:'column', gap:4}}>
+        <div style={{display:'grid', gridTemplateColumns:`repeat(${cols}, 1fr)`, gap:6}}>
+          {odd.map((l, i) => (
+            <div key={`odd-${i}`} style={{fontWeight:800}}>{l.n}x R$ {Number(l.valor || 0).toLocaleString('pt-BR',{minimumFractionDigits:2, maximumFractionDigits:2})}</div>
+          ))}
+        </div>
+        <div style={{display:'grid', gridTemplateColumns:`repeat(${cols}, 1fr)`, gap:6}}>
+          {even.map((l, i) => (
+            <div key={`even-${i}`} style={{fontWeight:800}}>{l.n}x R$ {Number(l.valor || 0).toLocaleString('pt-BR',{minimumFractionDigits:2, maximumFractionDigits:2})}</div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  function origemDestinoDeConexoes(voo: any) {
+    const segs = obterSegmentosDoVoo(voo)
+    if (!segs.length) return null
+    const primeiro = segs[0]
+    const ultimo = segs[segs.length - 1]
+    return {
+      origem: primeiro?.origem || voo.origem,
+      destino: ultimo?.destino || voo.destino,
+      partida: primeiro?.partida?.substring?.(11,16) || voo.horario_partida,
+      chegada: ultimo?.chegada?.substring?.(11,16) || voo.horario_chegada,
+      dataPartida: primeiro?.partida?.substring?.(0,10) || voo.data_ida,
+      dataChegada: ultimo?.chegada?.substring?.(0,10) || voo.data_volta,
+      segs
+    }
+  }
+
+  function chipConexoes(voo: any) {
+    const segs = obterSegmentosDoVoo(voo)
+    const n = Math.max(0, (segs.length || 0) - 1)
+    if (n <= 0) return 'Voo direto'
+    if (n === 1) return '1 Conexão'
+    return `${n} Conexões`
+  }
+
+  function obterSegmentosDoVoo(voo: any): any[] {
+    const idNum = Number(voo.id)
+    if (Number.isFinite(idNum) && segmentosPorVooId[idNum] && segmentosPorVooId[idNum].length) {
+      return segmentosPorVooId[idNum]
+    }
+    return []
+  }
+
+  function iataFrom(s?: string): string | null {
+    if (!s) return null
+    const idx = s.indexOf(' - ')
+    return idx > 0 ? s.substring(0, idx) : s
+  }
+
+  // Override com lógica mais robusta para escolher segmentos do card
+  function obterSegmentosDoVoo(voo: any): any[] {
+    const idNum = Number(voo.id)
+    if (Number.isFinite(idNum) && segmentosPorVooId[idNum] && segmentosPorVooId[idNum].length) {
+      return segmentosPorVooId[idNum]
+    }
+    return []
+  }
 
   // Função para buscar logo da companhia aérea
   function getLogoCompanhia(nomeCompanhia: string) {
@@ -233,17 +420,17 @@ const CotacaoView: React.FC = () => {
           style={{
             background: corEmpresa,
             color: '#fff',
-            padding: '12px 36px',
-            borderRadius: 12,
-            fontSize: 24,
-            fontWeight: 800,
-            letterSpacing: 2,
-            boxShadow: `0 4px 16px 0 ${corEmpresa}22`,
+            padding: '8px 24px',
+            borderRadius: 10,
+            fontSize: 18,
+            fontWeight: 700,
+            letterSpacing: 1,
+            boxShadow: `0 3px 12px 0 ${corEmpresa}22`,
             fontFamily: 'Montserrat, Arial, sans-serif',
             textTransform: 'uppercase',
             border: 'none',
             outline: 'none',
-            textShadow: `0 2px 8px ${corEmpresa}22`,
+            textShadow: `0 2px 6px ${corEmpresa}22`,
             WebkitPrintColorAdjust: 'exact',
             printColorAdjust: 'exact'
           }}
@@ -258,191 +445,145 @@ const CotacaoView: React.FC = () => {
           {/* Voos de Ida */}
           {voos.filter(v => v.direcao === 'IDA').length > 0 && (
             <div className="mb-6">
-              <div className="flex items-center mb-4" style={{gap: 10}}>
-                <div style={{background: corEmpresa}} className="p-2 rounded-lg">
+              <div style={{background: corEmpresa, color:'#fff', borderRadius:10, padding:'6px 12px', display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10}}>
+                <div style={{display:'flex', alignItems:'center', gap:8}}>
                   <AviaoPaperSVG color="#fff" />
+                  <span style={{fontSize:12, fontWeight:700}}>Opções de Ida</span>
                 </div>
-                <h3 className="text-xl font-bold" style={{marginLeft: 4}}>
-                  <span style={{color: corEmpresa}}>Voos de Ida</span>
-                </h3>
+                <div style={{fontSize:12, fontWeight:700}}>{voos.filter(v=>v.direcao==='IDA').length} {voos.filter(v=>v.direcao==='IDA').length === 1 ? 'Opção' : 'Opções'}</div>
               </div>
-              {voos.filter(v => v.direcao === 'IDA').map((voo, i) => (
-                <div key={`ida-${i}`} className="bg-white border border-gray-200 rounded-xl shadow-sm mb-4 overflow-hidden" style={{marginBottom: 8, paddingBottom: 8}}>
-                  {/* Cabeçalho do Card */}
-                  <div style={{background: `linear-gradient(to right, ${corEmpresa}, ${corEmpresaEscura})`, color: 'white'}} className="px-6 py-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center" style={{gap: 18}}>
-                        {getLogoCompanhia(voo.companhia) ? (
-                          <img src={getLogoCompanhia(voo.companhia)} alt="Logo Companhia" style={{width: 32, height: 32, objectFit: 'contain', background: '#fff', borderRadius: 6}} />
-                        ) : (
-                          <div style={{width: 32, height: 32, background: '#f3f4f6', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#a3a3a3', fontWeight: 700, fontSize: 16}}>
-                            LOGO
-                          </div>
-                        )}
-                        <h4 className="font-bold text-lg cia-nome-print" style={{color: '#fff', marginRight: 0}}>{voo.companhia || 'Companhia Aérea'}</h4>
-                      </div>
+          {voos.filter(v => v.direcao === 'IDA').map((voo, i) => (
+            <div key={`ida-${i}`} className="bg-white border border-gray-200 rounded-xl shadow-sm mb-2" style={{padding: 6, marginBottom: 10}}>
+              {(() => {
+                const segs = obterSegmentosDoVoo(voo) || []
+                const partidaStr = (() => {
+                  const hp = String(voo.horario_partida || voo.horarioPartida || '')
+                  if (hp.includes('T')) return hp
+                  const di = String(voo.data_ida || voo.dataIda || '')
+                  return di ? `${di}T${hp || '00:00'}` : ''
+                })()
+                const chegadaStr = (() => {
+                  const hc = String(voo.horario_chegada || voo.horarioChegada || '')
+                  if (hc.includes('T')) return hc
+                  const dv = String(voo.data_volta || voo.dataVolta || '')
+                  return dv ? `${dv}T${hc || '00:00'}` : ''
+                })()
+                const linhas = (segs.length ? segs : [{ origem: voo.origem, destino: voo.destino, partida: partidaStr, chegada: chegadaStr, cia: voo.companhia, numero_voo: voo.numero_voo }])
+                return (
+                  <div style={{display:'flex', flexDirection:'column', gap:6}}>
+                    <div style={{display:'grid', gridTemplateColumns:'minmax(90px, 140px) 70px 130px 130px 2fr 2fr 100px 100px', alignItems:'center', gap:2, fontSize:11, fontWeight:700, color:'#6b7280', padding:'1px 0'}}>
+                      <div>Cia Aérea</div>
+                      <div>Nº Voo</div>
+                      <div>Saída</div>
+                      <div style={{borderLeft:'1px solid #e5e7eb', paddingLeft:6}}>Chegada</div>
+                      <div style={{borderLeft:'1px solid #e5e7eb', paddingLeft:6}}>Origem</div>
+                      <div>Destino</div>
+                      <div>Bagagem</div>
+                      <div>Total</div>
                     </div>
-                  </div>
-                  {/* Conteúdo Principal */}
-                  <div className="p-6">
-                    <div style={{display: 'flex', flexDirection: 'row', alignItems: 'stretch', gap: 16}}>
-                      {/* Seção de Rota e Informações */}
-                      <div style={{flex: 2, display: 'flex', flexDirection: 'column', justifyContent: 'center'}}>
-                        <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8}}>
-                          <div style={{textAlign: 'center'}}>
-                            <div className="text-2xl font-bold text-gray-900">{voo.origem}</div>
-                            <div className="text-sm text-gray-500">Partida</div>
-                            <div className="text-lg font-semibold" style={{color: corEmpresa}}>{formatarHorario(voo.horario_partida) || 'N/A'}</div>
-                            <div className="text-xs text-gray-500" style={{marginTop: 2}}>
-                              {formatarDataBR(voo.data_ida)}
-                            </div>
-                          </div>
-                          <div style={{flex: 1, margin: '0 12px', position: 'relative'}}>
-                            <div className="h-0.5 bg-gray-300 relative">
-                              <div style={{background: corEmpresa}} className="absolute inset-0"></div>
-                            </div>
-                            <div className="text-center mt-2">
-                              <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">Voo {voo.numero_voo || 'N/A'}</span>
-                            </div>
-                          </div>
-                          <div style={{textAlign: 'center'}}>
-                            <div className="text-2xl font-bold text-gray-900">{voo.destino}</div>
-                            <div className="text-sm text-gray-500">Chegada</div>
-                            <div className="text-lg font-semibold" style={{color: corEmpresa}}>{formatarHorario(voo.horario_chegada) || 'N/A'}</div>
-                            <div className="text-xs text-gray-500" style={{marginTop: 2}}>
-                              {voo.data_volta ? formatarDataBR(voo.data_volta) : '-'}
-                            </div>
-                          </div>
+                    {linhas.map((s:any, idx:number) => (
+                      <div key={idx} style={{display:'grid', gridTemplateColumns:'minmax(90px, 140px) 70px 130px 130px 2fr 2fr 100px 100px', alignItems:'center', gap:2}}>
+                        <div style={{display:'flex', alignItems:'center', gap:4}}>
+                          {getLogoCompanhia(s.cia || voo.companhia) ? (
+                            <img src={getLogoCompanhia(s.cia || voo.companhia)} alt="Logo Companhia" style={{width: 20, height: 20, objectFit: 'contain'}} />
+                          ) : (
+                            <div style={{width: 20, height: 20, background: '#f3f4f6', borderRadius: 4, display:'flex', alignItems:'center', justifyContent:'center', color:'#a3a3a3', fontWeight:700, fontSize:10}}>LOGO</div>
+                          )}
+                          <span style={{fontSize:12, fontWeight:700, color:'#111'}}>{s.cia || voo.companhia || 'Companhia'}</span>
                         </div>
-                        <div style={{display: 'flex', gap: 8, marginTop: 8}}>
-                          <div className="bg-gray-50 rounded-lg p-3" style={{flex: 1}}>
-                            <div className="text-sm text-gray-500">Classe</div>
-                            <div className="font-semibold text-gray-900">{voo.classe || 'Econômica'}</div>
-                          </div>
+                        <div style={{fontSize:12, color:'#111'}}>{s.numero_voo || voo.numero_voo || 'N/A'}</div>
+                        <div style={{display:'flex', alignItems:'center', gap:6}}>
+                          <span style={{fontSize:12, color:'#6b7280'}}>{formatarDataBR(String(s.partida || '').substring(0,10))}</span>
+                          <span style={{fontSize:12, color: corEmpresa, border:`1px solid ${corEmpresa}`, borderRadius:8, padding:'2px 6px'}}>{new Date(s.partida).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',hour12:false})}</span>
                         </div>
+                        <div style={{display:'flex', alignItems:'center', gap:6}}>
+                          <span style={{fontSize:12, color:'#6b7280'}}>{formatarDataBR(String(s.chegada || '').substring(0,10))}</span>
+                          <span style={{fontSize:12, color: corEmpresa, border:`1px solid ${corEmpresa}`, borderRadius:8, padding:'2px 6px'}}>{new Date(s.chegada).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',hour12:false})}</span>
+                        </div>
+                        <div style={{fontSize:12, fontWeight:800, color: corEmpresa, whiteSpace:'nowrap', borderLeft:'1px solid #e5e7eb', paddingLeft:6}}>{s.origem || voo.origem}</div>
+                        <div style={{fontSize:12, fontWeight:800, color: corEmpresa, whiteSpace:'nowrap'}}>{s.destino || voo.destino}</div>
+                        <div style={{fontSize:12, color:'#111'}}>{(() => { const bm = Number(voo.bagagem_mao || voo.bagagemMao || 0); const bd = Number(voo.bagagem_despachada || voo.bagagemDespachada || 0); return `🎒 ${bm} / 🧳 ${bd}` })()}</div>
+                        <div style={{fontSize:18, fontWeight:800, color:'#111', textAlign:'center', transform:'translateY(-50%)'}}>{(() => { const mid = Math.floor(linhas.length/2); return idx === mid ? Number(voo.preco_opcao || 0).toLocaleString('pt-BR',{style:'currency', currency:'BRL'}) : '' })()}</div>
                       </div>
-                      {/* Seção de Status e Bagagem lateralizada */}
-                      <div style={{flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 8}}>
-                        <div style={{ border: `1px solid ${corEmpresa}`, borderRadius: 8, padding: '12px', marginBottom: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                          <div style={{display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4}}>
-                            <div style={{ width: 8, height: 8, background: corEmpresa, borderRadius: '50%' }}></div>
-                            <span style={{ color: corEmpresa, fontSize: 11, fontWeight: 600 }}>Status</span>
-                          </div>
-                          <div style={{ color: corEmpresa, fontSize: 12, fontWeight: 700 }}>Cotação</div>
-                          <div style={{borderTop: '1px solid #e0e7ef', margin: '8px 0'}}></div>
-                          <div style={{ color: corEmpresa, fontSize: 12, fontWeight: 700 }}>Bagagens</div>
-                          <div style={{display: 'flex', gap: 8, alignItems: 'center'}}>
-                            <div style={{display: 'flex', alignItems: 'center', gap: 4, background: '#eaf1fb', borderRadius: 6, padding: '4px 10px'}}>
-                              <IconBag color={corEmpresa} />
-                              <span style={{ color: corEmpresa, fontSize: 11, fontWeight: 600 }}>Despachada:</span>
-                              <span style={{ color: corEmpresa, fontSize: 11, fontWeight: 700 }}>{voo.bagagem_despachada || voo.bagagemDespachada || '-'}</span>
-                            </div>
-                            <div style={{display: 'flex', alignItems: 'center', gap: 4, background: '#eaf1fb', borderRadius: 6, padding: '4px 10px'}}>
-                              <IconBag color={corEmpresa} />
-                              <span style={{ color: corEmpresa, fontSize: 11, fontWeight: 600 }}>Mão:</span>
-                              <span style={{ color: corEmpresa, fontSize: 11, fontWeight: 700 }}>{voo.bagagem_mao || voo.bagagemMao || '-'}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                    ))}
+                    
+                    
                   </div>
-                </div>
-              ))}
+                )
+              })()}
+            </div>
+          ))}
             </div>
           )}
           {/* Voos Internos */}
           {voos.filter(v => v.direcao === 'INTERNO').length > 0 && (
             <div className="mb-6">
-              <div className="flex items-center mb-4" style={{gap: 10}}>
-                <div style={{background: corEmpresa}} className="p-2 rounded-lg">
+              <div style={{background: corEmpresa, color:'#fff', borderRadius:10, padding:'6px 12px', display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10}}>
+                <div style={{display:'flex', alignItems:'center', gap:8}}>
                   <AviaoPaperSVG color="#fff" />
+                  <span style={{fontSize:12, fontWeight:700}}>Opções Internas</span>
                 </div>
-                <h3 className="text-xl font-bold" style={{marginLeft: 4}}>
-                  <span style={{color: corEmpresa}}>Voos Internos</span>
-                </h3>
+                <div style={{fontSize:12, fontWeight:700}}>{voos.filter(v=>v.direcao==='INTERNO').length} {voos.filter(v=>v.direcao==='INTERNO').length === 1 ? 'Opção' : 'Opções'}</div>
               </div>
               {voos.filter(v => v.direcao === 'INTERNO').map((voo, i) => (
-                <div key={`interno-${i}`} className="bg-white border border-gray-200 rounded-xl shadow-sm mb-4 overflow-hidden" style={{marginBottom: 8, paddingBottom: 8}}>
-                  {/* Cabeçalho do Card */}
-                  <div style={{background: `linear-gradient(to right, ${corEmpresa}, ${corEmpresaEscura})`, color: 'white'}} className="px-6 py-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center" style={{gap: 18}}>
-                        {getLogoCompanhia(voo.companhia) ? (
-                          <img src={getLogoCompanhia(voo.companhia)} alt="Logo Companhia" style={{width: 32, height: 32, objectFit: 'contain', background: '#fff', borderRadius: 6}} />
-                        ) : (
-                          <div style={{width: 32, height: 32, background: '#f3f4f6', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#a3a3a3', fontWeight: 700, fontSize: 16}}>
-                            LOGO
-                          </div>
-                        )}
-                        <h4 className="font-bold text-lg cia-nome-print" style={{color: '#fff', marginRight: 0}}>{voo.companhia || 'Companhia Aérea'}</h4>
-                      </div>
-                    </div>
-                  </div>
-                  {/* Conteúdo Principal */}
-                  <div className="p-6">
-                    <div style={{display: 'flex', flexDirection: 'row', alignItems: 'stretch', gap: 16}}>
-                      {/* Seção de Rota e Informações */}
-                      <div style={{flex: 2, display: 'flex', flexDirection: 'column', justifyContent: 'center'}}>
-                        <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8}}>
-                          <div style={{textAlign: 'center'}}>
-                            <div className="text-2xl font-bold text-gray-900">{voo.origem}</div>
-                            <div className="text-sm text-gray-500">Partida</div>
-                            <div className="text-lg font-semibold" style={{color: corEmpresa}}>{formatarHorario(voo.horario_partida) || 'N/A'}</div>
-                            <div className="text-xs text-gray-500" style={{marginTop: 2}}>
-                              {formatarDataBR(voo.data_ida)}
-                            </div>
-                          </div>
-                          <div style={{flex: 1, margin: '0 12px', position: 'relative'}}>
-                            <div className="h-0.5 bg-gray-300 relative">
-                              <div style={{background: corEmpresa}} className="absolute inset-0"></div>
-                            </div>
-                            <div className="text-center mt-2">
-                              <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">Voo {voo.numero_voo || 'N/A'}</span>
-                            </div>
-                          </div>
-                          <div style={{textAlign: 'center'}}>
-                            <div className="text-2xl font-bold text-gray-900">{voo.destino}</div>
-                            <div className="text-sm text-gray-500">Chegada</div>
-                            <div className="text-lg font-semibold" style={{color: corEmpresa}}>{formatarHorario(voo.horario_chegada) || 'N/A'}</div>
-                            <div className="text-xs text-gray-500" style={{marginTop: 2}}>
-                              {voo.data_volta ? formatarDataBR(voo.data_volta) : '-'}
-                            </div>
-                          </div>
+                <div key={`interno-${i}`} className="bg-white border border-gray-200 rounded-xl shadow-sm mb-2" style={{padding: 6, marginBottom: 10}}>
+                  {(() => {
+                    const segs = obterSegmentosDoVoo(voo) || []
+                    const partidaStr = (() => {
+                      const hp = String(voo.horario_partida || voo.horarioPartida || '')
+                      if (hp.includes('T')) return hp
+                      const di = String(voo.data_ida || voo.dataIda || '')
+                      return di ? `${di}T${hp || '00:00'}` : ''
+                    })()
+                    const chegadaStr = (() => {
+                      const hc = String(voo.horario_chegada || voo.horarioChegada || '')
+                      if (hc.includes('T')) return hc
+                      const dv = String(voo.data_volta || voo.dataVolta || '')
+                      return dv ? `${dv}T${hc || '00:00'}` : ''
+                    })()
+                    const linhas = (segs.length ? segs : [{ origem: voo.origem, destino: voo.destino, partida: partidaStr, chegada: chegadaStr, cia: voo.companhia, numero_voo: voo.numero_voo }])
+                    return (
+                      <div style={{display:'flex', flexDirection:'column', gap:6}}>
+                        <div style={{display:'grid', gridTemplateColumns:'minmax(90px, 140px) 70px 130px 130px 2fr 2fr 100px 100px', alignItems:'center', gap:2, fontSize:11, fontWeight:700, color:'#6b7280', padding:'1px 0'}}>
+                          <div>Cia Aérea</div>
+                          <div>Nº Voo</div>
+                          <div>Saída</div>
+                          <div style={{borderLeft:'1px solid #e5e7eb', paddingLeft:6}}>Chegada</div>
+                          <div style={{borderLeft:'1px solid #e5e7eb', paddingLeft:6}}>Origem</div>
+                          <div>Destino</div>
+                          <div>Bagagem</div>
+                          <div>Total</div>
                         </div>
-                        <div style={{display: 'flex', gap: 8, marginTop: 8}}>
-                          <div className="bg-gray-50 rounded-lg p-3" style={{flex: 1}}>
-                            <div className="text-sm text-gray-500">Classe</div>
-                            <div className="font-semibold text-gray-900">{voo.classe || 'Econômica'}</div>
-                          </div>
-                        </div>
-                      </div>
-                      {/* Seção de Status e Bagagem lateralizada */}
-                      <div style={{flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 8}}>
-                        <div style={{ border: `1px solid ${corEmpresa}`, borderRadius: 8, padding: '12px', marginBottom: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                          <div style={{display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4}}>
-                            <div style={{ width: 8, height: 8, background: corEmpresa, borderRadius: '50%' }}></div>
-                            <span style={{ color: corEmpresa, fontSize: 11, fontWeight: 600 }}>Status</span>
-                          </div>
-                          <div style={{ color: corEmpresa, fontSize: 12, fontWeight: 700 }}>Cotação</div>
-                          <div style={{borderTop: '1px solid #e0e7ef', margin: '8px 0'}}></div>
-                          <div style={{ color: corEmpresa, fontSize: 12, fontWeight: 700 }}>Bagagens</div>
-                          <div style={{display: 'flex', gap: 8, alignItems: 'center'}}>
-                            <div style={{display: 'flex', alignItems: 'center', gap: 4, background: '#eaf1fb', borderRadius: 6, padding: '4px 10px'}}>
-                              <IconBag color={corEmpresa} />
-                              <span style={{ color: corEmpresa, fontSize: 11, fontWeight: 600 }}>Despachada:</span>
-                              <span style={{ color: corEmpresa, fontSize: 11, fontWeight: 700 }}>{voo.bagagem_despachada || voo.bagagemDespachada || '-'}</span>
+                        {linhas.map((s:any, idx:number) => (
+                          <div key={idx} style={{display:'grid', gridTemplateColumns:'minmax(90px, 140px) 70px 130px 130px 2fr 2fr 100px 100px', alignItems:'center', gap:2}}>
+                            <div style={{display:'flex', alignItems:'center', gap:4}}>
+                              {getLogoCompanhia(s.cia || voo.companhia) ? (
+                                <img src={getLogoCompanhia(s.cia || voo.companhia)} alt="Logo Companhia" style={{width: 20, height: 20, objectFit: 'contain'}} />
+                              ) : (
+                                <div style={{width: 20, height: 20, background: '#f3f4f6', borderRadius: 4, display:'flex', alignItems:'center', justifyContent:'center', color:'#a3a3a3', fontWeight:700, fontSize:10}}>LOGO</div>
+                              )}
+                              <span style={{fontSize:12, fontWeight:700, color:'#111'}}>{s.cia || voo.companhia || 'Companhia'}</span>
                             </div>
-                            <div style={{display: 'flex', alignItems: 'center', gap: 4, background: '#eaf1fb', borderRadius: 6, padding: '4px 10px'}}>
-                              <IconBag color={corEmpresa} />
-                              <span style={{ color: corEmpresa, fontSize: 11, fontWeight: 600 }}>Mão:</span>
-                              <span style={{ color: corEmpresa, fontSize: 11, fontWeight: 700 }}>{voo.bagagem_mao || voo.bagagemMao || '-'}</span>
+                            <div style={{fontSize:12, color:'#111'}}>{s.numero_voo || voo.numero_voo || 'N/A'}</div>
+                            <div style={{display:'flex', alignItems:'center', gap:6}}>
+                              <span style={{fontSize:12, color:'#6b7280'}}>{formatarDataBR(String(s.partida || '').substring(0,10))}</span>
+                              <span style={{fontSize:12, color: corEmpresa, border:`1px solid ${corEmpresa}`, borderRadius:8, padding:'2px 6px'}}>{new Date(s.partida).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',hour12:false})}</span>
                             </div>
+                            <div style={{display:'flex', alignItems:'center', gap:6}}>
+                              <span style={{fontSize:12, color:'#6b7280'}}>{formatarDataBR(String(s.chegada || '').substring(0,10))}</span>
+                              <span style={{fontSize:12, color: corEmpresa, border:`1px solid ${corEmpresa}`, borderRadius:8, padding:'2px 6px'}}>{new Date(s.chegada).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',hour12:false})}</span>
+                            </div>
+                            <div style={{fontSize:12, fontWeight:800, color: corEmpresa, whiteSpace:'nowrap', borderLeft:'1px solid #e5e7eb', paddingLeft:6}}>{s.origem || voo.origem}</div>
+                            <div style={{fontSize:12, fontWeight:800, color: corEmpresa, whiteSpace:'nowrap'}}>{s.destino || voo.destino}</div>
+                            <div style={{fontSize:12, color:'#111'}}>{(() => { const bm = Number(voo.bagagem_mao || voo.bagagemMao || 0); const bd = Number(voo.bagagem_despachada || voo.bagagemDespachada || 0); return `🎒 ${bm} / 🧳 ${bd}` })()}</div>
+                            <div style={{fontSize:18, fontWeight:800, color:'#111', textAlign:'center', transform:'translateY(-50%)'}}>{(() => { const mid = Math.floor(linhas.length/2); return idx === mid ? Number(voo.preco_opcao || 0).toLocaleString('pt-BR',{style:'currency', currency:'BRL'}) : '' })()}</div>
                           </div>
-                        </div>
+                        ))}
+                        
+                        
                       </div>
-                    </div>
-                  </div>
+                    )
+                  })()}
                 </div>
               ))}
             </div>
@@ -450,101 +591,79 @@ const CotacaoView: React.FC = () => {
           {/* Voos de Volta */}
           {voos.filter(v => v.direcao === 'VOLTA').length > 0 && (
             <div className="mb-6">
-              <div className="flex items-center mb-4" style={{gap: 10}}>
-                <div style={{background: corEmpresaEscuraVolta}} className="p-2 rounded-lg">
+              <div style={{background: corEmpresaEscuraVolta, color:'#fff', borderRadius:10, padding:'6px 12px', display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10}}>
+                <div style={{display:'flex', alignItems:'center', gap:8}}>
                   <AviaoPaperSVG color="#fff" flip={true} rotate={180} />
+                  <span style={{fontSize:12, fontWeight:700}}>Opções de Volta</span>
                 </div>
-                <h3 className="text-xl font-bold" style={{marginLeft: 4}}>
-                  <span style={{color: corEmpresaEscuraVolta}}>Voos de Volta</span>
-                </h3>
+                <div style={{fontSize:12, fontWeight:700}}>{voos.filter(v=>v.direcao==='VOLTA').length} {voos.filter(v=>v.direcao==='VOLTA').length === 1 ? 'Opção' : 'Opções'}</div>
               </div>
               {voos.filter(v => v.direcao === 'VOLTA').map((voo, i) => (
-                <div key={`volta-${i}`} className="bg-white border border-gray-200 rounded-xl shadow-sm mb-4 overflow-hidden" style={{marginBottom: 8, paddingBottom: 8}}>
-                  {/* Cabeçalho do Card */}
-                  <div style={{background: `linear-gradient(to right, ${corEmpresaEscura}, ${corEmpresaEscuraVolta})`, color: 'white'}} className="px-6 py-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center" style={{gap: 18}}>
-                        {getLogoCompanhia(voo.companhia) ? (
-                          <img src={getLogoCompanhia(voo.companhia)} alt="Logo Companhia" style={{width: 32, height: 32, objectFit: 'contain', background: '#fff', borderRadius: 6}} />
-                        ) : (
-                          <div style={{width: 32, height: 32, background: '#f3f4f6', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#a3a3a3', fontWeight: 700, fontSize: 16}}>
-                            LOGO
-                          </div>
-                        )}
-                        <h4 className="font-bold text-lg cia-nome-print" style={{color: '#fff', marginRight: 0}}>{voo.companhia || 'Companhia Aérea'}</h4>
-                      </div>
-                    </div>
-                  </div>
-                  {/* Conteúdo Principal */}
-                  <div className="p-6">
-                    <div style={{display: 'flex', flexDirection: 'row', alignItems: 'stretch', gap: 16}}>
-                      {/* Seção de Rota e Informações */}
-                      <div style={{flex: 2, display: 'flex', flexDirection: 'column', justifyContent: 'center'}}>
-                        <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8}}>
-                          <div style={{textAlign: 'center'}}>
-                            <div className="text-2xl font-bold text-gray-900">{voo.origem}</div>
-                            <div className="text-sm text-gray-500">Partida</div>
-                            <div className="text-lg font-semibold" style={{color: corEmpresa}}>{formatarHorario(voo.horario_partida) || 'N/A'}</div>
-                            <div className="text-xs text-gray-500" style={{marginTop: 2}}>
-                              {formatarDataBR(voo.data_ida)}
-                            </div>
-                          </div>
-                          <div style={{flex: 1, margin: '0 12px', position: 'relative'}}>
-                            <div className="h-0.5 bg-gray-300 relative">
-                              <div style={{background: corEmpresa}} className="absolute inset-0"></div>
-                            </div>
-                            <div className="text-center mt-2">
-                              <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">Voo {voo.numero_voo || 'N/A'}</span>
-                            </div>
-                          </div>
-                          <div style={{textAlign: 'center'}}>
-                            <div className="text-2xl font-bold text-gray-900">{voo.destino}</div>
-                            <div className="text-sm text-gray-500">Chegada</div>
-                            <div className="text-lg font-semibold" style={{color: corEmpresa}}>{formatarHorario(voo.horario_chegada) || 'N/A'}</div>
-                            <div className="text-xs text-gray-500" style={{marginTop: 2}}>
-                              {voo.data_volta ? formatarDataBR(voo.data_volta) : '-'}
-                            </div>
-                          </div>
+                <div key={`volta-${i}`} className="bg-white border border-gray-200 rounded-xl shadow-sm mb-2" style={{padding: 6, marginBottom: 10}}>
+                  {(() => {
+                    const segs = obterSegmentosDoVoo(voo) || []
+                    const partidaStr = (() => {
+                      const hp = String(voo.horario_partida || voo.horarioPartida || '')
+                      if (hp.includes('T')) return hp
+                      const di = String(voo.data_ida || voo.dataIda || '')
+                      return di ? `${di}T${hp || '00:00'}` : ''
+                    })()
+                    const chegadaStr = (() => {
+                      const hc = String(voo.horario_chegada || voo.horarioChegada || '')
+                      if (hc.includes('T')) return hc
+                      const dv = String(voo.data_volta || voo.dataVolta || '')
+                      return dv ? `${dv}T${hc || '00:00'}` : ''
+                    })()
+                    const linhas = (segs.length ? segs : [{ origem: voo.origem, destino: voo.destino, partida: partidaStr, chegada: chegadaStr, cia: voo.companhia, numero_voo: voo.numero_voo }])
+                    return (
+                      <div style={{display:'flex', flexDirection:'column', gap:6}}>
+                        <div style={{display:'grid', gridTemplateColumns:'minmax(90px, 140px) 70px 130px 130px 2fr 2fr 100px 100px', alignItems:'center', gap:2, fontSize:11, fontWeight:700, color:'#6b7280', padding:'1px 0'}}>
+                          <div>Cia Aérea</div>
+                          <div>Nº Voo</div>
+                          <div>Saída</div>
+                          <div style={{borderLeft:'1px solid #e5e7eb', paddingLeft:6}}>Chegada</div>
+                          <div style={{borderLeft:'1px solid #e5e7eb', paddingLeft:6}}>Origem</div>
+                          <div>Destino</div>
+                          <div>Bagagem</div>
+                          <div>Total</div>
                         </div>
-                        <div style={{display: 'flex', gap: 8, marginTop: 8}}>
-                          <div className="bg-gray-50 rounded-lg p-3" style={{flex: 1}}>
-                            <div className="text-sm text-gray-500">Classe</div>
-                            <div className="font-semibold text-gray-900">{voo.classe || 'Econômica'}</div>
-                          </div>
-                        </div>
-                      </div>
-                      {/* Seção de Status e Bagagem lateralizada */}
-                      <div style={{flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 8}}>
-                        <div style={{ border: `1px solid ${corEmpresa}`, borderRadius: 8, padding: '12px', marginBottom: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                          <div style={{display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4}}>
-                            <div style={{ width: 8, height: 8, background: corEmpresa, borderRadius: '50%' }}></div>
-                            <span style={{ color: corEmpresa, fontSize: 11, fontWeight: 600 }}>Status</span>
-                          </div>
-                          <div style={{ color: corEmpresa, fontSize: 12, fontWeight: 700 }}>Cotação</div>
-                          <div style={{borderTop: '1px solid #e0e7ef', margin: '8px 0'}}></div>
-                          <div style={{ color: corEmpresa, fontSize: 12, fontWeight: 700 }}>Bagagens</div>
-                          <div style={{display: 'flex', gap: 8, alignItems: 'center'}}>
-                            <div style={{display: 'flex', alignItems: 'center', gap: 4, background: '#eaf1fb', borderRadius: 6, padding: '4px 10px'}}>
-                              <IconBag color={corEmpresa} />
-                              <span style={{ color: corEmpresa, fontSize: 11, fontWeight: 600 }}>Despachada:</span>
-                              <span style={{ color: corEmpresa, fontSize: 11, fontWeight: 700 }}>{voo.bagagem_despachada || voo.bagagemDespachada || '-'}</span>
+                        {linhas.map((s:any, idx:number) => (
+                          <div key={idx} style={{display:'grid', gridTemplateColumns:'minmax(90px, 140px) 70px 130px 130px 2fr 2fr 100px 100px', alignItems:'center', gap:2}}>
+                            <div style={{display:'flex', alignItems:'center', gap:4}}>
+                              {getLogoCompanhia(s.cia || voo.companhia) ? (
+                                <img src={getLogoCompanhia(s.cia || voo.companhia)} alt="Logo Companhia" style={{width: 20, height: 20, objectFit: 'contain'}} />
+                              ) : (
+                                <div style={{width: 20, height: 20, background: '#f3f4f6', borderRadius: 4, display:'flex', alignItems:'center', justifyContent:'center', color:'#a3a3a3', fontWeight:700, fontSize:10}}>LOGO</div>
+                              )}
+                              <span style={{fontSize:12, fontWeight:700, color:'#111'}}>{s.cia || voo.companhia || 'Companhia'}</span>
                             </div>
-                            <div style={{display: 'flex', alignItems: 'center', gap: 4, background: '#eaf1fb', borderRadius: 6, padding: '4px 10px'}}>
-                              <IconBag color={corEmpresa} />
-                              <span style={{ color: corEmpresa, fontSize: 11, fontWeight: 600 }}>Mão:</span>
-                              <span style={{ color: corEmpresa, fontSize: 11, fontWeight: 700 }}>{voo.bagagem_mao || voo.bagagemMao || '-'}</span>
+                            <div style={{fontSize:12, color:'#111'}}>{s.numero_voo || voo.numero_voo || 'N/A'}</div>
+                            <div style={{display:'flex', alignItems:'center', gap:6}}>
+                              <span style={{fontSize:12, color:'#6b7280'}}>{formatarDataBR(String(s.partida || '').substring(0,10))}</span>
+                              <span style={{fontSize:12, color: corEmpresa, border:`1px solid ${corEmpresa}`, borderRadius:8, padding:'2px 6px'}}>{new Date(s.partida).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',hour12:false})}</span>
                             </div>
+                            <div style={{display:'flex', alignItems:'center', gap:6}}>
+                              <span style={{fontSize:12, color:'#6b7280'}}>{formatarDataBR(String(s.chegada || '').substring(0,10))}</span>
+                              <span style={{fontSize:12, color: corEmpresa, border:`1px solid ${corEmpresa}`, borderRadius:8, padding:'2px 6px'}}>{new Date(s.chegada).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',hour12:false})}</span>
+                            </div>
+                            <div style={{fontSize:12, fontWeight:800, color: corEmpresa, whiteSpace:'nowrap', borderLeft:'1px solid #e5e7eb', paddingLeft:6}}>{s.origem || voo.origem}</div>
+                            <div style={{fontSize:12, fontWeight:800, color: corEmpresa, whiteSpace:'nowrap'}}>{s.destino || voo.destino}</div>
+                            <div style={{fontSize:12, color:'#111'}}>{(() => { const bm = Number(voo.bagagem_mao || voo.bagagemMao || 0); const bd = Number(voo.bagagem_despachada || voo.bagagemDespachada || 0); return `🎒 ${bm} / 🧳 ${bd}` })()}</div>
+                            <div style={{fontSize:18, fontWeight:800, color:'#111', textAlign:'center', transform:'translateY(-50%)'}}>{(() => { const mid = Math.floor(linhas.length/2); return idx === mid ? Number(voo.preco_opcao || 0).toLocaleString('pt-BR',{style:'currency', currency:'BRL'}) : '' })()}</div>
                           </div>
-                        </div>
+                        ))}
+                        
+                        
                       </div>
-                    </div>
-                  </div>
+                    )
+                  })()}
                 </div>
               ))}
             </div>
           )}
         </div>
       )}
+      {mostrarPagamentosInvestimento && (
       <footer className="footer-investimento" style={{
         width: '100%',
         maxWidth: 1000,
@@ -559,15 +678,77 @@ const CotacaoView: React.FC = () => {
         flexDirection: 'column',
         gap: 16
       }}>
-        <div style={{fontSize: 22, fontWeight: 800, marginBottom: 8, letterSpacing: 2}}>
-          Investimento Total: R$ {cotacao.valor?.toLocaleString('pt-BR', {minimumFractionDigits: 2}) || '-'}
-        </div>
-        <div style={{fontSize: 13, fontWeight: 600, marginBottom: 8}}>
-          Forma de pagamento: <span style={{fontWeight: 800}}>{formaPagamentoNome || '-'}</span>
-          {cotacao.parcelamento && cotacao.parcelamento !== '1' && (
-            <span style={{fontWeight: 800}}> em {cotacao.parcelamento}x de R$ {((cotacao.valor || 0) / parseInt(cotacao.parcelamento || '1')).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
-          )}
-        </div>
+        {pagamentos.length > 1 ? null : (
+          <div style={{fontSize: 22, fontWeight: 800, marginBottom: 8, letterSpacing: 2}}>
+            Investimento Total: R$ {cotacao.valor?.toLocaleString('pt-BR', {minimumFractionDigits: 2}) || '-'}
+          </div>
+        )}
+        {pagamentos.length > 0 ? (
+          pagamentos.length > 1 ? (
+            <div style={{marginBottom: 8}}>
+              <div style={{fontSize: 16, fontWeight: 800, letterSpacing: 1}}>OPÇÕES DE PAGAMENTO</div>
+              <div style={{background: '#ffffff22', borderRadius: 12, padding: '10px 12px', marginTop: 6}}>
+                <ul style={{listStyle:'none', padding:0, margin:0}}>
+                  {pagamentos.map((p, idx) => (
+                    <li key={idx} style={{marginBottom:8}}>
+                      <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                        <span style={{fontSize: 14, fontWeight: 700}}>{(p as any).descricao?.toLowerCase?.().includes('link de pagamento') ? 'Link de pagamento' : (formasPagamentoMap[String(p.formapagid)] || p.formapagid || '-')}</span>
+                        {Array.isArray((p as any).links) && (p as any).links.length ? (
+                          <span style={{fontSize: 15, fontWeight: 800}}></span>
+                        ) : (
+                          (() => {
+                            const n = parseInt(p.parcelas || '1') || 1
+                            const total = Number(p.valor || 0)
+                            const valorBase = n > 1 ? (total / n) : total
+                            const valorArredCima = Math.ceil(valorBase * 100) / 100
+                            return <span style={{fontSize: 15, fontWeight: 800}}>R$ {valorArredCima.toLocaleString('pt-BR', {minimumFractionDigits:0, maximumFractionDigits:2})}</span>
+                          })()
+                        )}
+                      </div>
+                      {Array.isArray((p as any).links) && (p as any).links.length ? (
+                        renderLinksGrid((p as any).links)
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          ) : (
+            <div style={{fontSize: 13, fontWeight: 600, marginBottom: 8}}>
+              Opções de pagamento:
+              <ul style={{listStyle:'none', padding:0, marginTop:6}}>
+                {pagamentos.map((p, idx) => (
+                  <li key={idx} style={{marginBottom:8}}>
+                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                      <span style={{fontWeight:800}}>{(p as any).descricao?.toLowerCase?.().includes('link de pagamento') ? 'Link de pagamento' : (formasPagamentoMap[String(p.formapagid)] || p.formapagid || '-')}</span>
+                      {Array.isArray((p as any).links) && (p as any).links.length ? (
+                        <span style={{fontWeight:800}}></span>
+                      ) : (
+                        (() => {
+                          const n = parseInt(p.parcelas || '1') || 1
+                          const total = Number(p.valor || 0)
+                          const valorBase = n > 1 ? (total / n) : total
+                          const valorArredCima = Math.ceil(valorBase * 100) / 100
+                          return <span style={{fontWeight:800}}>R$ {valorArredCima.toLocaleString('pt-BR', {minimumFractionDigits:0, maximumFractionDigits:2})}</span>
+                        })()
+                      )}
+                    </div>
+                    {Array.isArray((p as any).links) && (p as any).links.length ? (
+                      renderLinksGrid((p as any).links)
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )
+        ) : (
+          <div style={{fontSize: 13, fontWeight: 600, marginBottom: 8}}>
+            Forma de pagamento: <span style={{fontWeight: 800}}>{formaPagamentoNome || '-'}</span>
+            {cotacao.parcelamento && cotacao.parcelamento !== '1' && (
+              <span style={{fontWeight: 800}}> em {cotacao.parcelamento}x de R$ {((cotacao.valor || 0) / parseInt(cotacao.parcelamento || '1')).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
+            )}
+          </div>
+        )}
         <ul style={{listStyle: 'none', padding: 0, margin: 0}}>
           {(cotacao.custos || []).map((item: any, idx: number) => (
             <li key={idx} style={{fontSize: 12, marginBottom: 4, display: 'flex', justifyContent: 'space-between'}}>
@@ -577,6 +758,7 @@ const CotacaoView: React.FC = () => {
           ))}
         </ul>
       </footer>
+      )}
       <button className="btn-print" onClick={() => window.print()}>Imprimir</button>
     </div>
   );

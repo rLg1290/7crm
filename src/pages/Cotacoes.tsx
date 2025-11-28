@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
-import { FileText, Plus, User, Calendar, Eye, Edit, Trash2, MoreVertical, Clock, CheckCircle, XCircle, AlertCircle, Target, GripVertical, Plane, Building, MapPin, Route, Users, DollarSign, ChevronLeft, ChevronRight, X, Search, ArrowRight, ArrowLeft, CheckSquare, ChevronDown, Printer } from 'lucide-react'
+import DateBRPicker from '../components/DateBRPicker'
+import { FileText, Plus, User, Calendar, Eye, Edit, Trash2, MoreVertical, Clock, CheckCircle, XCircle, AlertCircle, Target, GripVertical, Plane, Building, MapPin, Route, Users, DollarSign, ChevronLeft, ChevronRight, X, Search, ArrowRight, ArrowLeft, CheckSquare, ChevronDown, Printer, Star } from 'lucide-react'
 import { User as SupabaseUser } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import logger from '../utils/logger'
@@ -147,6 +148,24 @@ interface FormularioCotacao {
   parcelamento: string;
 }
 
+interface PagamentoCotacao {
+  id: string
+  formapagid: string
+  parcelas: string
+  valor: number
+  descricao?: string
+  links?: Array<{ n: number, valor: number }>
+}
+
+interface Taxa7C {
+  id: number
+  modo: string
+  parcelas: number
+  taxa_percentual: number
+  taxa_fixa: number
+  ativo: boolean
+}
+
 interface CotacoesProps {
   user: SupabaseUser
 }
@@ -185,6 +204,60 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
   const [buscaCliente, setBuscaCliente] = useState('')
   const [abaAtiva, setAbaAtiva] = useState<'VOOS' | 'HOTEIS' | 'SERVICOS' | 'PASSAGEIROS' | 'COTACAO' | 'VENDA'>('VOOS')
 
+  // Utilitários de data no padrão BR
+  const formatBRDate = (iso?: string) => {
+    if (!iso) return ''
+    const v = String(iso)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+      const [y, m, d] = v.split('-')
+      return `${d}/${m}/${y}`
+    }
+    return v
+  }
+
+  const parseBRToISO = (br?: string) => {
+    if (!br) return ''
+    const v = br.trim()
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(v)) {
+      const [d, m, y] = v.split('/')
+      return `${y}-${m}-${d}`
+    }
+    return v
+  }
+
+  const parsePagamentosFromObservacoes = (obs?: string): PagamentoCotacao[] => {
+    const s = String(obs || '')
+    const m = s.split('\n').find(l => l.startsWith('__PAGAMENTOS__='))
+    if (!m) return []
+    const j = m.substring('__PAGAMENTOS__='.length)
+    try {
+      const arr = JSON.parse(j)
+      if (Array.isArray(arr)) {
+        return arr.map((e: any) => ({
+          id: String(e.id || Date.now()),
+          formapagid: String(e.formapagid || ''),
+          parcelas: String(e.parcelas || '1'),
+          valor: Number(e.valor || 0),
+          descricao: e.descricao ? String(e.descricao) : undefined,
+          links: Array.isArray(e.links) ? e.links.map((l:any) => ({ n: Number(l.n||0), valor: Number(l.valor||0) })) : undefined
+        }))
+      }
+      return []
+    } catch {
+      return []
+    }
+  }
+
+  const serializePagamentosToObservacoes = (base?: string, pagamentos?: PagamentoCotacao[], mostrar?: boolean): string | null => {
+    const s = String(base || '')
+    const linhas = s.split('\n').filter(l => (!l.startsWith('__PAGAMENTOS__=')) && (!l.startsWith('__MOSTRAR_PAGAMENTOS__=')))
+    const arr = Array.isArray(pagamentos) ? pagamentos.map(p => ({ id: p.id, formapagid: p.formapagid, parcelas: p.parcelas, valor: p.valor, descricao: p.descricao, links: Array.isArray(p.links) ? p.links.map(l => ({ n: l.n, valor: l.valor })) : undefined })) : []
+    const marcador = `__PAGAMENTOS__=${JSON.stringify(arr)}`
+    const marcadorMostrar = `__MOSTRAR_PAGAMENTOS__=${mostrar === false ? 'false' : 'true'}`
+    const resultado = [...linhas.filter(l => l.trim().length > 0), marcador, marcadorMostrar].join('\n')
+    return resultado.length ? resultado : null
+  }
+
   // Estados para a aba de VENDA
   const [dataVenda, setDataVenda] = useState('')
   const [itensCusto, setItensCusto] = useState<ItemVenda[]>([])
@@ -195,6 +268,41 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
   const [observacaoVenda, setObservacaoVenda] = useState('')
   const [valorCustoSimples, setValorCustoSimples] = useState('')
   const [valorVendaSimples, setValorVendaSimples] = useState('')
+  const [pagamentosCotacao, setPagamentosCotacao] = useState<PagamentoCotacao[]>([])
+  const [mostrarPagamentosInvestimento, setMostrarPagamentosInvestimento] = useState(true)
+  const [taxas7c, setTaxas7c] = useState<Taxa7C[]>([])
+  const [selecionandoLinks7c, setSelecionandoLinks7c] = useState(false)
+  const [linksSelecionados, setLinksSelecionados] = useState<Record<number, boolean>>({})
+
+  useEffect(() => {
+    const primeiro = pagamentosCotacao[0]
+    if (primeiro) {
+      setFormData(prev => ({ ...prev, formapagid: primeiro.formapagid || '', parcelamento: primeiro.parcelas || prev.parcelamento }))
+    }
+  }, [pagamentosCotacao])
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from('taxas_pagamento_7c').select('*').eq('ativo', true)
+      setTaxas7c(Array.isArray(data) ? data as any : [])
+    })()
+  }, [])
+
+  const isCartaoForma = (id?: string) => {
+    const fp = formasPagamento.find(f => String(f.id) === String(id))
+    const nome = String(fp?.nome || '').toLowerCase()
+    return nome.includes('cart') || nome.includes('crédito') || nome.includes('credito') || nome.includes('débito') || nome.includes('debito')
+  }
+
+  const calcular7c = (valorTotal: number, parcelasStr: string) => {
+    const n = parseInt(parcelasStr || '1') || 1
+    const t = taxas7c.find(x => String(x.modo).toLowerCase() === 'credito' && Number(x.parcelas) === n) || taxas7c.find(x => String(x.modo).toLowerCase() === 'credito')
+    const taxaPerc = Number(t?.taxa_percentual || 0) / 100
+    const taxaFixa = Number(t?.taxa_fixa || 0)
+    const totalComTaxa = Math.ceil(((valorTotal * (1 + taxaPerc)) + taxaFixa) * 100) / 100
+    const porParcela = Math.ceil((totalComTaxa / (n || 1)) * 100) / 100
+    return { n, taxaPerc, taxaFixa, totalComTaxa, porParcela }
+  }
 
   // Estados para formulários de custo/venda
   const [formCusto, setFormCusto] = useState({
@@ -233,6 +341,24 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
   const [editingCotacao, setEditingCotacao] = useState<Cotacao | null>(null)
   const [showViewModal, setShowViewModal] = useState(false)
   const [viewingCotacao, setViewingCotacao] = useState<Cotacao | null>(null)
+  const [opcoesRefresh, setOpcoesRefresh] = useState(0)
+  const [precoOpcaoPorVoo, setPrecoOpcaoPorVoo] = useState<Record<string, string>>({})
+  const [editPrecoVoos, setEditPrecoVoos] = useState<Record<string, boolean>>({})
+  const [conexoesEmEdicao, setConexoesEmEdicao] = useState<number>(0)
+  const [segmentosEmEdicao, setSegmentosEmEdicao] = useState<Array<{
+    ciaId?: number
+    numeroVoo?: string
+    data?: string
+    dataPartida?: string
+    dataChegada?: string
+    origem?: string
+    destino?: string
+    partida?: string
+    chegada?: string
+    franquiaBagagem?: string
+    classeTarifaria?: string
+  }>>([])
+  const [segmentosPorVoo, setSegmentosPorVoo] = useState<Record<string, any[]>>({})
   const [filtroData, setFiltroData] = useState<'mes_atual' | 'mes' | '3meses' | '6meses' | 'ano' | 'total'>('total')
   const [voosSalvos, setVoosSalvos] = useState<Voo[]>([])
   const [passageirosSalvos, setPassageirosSalvos] = useState<Passageiro[]>([])
@@ -272,6 +398,15 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
     local: '',
     status: 'AGENDADO'
   })
+
+  function formatMoedaBRInput(raw: string): string {
+    const digits = String(raw || '').replace(/\D/g, '')
+    if (!digits) return '0,00'
+    const intPart = digits.slice(0, -2) || '0'
+    const decPart = digits.slice(-2)
+    const intFormatted = Number(intPart).toLocaleString('pt-BR')
+    return `${intFormatted},${decPart}`
+  }
 
   // Estados para modal de visualização de contas
   const [showModalVisualizarConta, setShowModalVisualizarConta] = useState(false)
@@ -648,6 +783,8 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
     setObservacaoVenda('');
     setItensVenda([]);
     setItensCusto([]);
+    setPagamentosCotacao([])
+    setMostrarPagamentosInvestimento(true)
     setFormVenda({
       conta: '',
       categoria: '',
@@ -712,6 +849,8 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
       parcelamento: ''
     })
     setAbaAtiva('VOOS')
+    setPagamentosCotacao([])
+    setMostrarPagamentosInvestimento(true)
   }
 
   const handleSelecionarCliente = (cliente: Cliente) => {
@@ -1120,6 +1259,12 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
     // Carregar valores de custo e venda para o modo simplificado
     setValorVendaSimples(cotacao.valor ? cotacao.valor.toString() : '');
     setValorCustoSimples(cotacao.custo ? cotacao.custo.toString() : '');
+    setPagamentosCotacao(parsePagamentosFromObservacoes(cotacao.observacoes))
+    setMostrarPagamentosInvestimento((() => { const s = String(cotacao.observacoes || ''); const l = s.split('\n').find(x => x.startsWith('__MOSTRAR_PAGAMENTOS__=')); if (!l) return true; const v = l.substring('__MOSTRAR_PAGAMENTOS__='.length); return String(v) === 'true' })())
+    const primeiro = parsePagamentosFromObservacoes(cotacao.observacoes)[0]
+    if (primeiro) {
+      setFormData(prev => ({ ...prev, formapagid: primeiro.formapagid || '', parcelamento: primeiro.parcelas || prev.parcelamento }))
+    }
     
     setShowModal(true);
     setCurrentStep(2);
@@ -1164,7 +1309,8 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
           numeroCompra: voo.numero_compra || '',
           aberturaCheckin: voo.abertura_checkin || '',
           bagagemDespachada: voo.bagagem_despachada?.toString() || '0',
-          bagagemMao: voo.bagagem_mao?.toString() || '0'
+          bagagemMao: voo.bagagem_mao?.toString() || '0',
+          precoOpcao: typeof voo.preco_opcao !== 'undefined' && voo.preco_opcao !== null ? Number(voo.preco_opcao) : undefined
         }))
         setVoosSalvos(voosFormatados)
       }
@@ -1721,7 +1867,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                   
                   <div class="status-item">
                     <span class="status-label">Atualizado em:</span>
-                    <span class="data-atualizacao">${formatarDataLocal(new Date().toISOString())} ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+                    <span class="data-atualizacao">${formatarDataLocal(new Date().toISOString())} ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false })}</span>
                   </div>
                 </div>
               </div>
@@ -2360,113 +2506,50 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                     <div className="text-center text-gray-500 py-4">Nenhum voo adicionado para este tipo</div>
                   )}
                   {voosSalvos.filter(v => v.direcao === abaVooAtiva).map((voo, idx) => (
-                    <div key={voo.id} className="bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-shadow duration-200 mb-4 overflow-hidden">
-                      {/* Cabeçalho do Card com gradiente */}
-                      <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-3">
-                            <div className="bg-white/20 p-2 rounded-lg">
-                              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
-                              </svg>
-                            </div>
-                      <div>
-                              <h3 className="font-bold text-lg">{voo.companhia}</h3>
-                              <p className="text-blue-100 text-sm">Voo {voo.numeroVoo}</p>
-                      </div>
-                          </div>
-                          <div className="text-right">
-                            <div className="bg-white/20 px-3 py-1 rounded-full text-sm font-medium">
-                              {voo.direcao}
-                            </div>
-                          </div>
+                    <div key={voo.id} className="bg-white border border-gray-200 rounded-lg mb-2 overflow-hidden">
+                      <div className="px-3 py-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-gray-900">{voo.companhia}</span>
+                          <span className="text-gray-500">Voo {voo.numeroVoo || '-'}</span>
+                          <span className="ml-auto text-indigo-700 bg-indigo-50 px-2 py-1 rounded-md text-xs font-semibold">{voo.direcao}</span>
                         </div>
                       </div>
 
-                      {/* Conteúdo Principal */}
-                      <div className="p-6">
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                      <div className="p-3">
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
                           
-                          {/* Seção de Rota */}
-                          <div className="lg:col-span-2">
-                            <div className="flex items-center justify-between mb-4">
-                              <div className="text-center">
-                                <div className="text-2xl font-bold text-gray-900">{voo.origem}</div>
-                                <div className="text-sm text-gray-500">Partida</div>
-                                <div className="text-lg font-semibold text-blue-600">{formatarHorario(voo.horarioPartida)}</div>
-                              </div>
-                              
-                              <div className="flex-1 mx-6 relative">
-                                <div className="h-0.5 bg-gray-300 relative">
-                                  <div className="absolute inset-0 bg-gradient-to-r from-blue-500 to-indigo-500"></div>
-                                </div>
-                                <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white border-2 border-blue-500 rounded-full p-2">
-                                  <svg className="w-4 h-4 text-blue-500 transform rotate-90" fill="currentColor" viewBox="0 0 24 24">
-                                    <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
-                                  </svg>
-                                </div>
-                                <div className="text-center mt-2">
-                                  <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
-                                    Voo Direto
-                </span>
-              </div>
-                              </div>
-                              
-                              <div className="text-center">
-                                <div className="text-2xl font-bold text-gray-900">{voo.destino}</div>
-                                <div className="text-sm text-gray-500">Chegada</div>
-                                <div className="text-lg font-semibold text-green-600">{formatarHorario(voo.horarioChegada)}</div>
-                              </div>
+                          <div className="lg:col-span-2" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span className="font-extrabold text-blue-600">{voo.origem}</span>
+                              <span className="text-gray-700">{formatarHorario(voo.horarioPartida)}</span>
+                              <span className="text-gray-500">→</span>
+                              <span className="font-extrabold text-blue-600">{voo.destino}</span>
+                              <span className="text-gray-700">{formatarHorario(voo.horarioChegada)}</span>
                             </div>
-
-                            {/* Informações Adicionais */}
-                            <div className="grid grid-cols-2 gap-4 mt-6">
-                              <div className="bg-gray-50 rounded-lg p-3">
-                                <div className="text-sm text-gray-500">Data do Voo</div>
-                                <div className="font-semibold text-gray-900">
-                                  {formatarDataSemTimezone(voo.dataIda)}
-                                </div>
-                              </div>
-                              <div className="bg-gray-50 rounded-lg p-3">
-                                <div className="text-sm text-gray-500">Classe</div>
-                                <div className="font-semibold text-gray-900">{voo.classe}</div>
-                              </div>
-                            </div>
+                            <div className="text-gray-500 text-xs">Data: {formatarDataSemTimezone(voo.dataIda)}{voo.classe ? ` • ${voo.classe}` : ''}</div>
                           </div>
 
-                          {/* Seção de Ações */}
-                          <div className="flex flex-col justify-between">
-                            <div className="space-y-3">
-                              <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                                <div className="flex items-center space-x-2 mb-2">
-                                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                                  <span className="text-sm font-medium text-green-800">Status</span>
-                                </div>
-                                <div className="text-green-700 font-semibold">Confirmado</div>
-                              </div>
-                              
-                              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                                <div className="text-sm text-blue-600 mb-1">Bagagem</div>
-                                <div className="flex space-x-2">
-                                  <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">23kg</span>
-                                  <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">Mão</span>
-                                </div>
-                              </div>
+                          <div className="flex flex-col gap-2">
+                            <div className="flex items-center gap-3 text-xs text-gray-600">
+                              <span>🧳 {String((voo as any).bagagemDespachada ?? (voo as any).bagagem_despachada ?? '0')}</span>
+                              <span>🎒 {String((voo as any).bagagemMao ?? (voo as any).bagagem_mao ?? '0')}</span>
                             </div>
-
-                            <div className="flex flex-col space-y-2 mt-4">
-                              <button 
-                                onClick={() => editarVooSalvo(voo)} 
-                                className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm"
-                              >
-                                Editar Voo
-                              </button>
-                              <button 
-                                onClick={async () => await removerVooSalvo(voo.id)} 
-                                className="w-full bg-red-50 text-red-600 py-2 px-4 rounded-lg hover:bg-red-100 transition-colors font-medium text-sm border border-red-200"
-                              >
-                                Remover
-                              </button>
+                            <div className="flex items-center gap-2 text-xs">
+                              <span>Preço: {typeof (voo as any).precoOpcao !== 'undefined' && (voo as any).precoOpcao !== null && (voo as any).precoOpcao !== ''
+                                ? Number((voo as any).precoOpcao).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                                : '—'}</span>
+                              {editPrecoVoos[voo.id] ? (
+                                <>
+                                  <input type="text" value={precoOpcaoPorVoo[voo.id] || '0,00'} onChange={e => setPrecoOpcaoPorVoo(prev => ({ ...prev, [voo.id]: formatMoedaBRInput(e.target.value) }))} className="w-24 px-2 py-1 border border-gray-300 rounded-md" placeholder="0,00" />
+                                  <button onClick={async () => { await adicionarOpcaoAPartirDoVoo(voo); setEditPrecoVoos(prev => ({ ...prev, [voo.id]: false })) }} className="p-1 text-emerald-600 hover:text-emerald-700" title="Salvar preço"><CheckSquare className="h-4 w-4" /></button>
+                                </>
+                              ) : (
+                                <button onClick={() => { setEditPrecoVoos(prev => ({ ...prev, [voo.id]: true })); setPrecoOpcaoPorVoo(prev => ({ ...prev, [voo.id]: formatMoedaBRInput(String((voo as any).precoOpcao ?? '')) })) }} className="p-1 text-gray-600 hover:text-gray-800" title="Editar preço"><Edit className="h-4 w-4" /></button>
+                              )}
+                            </div>
+                            <div className="flex items-center justify-end gap-2">
+                              <button onClick={() => editarVooSalvo(voo)} className="p-1 text-blue-600 hover:text-blue-700" title="Editar voo"><Edit className="h-4 w-4" /></button>
+                              <button onClick={async () => await removerVooSalvo(voo.id)} className="p-1 text-red-600 hover:text-red-700" title="Remover"><Trash2 className="h-4 w-4" /></button>
                             </div>
                           </div>
                         </div>
@@ -2478,7 +2561,23 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                 {formData.voos.length > 0 && formData.voos[0].direcao === abaVooAtiva && (
                   <div className="border border-blue-300 rounded-xl p-8 bg-white mb-6 shadow-sm">
                     {/* Bloco: Dados principais */}
-                    <h2 className="text-xl font-bold mb-4">Voo de {abaVooAtiva === 'IDA' ? 'Ida' : abaVooAtiva === 'VOLTA' ? 'Volta' : 'Interno'}</h2>
+                    <div className="flex items-center justify-between mb-4">
+                      <h2 className="text-xl font-bold">Voo de {abaVooAtiva === 'IDA' ? 'Ida' : abaVooAtiva === 'VOLTA' ? 'Volta' : 'Interno'}</h2>
+                      <div className="flex items-center gap-2">
+                        <label className="text-sm text-gray-600">Conexões</label>
+                        <select 
+                          value={String(conexoesEmEdicao)}
+                          onChange={(e) => setConexoesEmEdicao(parseInt(e.target.value || '0'))}
+                          className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                          <option value={0}>Vôo direto</option>
+                          <option value={1}>1 conexão</option>
+                          <option value={2}>2 conexões</option>
+                          <option value={3}>3 conexões</option>
+                          <option value={4}>4 conexões</option>
+                        </select>
+                      </div>
+                    </div>
+                    {conexoesEmEdicao === 0 && (<>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Nº do Voo</label>
@@ -2495,7 +2594,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Data do Voo</label>
-                        <input type="date" value={formData.voos[0].dataIda} onChange={e => atualizarVoo(formData.voos[0].id, 'dataIda', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                        <DateBRPicker valueISO={formData.voos[0].dataIda || ''} onChange={(iso) => atualizarVoo(formData.voos[0].id, 'dataIda', iso)} className="w-full" />
                       </div>
                     </div>
                     <div className="flex justify-end mb-6">
@@ -2506,6 +2605,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                       >
                         {loadingBuscaVoo ? 'Buscando...' : 'Buscar'}
                       </button>
+                      
                     </div>
                     {erroBuscaVoo && <div className="text-red-600 text-sm mt-2">{erroBuscaVoo}</div>}
                     <hr className="my-6" />
@@ -2525,19 +2625,88 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Embarque *</label>
                         <div className="flex gap-2">
-                          <input type="date" value={embarqueData} onChange={e => setEmbarqueData(e.target.value)} className="w-1/2 px-3 py-2 border border-gray-300 rounded-lg" />
-                          <input type="time" value={embarqueHora} onChange={e => setEmbarqueHora(e.target.value)} className="w-1/2 px-3 py-2 border border-gray-300 rounded-lg" />
+                          <DateBRPicker valueISO={embarqueData || ''} onChange={iso => setEmbarqueData(iso)} className="w-1/2" />
+                          <input type="time" lang="pt-BR" value={embarqueHora} onChange={e => setEmbarqueHora(e.target.value)} className="w-1/2 px-3 py-2 border border-gray-300 rounded-lg" />
                         </div>
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Chegada *</label>
                         <div className="flex gap-2">
-                          <input type="date" value={chegadaData} onChange={e => setChegadaData(e.target.value)} className="w-1/2 px-3 py-2 border border-gray-300 rounded-lg" />
-                          <input type="time" value={chegadaHora} onChange={e => setChegadaHora(e.target.value)} className="w-1/2 px-3 py-2 border border-gray-300 rounded-lg" />
+                          <DateBRPicker valueISO={chegadaData || ''} onChange={iso => setChegadaData(iso)} className="w-1/2" />
+                          <input type="time" lang="pt-BR" value={chegadaHora} onChange={e => setChegadaHora(e.target.value)} className="w-1/2 px-3 py-2 border border-gray-300 rounded-lg" />
                         </div>
                       </div>
                     </div>
+                    </>)}
                     <hr className="my-6" />
+                    {/* Segmentos do voo conforme conexões */}
+                    {conexoesEmEdicao > 0 && (
+                      <div className="mb-6">
+                        <h3 className="text-lg font-semibold text-gray-800 mb-2">Segmentos (Vôo 1, Vôo 2, ...)</h3>
+                        <div className="space-y-4">
+                          {segmentosEmEdicao.map((seg, idx) => (
+                            <div key={idx} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Companhia</label>
+                                <select
+                                  value={seg.ciaId || ''}
+                                  onChange={(e) => setSegmentosEmEdicao(prev => prev.map((s, i) => i === idx ? ({ ...s, ciaId: Number(e.target.value) }) : s))}
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                                  <option value="">Selecione</option>
+                                  {ciasAereas.map(c => (
+                                    <option key={c.id} value={c.id}>{c.nome}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Nº do Voo</label>
+                                <input type="text" value={seg.numeroVoo || ''} onChange={(e) => setSegmentosEmEdicao(prev => prev.map((s, i) => i === idx ? ({ ...s, numeroVoo: e.target.value }) : s))} className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Data</label>
+                                <DateBRPicker valueISO={seg.data || ''} onChange={(iso) => setSegmentosEmEdicao(prev => prev.map((s, i) => i === idx ? ({ ...s, data: iso }) : s))} className="w-full" />
+                              </div>
+                              <div className="flex gap-2">
+                                <button type="button" onClick={() => buscarDadosSegmentoAPI(idx)} className="px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-sm">Buscar</button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <hr className="my-5" />
+                        <h3 className="text-lg font-semibold text-gray-800 mb-2">Resumo por segmento</h3>
+                        <div className="space-y-4">
+                          {segmentosEmEdicao.map((seg, idx) => (
+                            <div key={idx} className="border border-gray-200 rounded-lg p-4">
+                              <div className="font-semibold text-gray-800 mb-2">Vôo {idx + 1}</div>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Origem</label>
+                                  <input type="text" value={seg.origem || ''} onChange={(e) => setSegmentosEmEdicao(prev => prev.map((s, i) => i === idx ? ({ ...s, origem: e.target.value }) : s))} className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                                </div>
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Destino</label>
+                                  <input type="text" value={seg.destino || ''} onChange={(e) => setSegmentosEmEdicao(prev => prev.map((s, i) => i === idx ? ({ ...s, destino: e.target.value }) : s))} className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                                </div>
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Partida</label>
+                                  <div className="flex gap-2">
+                                  <DateBRPicker valueISO={seg.dataPartida || ''} onChange={(iso) => setSegmentosEmEdicao(prev => prev.map((s, i) => i === idx ? ({ ...s, dataPartida: iso }) : s))} className="w-1/2" />
+                                    <input type="time" lang="pt-BR" value={seg.partida || ''} onChange={(e) => setSegmentosEmEdicao(prev => prev.map((s, i) => i === idx ? ({ ...s, partida: e.target.value }) : s))} className="w-1/2 px-3 py-2 border border-gray-300 rounded-lg" />
+                                  </div>
+                                </div>
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Chegada</label>
+                                  <div className="flex gap-2">
+                                    <DateBRPicker valueISO={seg.dataChegada || ''} onChange={(iso) => setSegmentosEmEdicao(prev => prev.map((s, i) => i === idx ? ({ ...s, dataChegada: iso }) : s))} className="w-1/2" />
+                                    <input type="time" lang="pt-BR" value={seg.chegada || ''} onChange={(e) => setSegmentosEmEdicao(prev => prev.map((s, i) => i === idx ? ({ ...s, chegada: e.target.value }) : s))} className="w-1/2 px-3 py-2 border border-gray-300 rounded-lg" />
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     {/* Bloco: Detalhes do Voo */}
                     <h3 className="text-lg font-semibold text-gray-800 mb-2">Detalhes do Voo</h3>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-4">
@@ -2576,14 +2745,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                           <option value="Primeira Classe">Primeira Classe</option>
                         </select>
                       </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Conexões</label>
-                        <select className="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                          <option>Voo direto</option>
-                          <option>1 conexão</option>
-                          <option>2 conexões</option>
-                        </select>
-                      </div>
+                      
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Notificação Check-in</label>
                         <select 
@@ -2637,7 +2799,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                     {/* Rodapé */}
                     <div className="flex justify-end gap-2 mt-8">
                       <button onClick={() => removerVoo(formData.voos[0].id)} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">Cancelar</button>
-                      <button onClick={async () => await salvarVoo(formData.voos[0])} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold">Salvar</button>
+                      <button onClick={async () => await salvarVooUnico(formData.voos[0])} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold">Salvar</button>
                     </div>
                   </div>
                 )}
@@ -2645,6 +2807,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                 <div className="flex justify-end mt-4">
                   <button onClick={async () => await adicionarNovoVoo(abaVooAtiva)} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Adicionar Novo {abaVooAtiva === 'IDA' ? 'Voo de Ida' : abaVooAtiva === 'VOLTA' ? 'Voo de Volta' : 'Voo Interno'}</button>
                 </div>
+                
               </div>
             )}
 
@@ -2967,6 +3130,61 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                         className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent text-2xl font-bold text-red-600"
                         placeholder="0,00"
                       />
+                      <div className="mt-2">
+                        {(() => {
+                          const total = parseFloat(valorVendaSimples || '0') || 0
+                          const itens = Array.from({ length: 12 }, (_, i) => i + 1).map(n => {
+                            const calc = calcular7c(total, String(n))
+                            return { n, valorNum: calc.porParcela, valorStr: calc.porParcela.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) }
+                          })
+                          return (
+                            <div className="text-xs text-gray-700">
+                              <div className="font-semibold mb-1">Link de pagamento 7C</div>
+                              <div className="flex items-center gap-2 mb-2">
+                                <button className="px-2 py-1 text-xs bg-blue-50 border border-blue-200 text-blue-700 rounded" onClick={() => setSelecionandoLinks7c(prev => !prev)}>{selecionandoLinks7c ? 'Cancelar' : 'Adicionar como forma de pagamento'}</button>
+                                {selecionandoLinks7c && (
+                                  <>
+                                    <button
+                                      className="px-2 py-1 text-xs bg-gray-50 border border-gray-200 text-gray-700 rounded"
+                                      onClick={() => {
+                                        const selAll: Record<number, boolean> = {}
+                                        itens.forEach(it => { selAll[it.n] = true })
+                                        setLinksSelecionados(selAll)
+                                      }}
+                                    >Selecionar todas</button>
+                                    <button className="px-2 py-1 text-xs bg-green-50 border border-green-200 text-green-700 rounded" onClick={() => {
+                                      const escolhidos = itens.filter(it => linksSelecionados[it.n])
+                                      if (!escolhidos.length) return
+                                      const novo: PagamentoCotacao = {
+                                        id: Date.now().toString(),
+                                        formapagid: '',
+                                        parcelas: '0',
+                                        valor: 0,
+                                        descricao: 'Link de pagamento 7C',
+                                        links: escolhidos.map(it => ({ n: it.n, valor: Math.ceil(it.valorNum * 100) / 100 }))
+                                      }
+                                      setPagamentosCotacao(prev => [...prev, novo])
+                                      setSelecionandoLinks7c(false)
+                                      setLinksSelecionados({})
+                                    }}>Adicionar selecionadas</button>
+                                  </>
+                                )}
+                              </div>
+                              <ul className="space-y-1">
+                                {itens.map((it, idx) => (
+                                  <li key={idx} className="flex items-center gap-2">
+                                    {selecionandoLinks7c && (
+                                      <input type="checkbox" checked={!!linksSelecionados[it.n]} onChange={(e) => setLinksSelecionados(prev => ({ ...prev, [it.n]: e.target.checked }))} />
+                                    )}
+                                    <span className="text-sm font-bold text-gray-900">{it.n}x</span>
+                                    <span className="text-sm font-bold text-gray-900">R$ {it.valorStr}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )
+                        })()}
+                      </div>
                     </div>
                     <div>
                       <label className="block text-lg font-medium text-gray-700 mb-2">Valor de Venda (R$)</label>
@@ -2980,32 +3198,91 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                         placeholder="0,00"
                       />
 
-<div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-  <div>
-    <label className="block text-sm font-medium text-gray-700 mb-1">Forma de Pagamento</label>
-    <select
-      value={formData.formapagid || ''}
-      onChange={e => setFormData(prev => ({ ...prev, formapagid: e.target.value }))}
-      className="w-full border rounded px-3 py-2"
-    >
-      <option value="">Selecione</option>
-      {formasPagamento.map(fp => (
-        <option key={fp.id} value={fp.id}>{fp.nome}</option>
-      ))}
-    </select>
-  </div>
-  <div>
-    <label className="block text-sm font-medium text-gray-700 mb-1">Numero de Vezes</label>
-    <input
-      type="number"
-      min="1"
-      max="24"
-      value={formData.parcelamento}
-      onChange={e => setFormData(prev => ({ ...prev, parcelamento: e.target.value }))}
-      className="w-full border rounded px-3 py-2"
-      placeholder="1"
-    />
-  </div>
+  <div className="mt-4 space-y-4">
+    <div className="flex items-center justify-between">
+      <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+        <input type="checkbox" checked={mostrarPagamentosInvestimento} onChange={e => setMostrarPagamentosInvestimento(e.target.checked)} />
+        Exibir pagamentos e investimento no orçamento
+      </label>
+    </div>
+    <div className="flex items-center justify-between">
+      <span className="text-sm font-medium text-gray-700">Opções de Pagamento</span>
+      <button
+        onClick={() => setPagamentosCotacao(prev => [...prev, { id: Date.now().toString(), formapagid: '', parcelas: '1', valor: parseFloat(valorVendaSimples || '0') || 0 }])}
+        className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded"
+      >
+        Adicionar opção
+      </button>
+    </div>
+    
+  {pagamentosCotacao.map(p => (
+    <div key={p.id} className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Forma de Pagamento</label>
+        {Array.isArray(p.links) && p.links.length ? (
+          <div className="px-3 py-2 border rounded bg-gray-50 text-gray-900 text-sm font-semibold">Link de pagamento 7C</div>
+        ) : (
+          <select
+            value={p.formapagid}
+            onChange={e => setPagamentosCotacao(prev => prev.map(x => x.id === p.id ? { ...x, formapagid: e.target.value } : x))}
+            className="w-full border rounded px-3 py-2"
+          >
+            <option value="">Selecione</option>
+            {formasPagamento.map(fp => (
+              <option key={fp.id} value={fp.id}>{fp.nome}</option>
+            ))}
+          </select>
+        )}
+      </div>
+      {!(Array.isArray(p.links) && p.links.length) && (
+        <>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Parcelas</label>
+          <input
+            type="number"
+            min="1"
+            max="24"
+            value={p.parcelas}
+            onChange={e => setPagamentosCotacao(prev => prev.map(x => x.id === p.id ? { ...x, parcelas: e.target.value } : x))}
+            className="w-full border rounded px-3 py-2"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Valor (R$)</label>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={p.valor}
+            onChange={e => setPagamentosCotacao(prev => prev.map(x => x.id === p.id ? { ...x, valor: parseFloat(e.target.value || '0') } : x))}
+            className="w-full border rounded px-3 py-2"
+          />
+        </div>
+        </>
+      )}
+      <div className="flex items-end">
+        <button
+          onClick={() => setPagamentosCotacao(prev => prev.filter(x => x.id !== p.id))}
+          className="px-3 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+        >
+          Remover
+        </button>
+      </div>
+      {Array.isArray(p.links) && p.links.length ? (
+        <div className="md:col-span-4">
+          <div className="text-xs text-gray-700">Selecionadas:</div>
+          <div className="mt-1 flex flex-wrap gap-2">
+            {p.links.map((l, i) => (
+              <span key={i} className="px-2 py-1 bg-gray-100 border border-gray-200 rounded text-xs font-bold text-gray-900">{l.n}x R$ {l.valor.toLocaleString('pt-BR',{minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  ))}
+  {pagamentosCotacao.length === 0 && (
+    <div className="text-sm text-gray-500">Nenhuma opção adicionada. Use “Adicionar opção”.</div>
+  )}
 </div>
                     </div>
                   </div>
@@ -3018,19 +3295,21 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                     </div>
                   </div>
                   
-                  {/* Botão Atualizar específico para a aba Cotação */}
-                  <div className="mt-6 flex justify-end">
-                    <button
-                      onClick={async () => await atualizarValoresCotacao()}
-                      className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium flex items-center gap-2"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                      Atualizar
-                    </button>
-                  </div>
+                {/* Botão Atualizar específico para a aba Cotação */}
+                <div className="mt-6 flex justify-end">
+                  <button
+                    onClick={async () => await atualizarValoresCotacao()}
+                    className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium flex items-center gap-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Atualizar
+                  </button>
                 </div>
+
+                
+              </div>
               </div>
             )}
 
@@ -3427,6 +3706,28 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
     return horario;
   };
 
+  // Normaliza hora para HH:MM:SS e compõe timestamp YYYY-MM-DD HH:MM:SS
+  const normalizarHoraComSegundos = (hora?: string | null) => {
+    if (!hora) return null;
+    const h = String(hora).trim();
+    if (/^\d{2}:\d{2}:\d{2}$/.test(h)) return h;
+    if (/^\d{2}:\d{2}$/.test(h)) return `${h}:00`;
+    // Tentativas de correção: remover sufixo inválido
+    const parts = h.split(':');
+    if (parts.length >= 2) {
+      const [HH, MM] = parts;
+      return `${HH.padStart(2, '0')}:${MM.padStart(2, '0')}:00`;
+    }
+    return null;
+  };
+
+  const comporTimestamp = (data?: string | null, hora?: string | null) => {
+    if (!data || !hora) return null;
+    const h = normalizarHoraComSegundos(hora);
+    if (!h) return null;
+    return `${data} ${h}`;
+  };
+
   // Função específica para atualizar apenas os valores da cotação
   const atualizarValoresCotacao = async () => {
     logger.debug('🎯 INICIO: atualizarValoresCotacao chamada');
@@ -3439,12 +3740,13 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
 
       setLoading(true);
       
-      // Preparar dados para atualização
+      const primeiro = pagamentosCotacao.find(p => !(Array.isArray(p.links) && p.links.length))
       const dadosAtualizacao = {
         custo: parseFloat(valorCustoSimples || '0'),
         valor: parseFloat(valorVendaSimples || '0'),
-        formapagid: formData.formapagid || null,
-        parcelamento: formData.parcelamento || '1'
+        formapagid: ((primeiro?.formapagid || formData.formapagid || '') || null),
+        parcelamento: (primeiro?.parcelas || formData.parcelamento || '1'),
+        observacoes: serializePagamentosToObservacoes(editingCotacao?.observacoes || '', pagamentosCotacao, mostrarPagamentosInvestimento)
       };
       
       logger.debug('📊 Dados para atualização', {
@@ -3454,7 +3756,6 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         parcelamento: dadosAtualizacao.parcelamento,
       });
       
-      // Atualizar no Supabase
       const { error } = await supabase
         .from('cotacoes')
         .update(dadosAtualizacao)
@@ -3549,6 +3850,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
       const custoCalculado = formData.status === 'APROVADO' ? calcularTotalCusto() : parseFloat(valorCustoSimples) || 0;
       logger.debug('Custo calculado', { status: formData.status, valorCustoSimples, custoCalculado });
       
+      const primeiro = pagamentosCotacao.find(p => !(Array.isArray(p.links) && p.links.length))
       const cotacaoData: any = {
         titulo: titulo,
         cliente: clienteObj.nome,
@@ -3561,9 +3863,9 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         data_viagem: formData.diasViagem ? getLocalDateString(new Date()) : null,
         data_criacao: new Date().toISOString(),
         destino: '',
-        observacoes: formData.observacoesRoteiro || null,
-        formapagid: formData.formapagid || null,
-        parcelamento: formData.parcelamento || '1'
+        observacoes: serializePagamentosToObservacoes(formData.observacoesRoteiro || '', pagamentosCotacao, mostrarPagamentosInvestimento),
+        formapagid: ((primeiro?.formapagid || formData.formapagid || '') || null),
+        parcelamento: (primeiro?.parcelas || formData.parcelamento || '1')
       };
 
       if (codigoUnico) {
@@ -3725,10 +4027,26 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
   };
 
   const salvarVoo = async (voo: Voo) => {
-    // Validação básica
-    if (!voo.origem || !voo.destino || !voo.classe || !voo.companhia || !voo.numeroVoo || !voo.horarioPartida || !voo.horarioChegada || (voo.direcao === 'IDA' && !voo.dataIda) || (voo.direcao === 'INTERNO' && !voo.dataIda) || (voo.direcao === 'VOLTA' && !voo.dataVolta)) {
-      alert('Preencha todos os campos obrigatórios do voo.');
-      return false;
+    const faltando: string[] = []
+    if (!voo.origem) faltando.push('Origem')
+    if (!voo.destino) faltando.push('Destino')
+    if (!voo.classe) faltando.push('Classe')
+    // Em modo com conexões, companhia/nº e horários virão dos segmentos agregados
+    if (conexoesEmEdicao === 0) {
+      if (!voo.companhia) faltando.push('Companhia')
+      if (!voo.numeroVoo) faltando.push('Nº do Voo')
+      if (!voo.horarioPartida) faltando.push('Horário de Partida')
+      if (!voo.horarioChegada) faltando.push('Horário de Chegada')
+    } else {
+      if (!voo.horarioPartida) faltando.push('Horário de Partida (Agregado)')
+      if (!voo.horarioChegada) faltando.push('Horário de Chegada (Agregado)')
+    }
+    if ((voo.direcao === 'IDA' || voo.direcao === 'INTERNO') && !voo.dataIda) faltando.push('Data do Voo')
+    if (voo.direcao === 'VOLTA' && !voo.dataVolta) faltando.push('Data do Voo (Volta)')
+    if (faltando.length > 0) {
+      console.warn('Campos obrigatórios do voo ausentes:', { id: voo.id, direcao: voo.direcao, faltando })
+      alert('Preencha todos os campos obrigatórios do voo.')
+      return false
     }
 
     // Obter o id da cotação atual ou criar um temporário
@@ -3766,6 +4084,8 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
     // Converter bagagem para números inteiros
     const quantidadeDespachada = parseInt(bagagemDespachada) || 0;
     const quantidadeMao = parseInt(bagagemMao) || 0;
+    voo.bagagemDespachada = String(quantidadeDespachada);
+    voo.bagagemMao = String(quantidadeMao);
 
     // Persistir no Supabase
     try {
@@ -3812,10 +4132,16 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         setVooEditandoId(null);
       } else {
         logger.debug('➕ Criando novo voo');
-        const { error: insertError } = await supabase
+        const { data: insData, error: insertError } = await supabase
           .from('voos')
-          .insert([vooData]);
+          .insert([vooData])
+          .select('id')
+          .single();
         error = insertError;
+        if (!insertError && insData?.id) {
+          // propagar idBanco para o objeto local
+          voo.idBanco = insData.id;
+        }
       }
 
       if (error) {
@@ -3825,12 +4151,15 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
       }
       
       setVoosSalvos(prev => {
-        const vooExistente = prev.find(v => v.id === voo.id);
-        if (vooExistente) {
+        const byLocal = prev.find(v => v.id === voo.id);
+        const byBanco = prev.find(v => v.idBanco && v.idBanco === voo.idBanco);
+        if (byLocal) {
           return prev.map(v => v.id === voo.id ? voo : v);
-        } else {
-          return [...prev, voo];
         }
+        if (byBanco) {
+          return prev.map(v => (v.idBanco === voo.idBanco ? voo : v));
+        }
+        return [...prev, voo];
       });
       setFormData(prev => ({ ...prev, voos: [] }));
       alert('Voo salvo com sucesso!');
@@ -3906,17 +4235,322 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
     logger.debug('📝 Voo movido para edição', { id: voo.id, idBanco: voo.idBanco });
   };
 
+  const adicionarOpcaoAPartirDoVoo = async (voo: Voo) => {
+    try {
+      let cotacaoId = editingCotacao?.id
+      if (!cotacaoId) {
+        const novoId = await salvarCotacao()
+        if (!novoId) return
+        cotacaoId = novoId
+      }
+
+      const precoStr = (precoOpcaoPorVoo[voo.id] || '').trim()
+      const s = precoStr.replace(',', '.').replace(/[^\d\.]/g, '')
+      let precoNum = Number.isFinite(parseFloat(s)) ? parseFloat(s) : 0
+      if (s.split('.').length > 2) {
+        const parts = s.split('.')
+        const decimal = parts.pop() as string
+        const integer = parts.join('')
+        const joined = integer + '.' + decimal
+        precoNum = Number.isFinite(parseFloat(joined)) ? parseFloat(joined) : 0
+      }
+      const precoNumFix = Math.round(precoNum * 100) / 100
+      const alvoIdNum = Number((voo as any).idBanco ?? voo.id)
+      if (!Number.isFinite(alvoIdNum)) { alert('ID do voo inválido'); return }
+      const { data: updData, error: errUpd } = await supabase
+        .from('voos')
+        .update({ preco_opcao: precoNumFix })
+        .eq('id', alvoIdNum)
+        .select('id, preco_opcao')
+      if (errUpd) { alert('Erro ao salvar valor no voo: ' + errUpd.message); return }
+
+      const savedPreco = Array.isArray(updData) ? updData[0]?.preco_opcao : (updData as any)?.preco_opcao
+      setVoosSalvos(prev => prev.map(v => v.id === voo.id ? ({ ...v, precoOpcao: (typeof savedPreco !== 'undefined' && savedPreco !== null ? savedPreco : precoNumFix) }) : v))
+      setPrecoOpcaoPorVoo(prev => ({ ...prev, [voo.id]: '' }))
+      alert('Valor adicionado ao voo')
+    } catch (e:any) {
+      alert('Erro ao adicionar opção: ' + (e?.message || e))
+    }
+  }
+  const salvarVooUnico = async (voo: Voo) => {
+    try {
+      let baseVoo = { ...voo }
+      if (conexoesEmEdicao > 0 && segmentosEmEdicao.length) {
+        const primeiro = segmentosEmEdicao[0]
+        const ultimo = segmentosEmEdicao[segmentosEmEdicao.length - 1]
+        baseVoo = {
+          ...baseVoo,
+          origem: primeiro?.origem || baseVoo.origem,
+          destino: ultimo?.destino || baseVoo.destino,
+          horarioPartida: primeiro?.partida || baseVoo.horarioPartida,
+          horarioChegada: ultimo?.chegada || baseVoo.horarioChegada,
+          dataIda: baseVoo.direcao !== 'VOLTA' ? (primeiro?.dataPartida || baseVoo.dataIda) : baseVoo.dataIda,
+          dataVolta: baseVoo.direcao === 'VOLTA' ? (ultimo?.dataChegada || baseVoo.dataVolta) : baseVoo.dataVolta,
+          companhia: baseVoo.companhia || (ciasAereas.find(c => Number(c.id) === Number(primeiro?.ciaId))?.nome || ''),
+          numeroVoo: baseVoo.numeroVoo || (primeiro?.numeroVoo || '')
+        }
+        if (!baseVoo.classe) baseVoo.classe = 'Econômica'
+        // duração agregada
+        const inicioStr = (primeiro?.dataPartida || primeiro?.data || '') + 'T' + (primeiro?.partida || '00:00') + ':00'
+        const fimStr = (ultimo?.dataChegada || ultimo?.data || '') + 'T' + (ultimo?.chegada || '00:00') + ':00'
+        const inicio = new Date(inicioStr)
+        const fim = new Date(fimStr)
+        if (!isNaN(inicio.getTime()) && !isNaN(fim.getTime()) && fim > inicio) {
+          const diffMs = fim.getTime() - inicio.getTime()
+          const totalMin = Math.floor(diffMs / 60000)
+          const h = Math.floor(totalMin / 60)
+          const m = totalMin % 60
+          baseVoo.duracao = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`
+        }
+      }
+      const ok = await salvarVoo(baseVoo)
+      if (!ok) return
+      if (conexoesEmEdicao > 0) {
+        await salvarOpcaoEsegmentosParaVoo(baseVoo)
+      }
+    } catch (e:any) {
+      alert(e?.message || 'Erro ao salvar voo')
+    }
+  }
+
   // Adicione o carregamento das cias aéreas:
   useEffect(() => {
     const fetchCias = async () => {
       const { data, error } = await supabase
         .from('CiasAereas')
-        .select('id, nome')
+        .select('id, nome, codigo_iata')
         .order('nome');
       if (!error && data) setCiasAereas(data);
     }
     fetchCias();
   }, [showModal]);
+
+  // Ajusta quantidade de segmentos conforme número de conexões
+  useEffect(() => {
+    const totalSegmentos = (conexoesEmEdicao || 0) + 1
+    setSegmentosEmEdicao(prev => {
+      const arr = [...prev]
+      if (arr.length < totalSegmentos) return arr.concat(Array(totalSegmentos - arr.length).fill({}))
+      if (arr.length > totalSegmentos) return arr.slice(0, totalSegmentos)
+      return arr
+    })
+  }, [conexoesEmEdicao])
+
+  // Atualiza resumo (origem/destino e embarque/chegada) com base nos segmentos
+  useEffect(() => {
+    if (!segmentosEmEdicao.length || !formData.voos[0]) return
+    const primeiro = segmentosEmEdicao[0]
+    const ultimo = segmentosEmEdicao[segmentosEmEdicao.length - 1]
+    if (primeiro?.origem) atualizarVoo(formData.voos[0].id, 'origem', primeiro.origem)
+    if (ultimo?.destino) atualizarVoo(formData.voos[0].id, 'destino', ultimo.destino)
+    if (primeiro?.dataPartida) setEmbarqueData(primeiro.dataPartida)
+    if (primeiro?.partida) setEmbarqueHora(primeiro.partida)
+    if (ultimo?.dataChegada) setChegadaData(ultimo.dataChegada)
+    if (ultimo?.chegada) setChegadaHora(ultimo.chegada)
+    // Calcular duração total (primeiro partida → último chegada)
+    const inicioStr = (primeiro?.dataPartida || primeiro?.data || '') + 'T' + (primeiro?.partida || '00:00') + ':00'
+    const fimStr = (ultimo?.dataChegada || ultimo?.data || '') + 'T' + (ultimo?.chegada || '00:00') + ':00'
+    const inicio = new Date(inicioStr)
+    const fim = new Date(fimStr)
+    if (!isNaN(inicio.getTime()) && !isNaN(fim.getTime())) {
+      const diffMs = fim.getTime() - inicio.getTime()
+      if (diffMs > 0) {
+        const totalMin = Math.floor(diffMs / 60000)
+        const h = Math.floor(totalMin / 60)
+        const m = totalMin % 60
+        setDuracaoVoo(`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`)
+      }
+    }
+  }, [segmentosEmEdicao])
+
+  const getCiaIataById = (id?: number) => {
+    if (!id) return null
+    const c = ciasAereas.find(x => Number(x.id) === Number(id))
+    return (c as any)?.codigo_iata || null
+  }
+
+  const buscarDadosSegmentoAPI = async (idx: number) => {
+    try {
+      const seg = segmentosEmEdicao[idx]
+      if (!seg?.ciaId || !seg?.numeroVoo || !seg?.data) {
+        alert('Preencha companhia, número do voo e data no segmento')
+        return
+      }
+      const codigoIata = getCiaIataById(seg.ciaId)
+      if (!codigoIata) { alert('Código IATA da companhia não encontrado'); return }
+      const numeroCompleto = `${codigoIata}${(seg.numeroVoo || '').trim()}`
+      const url = `https://prod.api.market/api/v1/aedbx/aerodatabox/flights/Number/${numeroCompleto}/${seg.data}?dateLocalRole=Both&withAircraftImage=false&withLocation=false`
+      const resp = await fetch(url, {
+        headers: { 'accept': 'application/json', 'x-magicapi-key': 'cmca45tr70001kz04kep2i99c' }
+      })
+      if (!resp.ok) throw new Error('Voo do segmento não encontrado ou erro na API')
+      const raw = await resp.text()
+      let json: any = []
+      try { json = raw ? JSON.parse(raw) : [] } catch { json = [] }
+      const lista = Array.isArray(json?.value) ? json.value : (Array.isArray(json) ? json : [])
+      if (!lista || lista.length === 0) throw new Error('Segmento não encontrado')
+      const alvoData = (seg.data || '').substring(0,10)
+      const vooApi = lista.find((item:any) => String(item?.departure?.scheduledTime?.local || '').substring(0,10) === alvoData) || lista[lista.length - 1]
+
+      const origemStr = vooApi.departure?.airport?.municipalityName ? `${vooApi.departure.airport.iata} - ${vooApi.departure.airport.municipalityName}` : ''
+      const destinoStr = vooApi.arrival?.airport?.municipalityName ? `${vooApi.arrival.airport.iata} - ${vooApi.arrival.airport.municipalityName}` : ''
+      const partidaLocal = vooApi.departure?.scheduledTime?.local || ''
+      const chegadaLocal = vooApi.arrival?.scheduledTime?.local || ''
+
+      const userDataPartida = (seg.data || '')
+      const apiDataChegada = chegadaLocal ? chegadaLocal.substring(0,10) : (seg.dataChegada || seg.data || '')
+      console.debug('🛫 Segmento API', { idx, departureLocal: partidaLocal, arrivalLocal: chegadaLocal, userDataPartida, apiDataChegada })
+      setSegmentosEmEdicao(prev => prev.map((s, i) => i === idx ? ({
+        ...s,
+        origem: origemStr,
+        destino: destinoStr,
+        partida: partidaLocal ? partidaLocal.substring(11,16) : (s.partida || ''),
+        chegada: chegadaLocal ? chegadaLocal.substring(11,16) : (s.chegada || ''),
+        // mantém a data de partida exatamente como o usuário digitou
+        dataPartida: userDataPartida,
+        // data de chegada proveniente da API (local arrival)
+        dataChegada: apiDataChegada,
+        // sincroniza o campo "Data" superior com a escolhida pelo usuário
+        data: userDataPartida
+      }) : s))
+    } catch (e:any) {
+      alert(e?.message || 'Erro ao buscar dados do segmento')
+    }
+  }
+
+  const salvarOpcaoEsegmentosParaVoo = async (voo: Voo) => {
+    try {
+      let cotacaoId = editingCotacao?.id
+      if (!cotacaoId) {
+        const novoId = await salvarCotacao()
+        if (!novoId) return
+        cotacaoId = novoId
+      }
+      const alvoIdNum = Number((voo as any).idBanco ?? voo.id)
+      if (!Number.isFinite(alvoIdNum)) { alert('ID do voo inválido'); return }
+
+      let opExist: any[] = []
+      {
+        const { data: opData, error: opErr } = await supabase
+          .from('cotacao_opcoes_voo')
+          .select('id')
+          .eq('voo_id', alvoIdNum)
+          .eq('cotacao_id', cotacaoId)
+          .eq('trecho', voo.direcao)
+        if (opErr) {
+          const { data: opDataFallback } = await supabase
+            .from('cotacao_opcoes_voo')
+            .select('id')
+            .eq('cotacao_id', cotacaoId)
+            .eq('trecho', voo.direcao)
+          opExist = Array.isArray(opDataFallback) ? opDataFallback : []
+        } else {
+          opExist = Array.isArray(opData) ? opData : []
+        }
+      }
+
+      const precoStr = (precoOpcaoPorVoo[voo.id] || '').trim()
+      const s = precoStr.replace(',', '.').replace(/[^\d\.]/g, '')
+      let precoNum = Number.isFinite(parseFloat(s)) ? parseFloat(s) : 0
+      if (s.split('.').length > 2) {
+        const parts = s.split('.')
+        const decimal = parts.pop() as string
+        const integer = parts.join('')
+        precoNum = Number.parseFloat(`${integer}.${decimal}`)
+      }
+      const precoNumFix = Math.round(precoNum * 100) / 100
+
+      let opcaoId: number | undefined
+      if (opExist && opExist.length > 0) {
+        const alvoOpcaoId = opExist[0].id
+        const { error: errUpd } = await supabase
+          .from('cotacao_opcoes_voo')
+          .update({ preco_total: precoNumFix })
+          .eq('id', alvoOpcaoId)
+        if (errUpd) { alert('Erro ao atualizar opção: ' + errUpd.message); return }
+        opcaoId = alvoOpcaoId
+      } else {
+        let opIns: any[] | null = null
+        {
+          const { data: insData, error: errIns } = await supabase
+            .from('cotacao_opcoes_voo')
+            .insert([{ cotacao_id: cotacaoId, trecho: voo.direcao, preco_total: precoNumFix, voo_id: alvoIdNum }])
+            .select('id')
+          if (errIns) {
+            const { data: insDataNoVoo, error: errIns2 } = await supabase
+              .from('cotacao_opcoes_voo')
+              .insert([{ cotacao_id: cotacaoId, trecho: voo.direcao, preco_total: precoNumFix }])
+              .select('id')
+            if (errIns2) { alert('Erro ao criar opção: ' + errIns2.message); return }
+            opIns = insDataNoVoo
+          } else {
+            opIns = insData
+          }
+        }
+        opcaoId = opIns?.[0]?.id
+      }
+      if (!opcaoId) { alert('Opção não definida'); return }
+
+      await supabase.from('cotacao_opcao_segmentos').delete().eq('opcao_id', opcaoId)
+      const payload = segmentosEmEdicao.map((seg, idx) => ({
+        opcao_id: opcaoId,
+        ordem: idx + 1,
+        cia: (ciasAereas.find(c => Number(c.id) === Number(seg.ciaId))?.nome) || null,
+        numero_voo: seg.numeroVoo || null,
+        origem: seg.origem || null,
+        destino: seg.destino || null,
+        partida: seg.dataPartida && seg.partida ? new Date(`${seg.dataPartida}T${seg.partida}:00`) : (seg.data && seg.partida ? new Date(`${seg.data}T${seg.partida}:00`) : null),
+        chegada: seg.dataChegada && seg.chegada ? new Date(`${seg.dataChegada}T${seg.chegada}:00`) : (seg.data && seg.chegada ? new Date(`${seg.data}T${seg.chegada}:00`) : null),
+        franquia_bagagem: seg.franquiaBagagem || null,
+        classe_tarifaria: seg.classeTarifaria || null
+      }))
+      const { error: errSeg } = await supabase.from('cotacao_opcao_segmentos').insert(payload)
+      if (errSeg) { alert('Erro ao salvar segmentos: ' + errSeg.message); return }
+
+      const primeiro = segmentosEmEdicao[0]
+      const ultimo = segmentosEmEdicao[segmentosEmEdicao.length - 1]
+      // calcular duração
+      let duracaoStr = ''
+      try {
+        const inicioStr = (primeiro?.dataPartida || primeiro?.data || '') + 'T' + (primeiro?.partida || '00:00') + ':00'
+        const fimStr = (ultimo?.dataChegada || ultimo?.data || '') + 'T' + (ultimo?.chegada || '00:00') + ':00'
+        const inicio = new Date(inicioStr)
+        const fim = new Date(fimStr)
+        if (!isNaN(inicio.getTime()) && !isNaN(fim.getTime()) && fim > inicio) {
+          const diffMs = fim.getTime() - inicio.getTime()
+          const totalMin = Math.floor(diffMs / 60000)
+          const h = Math.floor(totalMin / 60)
+          const m = totalMin % 60
+          duracaoStr = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`
+        }
+      } catch {}
+      const { error: errVooAgg } = await supabase
+        .from('voos')
+        .update({
+          origem: primeiro?.origem || voo.origem,
+          destino: ultimo?.destino || voo.destino,
+          horario_partida: primeiro?.partida || voo.horarioPartida,
+          horario_chegada: ultimo?.chegada || voo.horarioChegada,
+          duracao: duracaoStr || null,
+        })
+        .eq('id', alvoIdNum)
+      if (errVooAgg) { alert('Erro ao atualizar resumo do voo: ' + errVooAgg.message); return }
+
+      setVoosSalvos(prev => prev.map(v => v.id === voo.id ? ({
+        ...v,
+        origem: primeiro?.origem || v.origem,
+        destino: ultimo?.destino || v.destino,
+        horarioPartida: primeiro?.partida || v.horarioPartida,
+        horarioChegada: ultimo?.chegada || v.horarioChegada,
+        duracao: duracaoStr || v.duracao,
+        precoOpcao: precoNumFix
+      }) : v))
+      setSegmentosPorVoo(prev => ({ ...prev, [voo.id]: [...segmentosEmEdicao] }))
+      alert('Conexões e opção salvas')
+    } catch (e:any) {
+      alert(e?.message || 'Erro ao salvar opção/segmentos')
+    }
+  }
 
   // Função para buscar dados do voo na API AeroDataBox
   const buscarDadosVooAPI = async () => {
@@ -3952,8 +4586,10 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
       });
       if (!resp.ok) throw new Error('Voo não encontrado ou erro na API');
       const json = await resp.json();
-      if (!json || !json[0]) throw new Error('Voo não encontrado');
-      const vooApi = json[0];
+      const lista = Array.isArray(json?.value) ? json.value : (Array.isArray(json) ? json : []);
+      if (!lista || lista.length === 0) throw new Error('Voo não encontrado');
+      const alvoData = (voo.dataIda || '').substring(0, 10);
+      const vooApi = lista.find((item:any) => String(item?.departure?.scheduledTime?.local || '').substring(0,10) === alvoData) || lista[lista.length - 1];
       // Preencher campos do formulário
       atualizarVoo(voo.id, 'origem', vooApi.departure?.airport?.municipalityName ? `${vooApi.departure.airport.iata} - ${vooApi.departure.airport.municipalityName}` : '');
       atualizarVoo(voo.id, 'destino', vooApi.arrival?.airport?.municipalityName ? `${vooApi.arrival.airport.iata} - ${vooApi.arrival.airport.municipalityName}` : '');
@@ -5332,9 +5968,14 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                 <coluna.icone className="h-5 w-5" />
                 <h3 className="font-semibold">{coluna.titulo}</h3>
               </div>
-              <span className="bg-white bg-opacity-50 px-2 py-1 rounded-full text-xs font-medium">
-                {getCotacoesPorStatus(coluna.id).length}
-              </span>
+              <div className="text-right">
+                <div className="inline-block bg-white bg-opacity-50 px-2 py-1 rounded-full text-xs font-medium">
+                  {getCotacoesPorStatus(coluna.id).length}
+                </div>
+                <div className="text-xs font-medium text-gray-800 mt-1">
+                  Total: {formatarMoedaTotal(getTotalPorStatus(coluna.id))}
+                </div>
+              </div>
             </div>
 
             {/* Cards da coluna */}
@@ -5353,12 +5994,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                 ))}
               </div>
 
-            {/* Total da coluna */}
-            <div className="px-4 py-3 bg-white bg-opacity-50 border-t">
-              <div className="text-sm font-medium text-gray-700">
-                Total: {formatarMoedaTotal(getTotalPorStatus(coluna.id))}
-              </div>
-            </div>
+            {/* Total da coluna movido para o topo (header) */}
             </div>
           ))}
         </div>
@@ -5372,8 +6008,8 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         </div>
       )}
 
-      {/* Modal de Visualização */}
-      {showViewModal && viewingCotacao && (
+              {/* Modal de Visualização */}
+              {showViewModal && viewingCotacao && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div className="p-6">
@@ -5396,9 +6032,9 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                 <X className="h-5 w-5 text-gray-600" />
               </button>
           </div>
-        </div>
+                </div>
 
-              {/* Cabeçalho Único - Replicando Design da Impressão */}
+                {/* Cabeçalho Único - Replicando Design da Impressão */}
               <div 
                 className="bg-white border-2 border-gray-300 rounded-lg mb-6 overflow-hidden"
                 style={{
@@ -5447,6 +6083,9 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                     {viewingCotacao.codigo}
         </div>
                 </div>
+
+                {/* Opções de Voo (Múltiplas alternativas) */}
+              
 
                 {/* Seção de Passageiros */}
                 <div 
@@ -5659,14 +6298,14 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                     return (
                       <div key={direcao} className="mb-4">
                         <div 
-                          className="bg-blue-600 text-white px-3 py-2 rounded-t-lg font-bold text-center"
+                          className="bg-blue-600 text-white rounded-t-md font-bold text-center"
                           style={{
                             backgroundColor: '#2563eb',
                             color: 'white',
-                            padding: '6px 12px',
-                            borderRadius: '3px 3px 0 0',
-                            fontSize: '8px',
-                            fontWeight: 'bold',
+                            padding: '4px 8px',
+                            borderRadius: '4px 4px 0 0',
+                            fontSize: '7px',
+                            fontWeight: 700,
                             textAlign: 'center'
                           }}
                         >
@@ -5676,100 +6315,32 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                         {voosDoTipo.map((voo, index) => (
                           <div 
                             key={index}
-                            className="bg-white border border-gray-300 p-3"
+                            className="bg-white border border-gray-300"
                             style={{
                               backgroundColor: 'white',
                               border: '1px solid #d1d5db',
-                              padding: '6px 12px',
                               borderTop: 'none',
-                              fontSize: '6px'
+                              fontSize: '7px',
+                              padding: '4px 6px',
+                              marginBottom: '6px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '2px'
                             }}
                           >
-                            <div 
-                              className="grid grid-cols-4 gap-2 text-xs"
-                              style={{
-                                display: 'grid',
-                                gridTemplateColumns: '60px 1fr 1fr 1fr',
-                                gap: '4px',
-                                minHeight: '20px',
-                                alignItems: 'center'
-                              }}
-                            >
-                              <div className="text-center">
-                                <div 
-                                  className="font-bold text-blue-600"
-                                  style={{ fontWeight: 'bold', color: '#2563eb', fontSize: '8px' }}
-                                >
-                                  {voo.origem}
-                                </div>
-                                <div 
-                                  className="text-gray-500"
-                                  style={{ color: '#6b7280', fontSize: '5px' }}
-                                >
-                                  ✈️
-                                </div>
-                                <div 
-                                  className="font-bold text-blue-600"
-                                  style={{ fontWeight: 'bold', color: '#2563eb', fontSize: '8px' }}
-                                >
-                                  {voo.destino}
-                                </div>
-                              </div>
-                              
-                              <div>
-                                <div 
-                                  className="font-semibold text-gray-700"
-                                  style={{ fontWeight: 'bold', color: '#374151' }}
-                                >
-                                  Companhia: {voo.companhia}
-                                </div>
-                                <div 
-                                  className="text-gray-600"
-                                  style={{ color: '#6b7280' }}
-                                >
-                                  Voo: {voo.numeroVoo}
-                                </div>
-                              </div>
-                              
-                              <div>
-                                <div 
-                                  className="font-semibold text-gray-700"
-                                  style={{ fontWeight: 'bold', color: '#374151' }}
-                                >
-                                  Data: {voo.dataIda}
-                                </div>
-                                <div 
-                                  className="text-gray-600"
-                                  style={{ color: '#6b7280' }}
-                                >
-                                  Classe: {voo.classe}
-                                </div>
-                              </div>
-                              
-                              <div>
-                                <div 
-                                  className="font-semibold text-gray-700"
-                                  style={{ fontWeight: 'bold', color: '#374151' }}
-                                >
-                                  Partida: {formatarHorario(voo.horarioPartida)}
-                                </div>
-                                <div 
-                                  className="text-gray-600"
-                                  style={{ color: '#6b7280' }}
-                                >
-                                  Chegada: {formatarHorario(voo.horarioChegada)}
-                                </div>
-                              </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span style={{ fontWeight: 700, color: '#111827' }}>{voo.companhia}</span>
+                              <span style={{ color: '#6b7280' }}>{voo.numeroVoo || '-'}</span>
+                              <span style={{ color: '#2563eb', fontWeight: 700 }}>{voo.origem}</span>
+                              <span style={{ color: '#374151' }}>{formatarHorario(voo.horarioPartida)}</span>
+                              <span style={{ color: '#6b7280' }}>→</span>
+                              <span style={{ color: '#2563eb', fontWeight: 700 }}>{voo.destino}</span>
+                              <span style={{ color: '#374151' }}>{formatarHorario(voo.horarioChegada)}</span>
                             </div>
-                            
-                            {voo.observacoes && (
-                              <div 
-                                className="mt-2 text-gray-600 italic"
-                                style={{ marginTop: '4px', color: '#6b7280', fontStyle: 'italic' }}
-                              >
-                                Obs: {voo.observacoes}
-                              </div>
-                            )}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#6b7280' }}>
+                              <span>Data: {voo.dataIda || '-'}</span>
+                              {voo.classe ? <span>• {voo.classe}</span> : null}
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -7418,5 +7989,290 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
 }
 
 export default Cotacoes
+
+function OpcoesVoo({ cotacaoId, trecho, permitirEscolha }:{ cotacaoId: number, trecho?: 'IDA'|'VOLTA'|'INTERNO', permitirEscolha?: boolean }) {
+  const [opcoes, setOpcoes] = useState<Array<any>>([])
+  const [form, setForm] = useState<{ titulo:string; preco_total:number; valido_ate:string }>({ titulo:'', preco_total:0, valido_ate:'' })
+  const [segmentsByOption, setSegmentsByOption] = useState<Record<number, any[]>>({})
+  const [newSeg, setNewSeg] = useState<Record<number, any>>({})
+  const [editingSegIds, setEditingSegIds] = useState<Record<number, boolean>>({})
+  useEffect(() => {
+    const load = async () => {
+      let query = supabase.from('cotacao_opcoes_voo').select('*').eq('cotacao_id', cotacaoId)
+      if (trecho) query = query.eq('trecho', trecho)
+      const { data } = await query.order('is_preferida', { ascending: false })
+      const list = data || []
+      setOpcoes(list)
+      const ids = list.map((d:any) => d.id)
+      const segs: Record<number, any[]> = {}
+      for (const id of ids) {
+        const { data: sdata } = await supabase.from('cotacao_opcao_segmentos').select('*').eq('opcao_id', id).order('id', { ascending: true })
+        segs[id] = sdata || []
+      }
+      setSegmentsByOption(segs)
+    }
+    load()
+  }, [cotacaoId, trecho])
+
+  const addOpcao = async () => {
+    if (!form.titulo.trim()) return
+    const { data, error } = await supabase.from('cotacao_opcoes_voo').insert([{ cotacao_id: cotacaoId, trecho: trecho || null, titulo: form.titulo.trim(), preco_total: form.preco_total || 0, moeda: 'BRL', valido_ate: form.valido_ate || null }]).select().single()
+    if (!error && data) {
+      setOpcoes(prev => [data, ...prev])
+      setForm({ titulo:'', preco_total:0, valido_ate:'' })
+      const { data: sdata } = await supabase.from('cotacao_opcao_segmentos').select('*').eq('opcao_id', data.id).order('id', { ascending: true })
+      setSegmentsByOption(prev => ({ ...prev, [data.id]: sdata || [] }))
+    }
+  }
+
+  const setPreferida = async (id:number) => {
+    await supabase.from('cotacao_opcoes_voo').update({ is_preferida: false }).eq('cotacao_id', cotacaoId).eq('trecho', trecho || null)
+    const { error } = await supabase.from('cotacao_opcoes_voo').update({ is_preferida: true }).eq('id', id)
+    if (!error) {
+      setOpcoes(prev => prev.map(o => ({ ...o, is_preferida: o.id === id })))
+    }
+  }
+
+  const removeOpcao = async (id:number) => {
+    const { error } = await supabase.from('cotacao_opcoes_voo').delete().eq('id', id)
+    if (!error) {
+      setOpcoes(prev => prev.filter(o => o.id !== id))
+      setSegmentsByOption(prev => {
+        const copy = { ...prev }
+        delete copy[id]
+        return copy
+      })
+    }
+  }
+
+  const addSegment = async (opcaoId:number) => {
+    const s = newSeg[opcaoId] || {}
+    const partida = comporTimestamp(s.partida_data || null, s.partida_hora || null)
+    const chegada = comporTimestamp(s.chegada_data || null, s.chegada_hora || null)
+    const { data, error } = await supabase.from('cotacao_opcao_segmentos').insert([{ opcao_id: opcaoId, origem: s.origem || '', destino: s.destino || '', partida: partida, chegada: chegada, cia: s.cia || '', numero_voo: s.numero_voo || '', classe_tarifaria: s.classe_tarifaria || '' }]).select().single()
+    if (!error && data) {
+      setSegmentsByOption(prev => ({ ...prev, [opcaoId]: [...(prev[opcaoId] || []), data] }))
+      setNewSeg(prev => ({ ...prev, [opcaoId]: {} }))
+    }
+  }
+
+  const updateSegmentField = (opcaoId:number, segId:number, campo:string, valor:any) => {
+    setSegmentsByOption(prev => ({ ...prev, [opcaoId]: (prev[opcaoId] || []).map(s => s.id === segId ? { ...s, [campo]: valor } : s) }))
+  }
+
+  const saveSegment = async (opcaoId:number, segId:number) => {
+    const seg = (segmentsByOption[opcaoId] || []).find(s => s.id === segId)
+    if (!seg) return
+    const { error } = await supabase.from('cotacao_opcao_segmentos').update({ origem: seg.origem, destino: seg.destino, cia: seg.cia, numero_voo: seg.numero_voo, classe_tarifaria: seg.classe_tarifaria, partida: seg.partida, chegada: seg.chegada }).eq('id', segId)
+    if (!error) {
+      setEditingSegIds(prev => ({ ...prev, [segId]: false }))
+    }
+  }
+
+  const removeSegment = async (opcaoId:number, segId:number) => {
+    const { error } = await supabase.from('cotacao_opcao_segmentos').delete().eq('id', segId)
+    if (!error) {
+      setSegmentsByOption(prev => ({ ...prev, [opcaoId]: (prev[opcaoId] || []).filter(s => s.id !== segId) }))
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <input className="border rounded p-2 text-xs" placeholder="Título da opção" value={form.titulo} onChange={e=>setForm(prev=>({ ...prev, titulo: e.target.value }))} />
+        <input type="number" className="border rounded p-2 text-xs" placeholder="Preço total" value={form.preco_total} onChange={e=>setForm(prev=>({ ...prev, preco_total: parseFloat(e.target.value) || 0 }))} />
+        <input type="date" className="border rounded p-2 text-xs" value={form.valido_ate} onChange={e=>setForm(prev=>({ ...prev, valido_ate: e.target.value }))} />
+      </div>
+      <div className="flex justify-end">
+        <button className="px-3 py-1 bg-blue-600 text-white rounded text-xs" onClick={addOpcao}>Adicionar opção</button>
+      </div>
+      {opcoes.length === 0 ? (
+        <div className="text-xs text-gray-600">Nenhuma opção adicionada.</div>
+      ) : (
+        <div className="space-y-2">
+          {opcoes.map(o => (
+            <div key={o.id} className={`border rounded p-2 text-xs ${o.is_preferida ? 'border-blue-400' : 'border-gray-200'}`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="font-medium text-gray-900">
+                    {o.titulo} {o.is_preferida && <span className="ml-1 text-blue-700">(Escolhida)</span>}
+                  </div>
+                  <div className="text-gray-700">Preço: {Number(o.preco_total).toLocaleString('pt-BR', { style:'currency', currency:o.moeda || 'BRL' })}</div>
+                  {o.valido_ate && <div className="text-gray-500">Válido até: {(() => { const p = String(o.valido_ate).split('-'); return p.length===3 ? new Date(Number(p[0]), Number(p[1])-1, Number(p[2])).toLocaleDateString('pt-BR') : new Date(o.valido_ate).toLocaleDateString('pt-BR') })()}</div>}
+                </div>
+                <div className="flex items-center gap-2">
+                  {permitirEscolha && <button className="px-2 py-1 bg-white border rounded hover:border-blue-400" onClick={()=>setPreferida(o.id)}><Star className="h-4 w-4 text-blue-700" /></button>}
+                  <button className="px-2 py-1 bg-white border rounded hover:border-red-400" onClick={()=>removeOpcao(o.id)}><Trash2 className="h-4 w-4 text-red-700" /></button>
+                </div>
+              </div>
+              <div className="mt-2">
+                <div className="font-medium text-gray-700">Segmentos</div>
+                {(segmentsByOption[o.id] && segmentsByOption[o.id].length > 0) ? (
+                  <div className="space-y-2 mt-1">
+                    {segmentsByOption[o.id].map(s => (
+                      <div key={s.id} className="border rounded p-2 text-xs">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                          <input className="border rounded p-1" value={s.origem || ''} onChange={e=>updateSegmentField(o.id, s.id, 'origem', e.target.value)} disabled={!editingSegIds[s.id]} />
+                          <input className="border rounded p-1" value={s.destino || ''} onChange={e=>updateSegmentField(o.id, s.id, 'destino', e.target.value)} disabled={!editingSegIds[s.id]} />
+                          <input className="border rounded p-1" value={s.cia || ''} onChange={e=>updateSegmentField(o.id, s.id, 'cia', e.target.value)} disabled={!editingSegIds[s.id]} />
+                          <input className="border rounded p-1" value={s.numero_voo || ''} onChange={e=>updateSegmentField(o.id, s.id, 'numero_voo', e.target.value)} disabled={!editingSegIds[s.id]} />
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2">
+                          <input type="datetime-local" className="border rounded p-1" value={s.partida ? String(s.partida).substring(0,16).replace(' ', 'T') : ''} onChange={e=>updateSegmentField(o.id, s.id, 'partida', e.target.value ? e.target.value.replace('T',' ') + ':00' : null)} disabled={!editingSegIds[s.id]} />
+                          <input type="datetime-local" className="border rounded p-1" value={s.chegada ? String(s.chegada).substring(0,16).replace(' ', 'T') : ''} onChange={e=>updateSegmentField(o.id, s.id, 'chegada', e.target.value ? e.target.value.replace('T',' ') + ':00' : null)} disabled={!editingSegIds[s.id]} />
+                          <input className="border rounded p-1" value={s.classe_tarifaria || ''} onChange={e=>updateSegmentField(o.id, s.id, 'classe_tarifaria', e.target.value)} disabled={!editingSegIds[s.id]} />
+                        </div>
+                        <div className="flex gap-2 mt-2">
+                          {editingSegIds[s.id] ? (
+                            <button className="px-2 py-1 bg-blue-600 text-white rounded" onClick={()=>saveSegment(o.id, s.id)}>Salvar</button>
+                          ) : (
+                            <button className="px-2 py-1 bg-white border rounded" onClick={()=>setEditingSegIds(prev=>({ ...prev, [s.id]: true }))}>Editar</button>
+                          )}
+                          <button className="px-2 py-1 bg-white border rounded hover:border-red-400" onClick={()=>removeSegment(o.id, s.id)}>Remover</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-xs text-gray-500 mt-1">Nenhum segmento.</div>
+                )}
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 mt-2">
+                  <input className="border rounded p-2 text-xs" placeholder="Origem" value={(newSeg[o.id]?.origem)||''} onChange={e=>setNewSeg(prev=>({ ...prev, [o.id]: { ...(prev[o.id]||{}), origem: e.target.value } }))} />
+                  <input className="border rounded p-2 text-xs" placeholder="Destino" value={(newSeg[o.id]?.destino)||''} onChange={e=>setNewSeg(prev=>({ ...prev, [o.id]: { ...(prev[o.id]||{}), destino: e.target.value } }))} />
+                  <input type="date" className="border rounded p-2 text-xs" value={(newSeg[o.id]?.partida_data)||''} onChange={e=>setNewSeg(prev=>({ ...prev, [o.id]: { ...(prev[o.id]||{}), partida_data: e.target.value } }))} />
+                  <input type="time" lang="pt-BR" className="border rounded p-2 text-xs" value={(newSeg[o.id]?.partida_hora)||''} onChange={e=>setNewSeg(prev=>({ ...prev, [o.id]: { ...(prev[o.id]||{}), partida_hora: e.target.value } }))} />
+                  <input type="date" className="border rounded p-2 text-xs" value={(newSeg[o.id]?.chegada_data)||''} onChange={e=>setNewSeg(prev=>({ ...prev, [o.id]: { ...(prev[o.id]||{}), chegada_data: e.target.value } }))} />
+                  <input type="time" lang="pt-BR" className="border rounded p-2 text-xs" value={(newSeg[o.id]?.chegada_hora)||''} onChange={e=>setNewSeg(prev=>({ ...prev, [o.id]: { ...(prev[o.id]||{}), chegada_hora: e.target.value } }))} />
+                  <input className="border rounded p-2 text-xs" placeholder="Companhia" value={(newSeg[o.id]?.cia)||''} onChange={e=>setNewSeg(prev=>({ ...prev, [o.id]: { ...(prev[o.id]||{}), cia: e.target.value } }))} />
+                  <input className="border rounded p-2 text-xs" placeholder="Nº voo" value={(newSeg[o.id]?.numero_voo)||''} onChange={e=>setNewSeg(prev=>({ ...prev, [o.id]: { ...(prev[o.id]||{}), numero_voo: e.target.value } }))} />
+                  <input className="border rounded p-2 text-xs" placeholder="Classe Tarifária" value={(newSeg[o.id]?.classe_tarifaria)||''} onChange={e=>setNewSeg(prev=>({ ...prev, [o.id]: { ...(prev[o.id]||{}), classe_tarifaria: e.target.value } }))} />
+                </div>
+                <div className="flex justify-end mt-2">
+                  <button className="px-3 py-1 bg-blue-600 text-white rounded text-xs" onClick={()=>addSegment(o.id)}>Adicionar segmento</button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AprovacaoOpcoes({ cotacaoId }:{ cotacaoId: number }) {
+  const [opcoesIDA, setOpcoesIDA] = useState<any[]>([])
+  const [opcoesVOLTA, setOpcoesVOLTA] = useState<any[]>([])
+  const [opcoesINTERNO, setOpcoesINTERNO] = useState<any[]>([])
+  const [selIDA, setSelIDA] = useState<number | null>(null)
+  const [selVOLTA, setSelVOLTA] = useState<number | null>(null)
+  const [selINTERNO, setSelINTERNO] = useState<number | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    const load = async () => {
+      const base = supabase.from('cotacao_opcoes_voo').select('*').eq('cotacao_id', cotacaoId).order('is_preferida', { ascending: false })
+      const [ida, volta, interno] = await Promise.all([
+        base.eq('trecho', 'IDA'),
+        base.eq('trecho', 'VOLTA'),
+        base.eq('trecho', 'INTERNO'),
+      ])
+      setOpcoesIDA(ida.data || [])
+      setOpcoesVOLTA(volta.data || [])
+      setOpcoesINTERNO(interno.data || [])
+      setSelIDA((ida.data || []).find((o:any) => o.is_preferida)?.id || null)
+      setSelVOLTA((volta.data || []).find((o:any) => o.is_preferida)?.id || null)
+      setSelINTERNO((interno.data || []).find((o:any) => o.is_preferida)?.id || null)
+    }
+    load()
+  }, [cotacaoId])
+
+  const confirmar = async () => {
+    setLoading(true)
+    try {
+      const escolhas: Array<{ trecho:'IDA'|'VOLTA'|'INTERNO', id:number|null }> = [
+        { trecho:'IDA', id: selIDA },
+        { trecho:'VOLTA', id: selVOLTA },
+        { trecho:'INTERNO', id: selINTERNO },
+      ]
+      // Atualizar preferida por trecho
+      for (const e of escolhas) {
+        await supabase.from('cotacao_opcoes_voo').update({ is_preferida: false }).eq('cotacao_id', cotacaoId).eq('trecho', e.trecho)
+        if (e.id) await supabase.from('cotacao_opcoes_voo').update({ is_preferida: true }).eq('id', e.id)
+      }
+
+      // Somar valores escolhidos
+      const soma = [selIDA, selVOLTA, selINTERNO].filter(Boolean).reduce(async (accPromise, id) => {
+        const acc = await accPromise
+        const { data } = await supabase.from('cotacao_opcoes_voo').select('preco_total').eq('id', id as number).single()
+        return acc + (data?.preco_total ? Number(data.preco_total) : 0)
+      }, Promise.resolve(0))
+      const total = await soma
+      await supabase.from('cotacoes').update({ valor: total, status: 'APROVADO' }).eq('id', cotacaoId)
+
+      // Remover voos existentes e copiar segmentos das opções escolhidas para 'voos'
+      await supabase.from('voos').delete().eq('cotacao_id', cotacaoId)
+      const inserirSegmentos = async (opcaoId:number, direcao:'IDA'|'VOLTA'|'INTERNO') => {
+        const { data: segs } = await supabase.from('cotacao_opcao_segmentos').select('*').eq('opcao_id', opcaoId).order('ordem', { ascending: true })
+        for (const s of (segs || [])) {
+          const vooData:any = {
+            cotacao_id: cotacaoId,
+            direcao: direcao,
+            origem: s.origem || null,
+            destino: s.destino || null,
+            horario_partida: s.partida || null,
+            horario_chegada: s.chegada || null,
+            numero_voo: s.numero_voo || null,
+            companhia: s.cia || null,
+            classe: s.classe_tarifaria || null,
+            observacoes: null
+          }
+          await supabase.from('voos').insert([vooData])
+        }
+      }
+      if (selIDA) await inserirSegmentos(selIDA, 'IDA')
+      if (selVOLTA) await inserirSegmentos(selVOLTA, 'VOLTA')
+      if (selINTERNO) await inserirSegmentos(selINTERNO, 'INTERNO')
+
+      alert('Aprovação confirmada. Opções escolhidas foram aplicadas à emissão.')
+    } catch (e:any) {
+      alert('Erro ao confirmar aprovação: ' + (e?.message || e))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const LinhaOpcao = ({ lista, label, sel, setSel }:{ lista:any[], label:string, sel:number|null, setSel:(v:number)=>void }) => (
+    <div className="mb-3">
+      <div className="text-sm font-semibold text-gray-800 mb-1">{label}</div>
+      {lista.length === 0 ? (
+        <div className="text-xs text-gray-500">Nenhuma opção cadastrada.</div>
+      ) : (
+        <div className="space-y-1">
+          {lista.map((o:any) => (
+            <label key={o.id} className="flex items-center justify-between border rounded p-2 text-xs">
+              <div className="flex items-center gap-2">
+                <input type="radio" name={`radio-${label}`} checked={sel === o.id} onChange={()=>setSel(o.id)} />
+                <span className="font-medium text-gray-900">{o.titulo}</span>
+                <span className="text-gray-600">• {o.moeda || 'BRL'} {Number(o.preco_total).toLocaleString('pt-BR')}</span>
+              </div>
+              {o.is_preferida && <span className="text-blue-700">(Escolhida)</span>}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+
+  return (
+    <div>
+      <LinhaOpcao lista={opcoesIDA} label="Trecho IDA" sel={selIDA} setSel={v=>setSelIDA(v)} />
+      <LinhaOpcao lista={opcoesVOLTA} label="Trecho VOLTA" sel={selVOLTA} setSel={v=>setSelVOLTA(v)} />
+      <LinhaOpcao lista={opcoesINTERNO} label="Trecho INTERNOS" sel={selINTERNO} setSel={v=>setSelINTERNO(v)} />
+      <div className="flex justify-end mt-4">
+        <button disabled={loading} onClick={confirmar} className={`px-4 py-2 rounded ${loading ? 'bg-gray-400 text-white' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}>Confirmar aprovação</button>
+      </div>
+    </div>
+  )
+}
 
 

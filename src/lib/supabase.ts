@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { logger } from '../utils/logger'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string
@@ -11,11 +11,14 @@ if (import.meta.env.MODE === 'development') {
   logger.debug('🔑 Key definida?', Boolean(supabaseAnonKey))
 }
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  // Não usar fallback com chaves públicas; apenas alertar em dev
+export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey)
+
+if (!isSupabaseConfigured) {
   if (import.meta.env.MODE === 'development') {
-    logger.warn('⚠️ Variáveis VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY não definidas no ambiente de desenvolvimento')
+    logger.warn('⚠️ Variáveis VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY não definidas; recursos de autenticação/desempenho indisponíveis em dev.')
   }
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+export const supabase: SupabaseClient | null = isSupabaseConfigured
+  ? createClient(supabaseUrl, supabaseAnonKey)
+  : null

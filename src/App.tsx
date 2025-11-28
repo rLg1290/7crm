@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
-import { supabase } from './lib/supabase'
+import { supabase, isSupabaseConfigured } from './lib/supabase'
 import LoginPage from './components/LoginPage'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
@@ -20,6 +20,10 @@ import CotacaoView from './pages/CotacaoView'
 import { logger } from './utils/logger'
 import SolicitacaoOrcamento from './pages/SolicitacaoOrcamento'
 import Promocoes from './pages/Promocoes'
+import EducacaoHome from './pages/EducacaoHome'
+import EducacaoLives from './pages/EducacaoLives'
+import EducacaoItem from './pages/EducacaoItem'
+import AtualizacoesPage from './pages/Atualizacoes'
 import { User } from '@supabase/supabase-js'
 
 function App() {
@@ -30,7 +34,11 @@ function App() {
 
   useEffect(() => {
     logger.debug('🔍 Checking authentication...')
-    // Verificar se há usuário logado
+    if (!isSupabaseConfigured || !supabase) {
+      logger.warn('🚫 Supabase não configurado; pulando fluxo de autenticação')
+      setLoading(false)
+      return
+    }
     supabase.auth.getUser().then(({ data: { user } }) => {
       logger.debug('👤 User from auth', { user: Boolean(user) })
       setUser(user)
@@ -38,7 +46,7 @@ function App() {
     })
 
     // Escutar mudanças na autenticação
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    const { data: { subscription } } = supabase!.auth.onAuthStateChange(
       (event, session) => {
         logger.debug('🔄 Auth state changed', { event, user: Boolean(session?.user) })
         setUser(session?.user ?? null)
@@ -65,6 +73,18 @@ function App() {
 
   // Usa basename coerente com o base do Vite
   const basename = (import.meta as any).env.BASE_URL || '/'
+  if (!isSupabaseConfigured || !supabase) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+        <div className="max-w-md text-center">
+          <h1 className="text-2xl font-semibold text-gray-800 mb-2">Configuração necessária</h1>
+          <p className="text-gray-600 mb-4">Defina <code>VITE_SUPABASE_URL</code> e <code>VITE_SUPABASE_ANON_KEY</code> em um arquivo <code>.env</code> na raiz.</p>
+          <pre className="bg-gray-100 text-sm p-3 rounded border text-left">{`VITE_SUPABASE_URL=sua_url_do_supabase
+VITE_SUPABASE_ANON_KEY=sua_chave_anonima`}</pre>
+        </div>
+      </div>
+    )
+  }
   return (
     <Router basename={basename} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <Routes>
@@ -93,8 +113,12 @@ function App() {
                 <Route path="/financeiro" element={<Financeiro />} />
                 <Route path="/calendario" element={<Calendario />} />
                 <Route path="/aereo" element={<Aereo />} />
-                // Removendo rota /hotelaria do roteador
+                {/* Removendo rota /hotelaria do roteador */}
                 <Route path="/quadro-voos" element={<QuadroVoos />} />
+                <Route path="/educacao" element={<EducacaoHome />} />
+                <Route path="/educacao/lives" element={<EducacaoLives />} />
+                <Route path="/educacao/item/:id" element={<EducacaoItem />} />
+                <Route path="/atualizacoes" element={<AtualizacoesPage />} />
                 <Route path="/promocoes" element={<Promocoes user={user} />} />
                 <Route path="/perfil" element={<Perfil user={user} />} />
               </Routes>

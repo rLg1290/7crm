@@ -30,9 +30,11 @@ const Layout: React.FC<LayoutProps> = ({ user, children }) => {
 
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, color: 'text-blue-600' },
+    { name: 'Educação', href: '/educacao', icon: LayoutDashboard, color: 'text-sky-600' },
     { name: 'Kanban', href: '/kanban', icon: LayoutDashboard, color: 'text-teal-600' },
     { name: 'Empresas', href: '/empresas', icon: Building2, color: 'text-green-600' },
     { name: 'Promoções', href: '/promocoes', icon: Tag, color: 'text-pink-600' },
+    { name: 'Atualizações', href: '/atualizacoes', icon: Tag, color: 'text-blue-600' },
     { name: 'Usuários', href: '/usuarios', icon: Users, color: 'text-purple-600' },
     { name: 'Pesquisas', href: '/pesquisas', icon: Search, color: 'text-indigo-600' },
     { name: 'Relatórios', href: '/relatorios', icon: BarChart3, color: 'text-orange-600' },
