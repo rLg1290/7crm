@@ -18,6 +18,10 @@ interface Empresa {
   ativo: boolean
   logotipo?: string
   cor_primaria?: string
+  sette_enabled?: boolean
+  chat_enabled?: boolean
+  sette_visible?: boolean
+  central_visible?: boolean
   created_at: string
 }
 
@@ -145,6 +149,62 @@ const Empresas = () => {
     }
   }
 
+  const toggleSette = async (empresa: Empresa) => {
+    try {
+      const { error } = await supabase
+        .from('empresas')
+        .update({ sette_enabled: !empresa.sette_enabled })
+        .eq('id', empresa.id)
+      if (error) throw error
+      carregarEmpresas()
+    } catch (err) {
+      console.error('Erro ao alterar Sette:', err)
+      setError('Erro ao alterar estado do Sette')
+    }
+  }
+
+  const toggleChat = async (empresa: Empresa) => {
+    try {
+      const { error } = await supabase
+        .from('empresas')
+        .update({ chat_enabled: !empresa.chat_enabled })
+        .eq('id', empresa.id)
+      if (error) throw error
+      carregarEmpresas()
+    } catch (err) {
+      console.error('Erro ao alterar visibilidade do chat:', err)
+      setError('Erro ao alterar visibilidade do chat')
+    }
+  }
+
+  const toggleSetteVisible = async (empresa: Empresa) => {
+    try {
+      const { error } = await supabase
+        .from('empresas')
+        .update({ sete_visible: !empresa.sette_visible })
+        .eq('id', empresa.id)
+      if (error) throw error
+      carregarEmpresas()
+    } catch (err) {
+      console.error('Erro ao alterar visibilidade do Sette:', err)
+      setError('Erro ao alterar visibilidade do Sette')
+    }
+  }
+
+  const toggleCentralVisible = async (empresa: Empresa) => {
+    try {
+      const { error } = await supabase
+        .from('empresas')
+        .update({ central_visible: !empresa.central_visible })
+        .eq('id', empresa.id)
+      if (error) throw error
+      carregarEmpresas()
+    } catch (err) {
+      console.error('Erro ao alterar visibilidade da Central:', err)
+      setError('Erro ao alterar visibilidade da Central')
+    }
+  }
+
   const resetForm = () => {
     setFormData({
       nome: '',
@@ -225,9 +285,11 @@ const Empresas = () => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Código
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Chat</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sette Ativo</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sette Visível</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Central</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Criado em
                 </th>
@@ -280,6 +342,66 @@ const Empresas = () => {
                         <><Check className="h-3 w-3 mr-1" /> Ativa</>
                       ) : (
                         <><X className="h-3 w-3 mr-1" /> Inativa</>
+                      )}
+                    </button>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <button
+                      onClick={() => toggleChat(empresa)}
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        empresa.chat_enabled ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'
+                      }`}
+                      title={empresa.chat_enabled ? 'Desativar botão de chat' : 'Ativar botão de chat'}
+                    >
+                      {empresa.chat_enabled ? (
+                        <><Check className="h-3 w-3 mr-1" /> Chat Visível</>
+                      ) : (
+                        <><X className="h-3 w-3 mr-1" /> Chat Oculto</>
+                      )}
+                    </button>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <button
+                      onClick={() => toggleSette(empresa)}
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        empresa.sette_enabled ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'
+                      }`}
+                      title={empresa.sette_enabled ? 'Desativar Sette' : 'Ativar Sette'}
+                    >
+                      {empresa.sette_enabled ? (
+                        <><Check className="h-3 w-3 mr-1" /> Sette Ativo</>
+                      ) : (
+                        <><X className="h-3 w-3 mr-1" /> Sette Inativo</>
+                      )}
+                    </button>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <button
+                      onClick={() => toggleSetteVisible(empresa)}
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        empresa.sette_visible ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'
+                      }`}
+                      title={empresa.sette_visible ? 'Ocultar Sette' : 'Mostrar Sette'}
+                    >
+                      {empresa.sette_visible ? (
+                        <><Check className="h-3 w-3 mr-1" /> Sette Visível</>
+                      ) : (
+                        <><X className="h-3 w-3 mr-1" /> Sette Oculto</>
+                      )}
+                    </button>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <button
+                      onClick={() => toggleCentralVisible(empresa)}
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        empresa.central_visible ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'
+                      }`}
+                      title={empresa.central_visible ? 'Ocultar Central 7C' : 'Mostrar Central 7C'}
+                    >
+                      {empresa.central_visible ? (
+                        <><Check className="h-3 w-3 mr-1" /> Central Visível</>
+                      ) : (
+                        <><X className="h-3 w-3 mr-1" /> Central Oculta</>
                       )}
                     </button>
                   </td>

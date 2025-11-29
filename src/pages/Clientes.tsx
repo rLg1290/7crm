@@ -25,7 +25,6 @@ interface Cliente {
 
 interface NovoClienteForm {
   nome: string
-  sobrenome: string
   dataNascimento: string
   cpf: string
   rg: string
@@ -54,7 +53,6 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
   const [editingClient, setEditingClient] = useState<Cliente | null>(null)
   const [formData, setFormData] = useState<NovoClienteForm>({
     nome: '',
-    sobrenome: '',
     dataNascimento: '',
     cpf: '',
     rg: '',
@@ -153,7 +151,7 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
       
       const clienteData = {
         nome: formData.nome,
-        sobrenome: formData.sobrenome,
+        sobrenome: null,
         email: formData.email,
         telefone: formData.telefone,
         data_nascimento: formData.dataNascimento,
@@ -223,7 +221,6 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
       
       const clienteData = {
         nome: formData.nome,
-        sobrenome: formData.sobrenome,
         email: formData.email,
         telefone: formData.telefone,
         data_nascimento: formData.dataNascimento,
@@ -283,11 +280,10 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
     const dataFormatada = cliente.data_nascimento ? formatDate(cliente.data_nascimento) : ''
     
     // Concatenar nome completo para busca mais eficiente
-    const nomeCompleto = `${cliente.nome || ''} ${cliente.sobrenome || ''}`.toLowerCase()
+    const nomeCompleto = `${cliente.nome || ''}`.toLowerCase()
     
     // Verificações de busca com validação mais robusta
     const nomeMatch = cliente.nome ? cliente.nome.toLowerCase().includes(searchLower) : false
-    const sobrenomeMatch = cliente.sobrenome ? cliente.sobrenome.toLowerCase().includes(searchLower) : false
     const nomeCompletoMatch = nomeCompleto.includes(searchLower)
     const emailMatch = cliente.email ? cliente.email.toLowerCase().includes(searchLower) : false
     const telefoneMatch = cliente.telefone ? cliente.telefone.toLowerCase().includes(searchLower) : false
@@ -295,7 +291,7 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
     const cpfMatch = cliente.cpf ? (cliente.cpf.includes(searchTerm) || cliente.cpf.replace(/\D/g, '').includes(searchTerm.replace(/\D/g, ''))) : false
     const redeMatch = cliente.rede_social ? cliente.rede_social.toLowerCase().includes(searchLower) : false
     
-    return nomeMatch || sobrenomeMatch || nomeCompletoMatch || emailMatch || telefoneMatch || dataMatch || cpfMatch || redeMatch
+    return nomeMatch || nomeCompletoMatch || emailMatch || telefoneMatch || dataMatch || cpfMatch || redeMatch
   })
 
   const handleOpenModal = () => {
@@ -303,7 +299,6 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
     setCurrentStep(1)
     setFormData({
       nome: '',
-      sobrenome: '',
       dataNascimento: '',
       cpf: '',
       rg: '',
@@ -354,8 +349,7 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
     
     // Preencher o formulário com os dados do cliente
     setFormData({
-      nome: cliente.nome,
-      sobrenome: cliente.sobrenome,
+      nome: `${cliente.nome}${cliente.sobrenome ? ' ' + cliente.sobrenome : ''}`,
       dataNascimento: cliente.data_nascimento || '',
       cpf: cliente.cpf,
       rg: cliente.rg || '',
@@ -376,7 +370,7 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
   // Função para excluir cliente com confirmação
   const handleDeleteClient = async (cliente: Cliente) => {
     const confirmacao = window.confirm(
-      `⚠️ Tem certeza que deseja excluir o cliente "${cliente.nome} ${cliente.sobrenome}"?\n\nEsta ação não pode ser desfeita.`
+      `⚠️ Tem certeza que deseja excluir o cliente "${cliente.nome}"?\n\nEsta ação não pode ser desfeita.`
     )
     
     if (!confirmacao) {
@@ -425,7 +419,7 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
         if (error.code === '23503') {
           const opcao = confirm('Não é possível excluir este cliente porque ele possui contas a receber vinculadas.\n\nDeseja visualizar as contas a receber deste cliente?')
           if (opcao) {
-            visualizarContasReceber(cliente.id, `${cliente.nome} ${cliente.sobrenome}`)
+            visualizarContasReceber(cliente.id, `${cliente.nome}`)
           }
         } else {
           alert('Erro ao excluir cliente. Tente novamente.')
@@ -526,8 +520,7 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
   const handleSubmit = () => {
     // Validar campos obrigatórios
     const camposObrigatorios = {
-      nome: 'Nome é obrigatório',
-      sobrenome: 'Sobrenome é obrigatório', 
+      nome: 'Nome completo é obrigatório',
       dataNascimento: 'Data de nascimento é obrigatória',
       cpf: 'CPF é obrigatório',
       email: 'Email é obrigatório',
@@ -575,11 +568,11 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
           <div className="space-y-6">
             <h4 className="font-medium text-gray-900 mb-4">Documentos e Dados Pessoais</h4>
             
-            {/* Nome e Sobrenome */}
+            {/* Nome completo */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label htmlFor="nome" className="block text-sm font-medium text-gray-700 mb-2">
-                  Nome <span className="text-red-500">*</span>
+                  Nome completo <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
@@ -590,26 +583,7 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
                     value={formData.nome}
                     onChange={handleInputChange}
                     className="pl-10 w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors"
-                    placeholder="Digite o nome"
-                    required
-                  />
-                </div>
-              </div>
-              
-              <div>
-                <label htmlFor="sobrenome" className="block text-sm font-medium text-gray-700 mb-2">
-                  Sobrenome <span className="text-red-500">*</span>
-                </label>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-                  <input
-                    type="text"
-                    id="sobrenome"
-                    name="sobrenome"
-                    value={formData.sobrenome}
-                    onChange={handleInputChange}
-                    className="pl-10 w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors"
-                    placeholder="Digite o sobrenome"
+                    placeholder="Digite o nome completo"
                     required
                   />
                 </div>
@@ -939,7 +913,7 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
                             onClick={() => handleViewClient(cliente)}
                             className="text-sm font-medium text-purple-600 hover:text-purple-800 transition-colors cursor-pointer underline-offset-2 hover:underline"
                           >
-                            {cliente.nome} {cliente.sobrenome}
+                            {cliente.nome}
                           </button>
                           {cliente.rede_social && (
                             <div className="text-sm text-gray-500">{cliente.rede_social}</div>
@@ -1179,7 +1153,7 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Nome Completo</label>
                       <div className="text-sm text-gray-900 bg-gray-50 p-3 rounded-lg">
-                        {viewingClient.nome} {viewingClient.sobrenome}
+                        {viewingClient.nome}
                       </div>
                     </div>
                     <div>

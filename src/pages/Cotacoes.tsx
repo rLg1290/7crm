@@ -1330,7 +1330,6 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
           clientes:cliente_id (
             id,
             nome,
-            sobrenome,
             email,
             telefone,
             cpf,
@@ -1351,7 +1350,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
           const cliente = item.clientes
           return {
             id: item.id.toString(),
-            nome: `${cliente.nome} ${cliente.sobrenome || ''}`.trim(),
+            nome: `${cliente.nome}`.trim(),
             tipo: item.tipo as 'adulto' | 'crianca' | 'bebe',
             cliente_id: cliente.id.toString(),
             isNovoCliente: false,
@@ -4649,11 +4648,10 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
           clientes:cliente_id (
             id,
             nome,
-            sobrenome,
             email
           )
         `)
-        .eq('empresa_id', empresaId) // 🔑 FILTRO POR EMPRESA ADICIONADO
+        .or(`empresa_id.eq.${empresaId},empresa_id.is.null`)
         .order('data_criacao', { ascending: false });
       
       if (error) {
@@ -4670,7 +4668,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         // Buscar nome completo do cliente se cliente_id existir
         let nomeCompletoCliente = cotacao.cliente; // fallback para o campo texto
         if (cotacao.clientes && cotacao.clientes.nome) {
-          nomeCompletoCliente = `${cotacao.clientes.nome}${cotacao.clientes.sobrenome ? ' ' + cotacao.clientes.sobrenome : ''}`;
+          nomeCompletoCliente = `${cotacao.clientes.nome}`;
         }
         
         const idBanco = Number(cotacao.id);
@@ -5375,23 +5373,11 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
     if (!id) return '-'
     const cliente = clientes.find(c => String(c.id) === String(id))
     if (!cliente) return '-'
-    
-    const nome = cliente.nome
-    const sobrenome = cliente.sobrenome
-    
-    if (!sobrenome) {
-      return nome // Se não tem sobrenome, retorna só o nome
-    }
-    
-    // Dividir sobrenome em partes para pegar apenas o último
-    const parteSobrenome = sobrenome.trim().split(' ')
-    const ultimoSobrenome = parteSobrenome[parteSobrenome.length - 1]
-    
-    return `${nome} ${ultimoSobrenome}`
+    return `${cliente.nome}`
   }
 
   const formatarNomeParaLista = (cliente: Cliente, limite: number = 25) => {
-    const nomeCompleto = `${cliente.nome}${cliente.sobrenome ? ' ' + cliente.sobrenome : ''}`
+    const nomeCompleto = `${cliente.nome}`
     
     if (nomeCompleto.length <= limite) {
       return nomeCompleto

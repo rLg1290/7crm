@@ -158,3 +158,47 @@ body {
     margin-top: 20pt !important;
   }
 } 
+#chat-enter {
+  animation: chatSlideIn 600ms ease-out, chatPop 1000ms ease-out;
+}
+
+#chat-exit {
+  animation: chatSlideOut 360ms ease-in forwards;
+}
+
+.bot-wave {
+  animation: botWave 2000ms ease-in-out;
+}
+
+.bot-bubble {
+  animation: talkBubbleIn 700ms ease-out;
+}
+
+@keyframes chatSlideIn {
+  0% { opacity: 0; transform: translateY(24px) scale(0.98); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes chatPop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+  100% { transform: scale(1); }
+}
+
+@keyframes chatSlideOut {
+  0% { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(20px) scale(0.98); }
+}
+
+@keyframes botWave {
+  0% { transform: rotate(0deg) translateY(0); }
+  25% { transform: rotate(8deg) translateY(-1px); }
+  50% { transform: rotate(0deg) translateY(0); }
+  75% { transform: rotate(-8deg) translateY(-1px); }
+  100% { transform: rotate(0deg) translateY(0); }
+}
+
+@keyframes talkBubbleIn {
+  0% { opacity: 0; transform: translateY(-6px) scale(0.98); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}

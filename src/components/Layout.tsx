@@ -15,11 +15,13 @@ import {
   Menu,
   X,
   Tag,
-  BookOpen
+  BookOpen,
+  MessageSquare
 } from 'lucide-react'
 import { User } from '@supabase/supabase-js'
 import NotificationCenter from './NotificationCenter'
 import TopAnnouncementBar from './TopAnnouncementBar'
+import ChatWidget from './ChatWidget'
 
 interface LayoutProps {
   user: User
@@ -28,6 +30,7 @@ interface LayoutProps {
 
 interface EmpresaLogo {
   logotipo: string | null
+  chat_enabled?: boolean | null
 }
 
 const Layout: React.FC<LayoutProps> = ({ user, children }) => {
@@ -35,6 +38,8 @@ const Layout: React.FC<LayoutProps> = ({ user, children }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [showEducacaoHint, setShowEducacaoHint] = useState(false)
   const [empresaLogo, setEmpresaLogo] = useState<string | null>(null)
+  const [chatEnabled, setChatEnabled] = useState<boolean>(true)
+  const [showChat, setShowChat] = useState(false)
 
   // Buscar logo da empresa
   useEffect(() => {
@@ -45,12 +50,13 @@ const Layout: React.FC<LayoutProps> = ({ user, children }) => {
         try {
           const { data, error } = await supabase
             .from('empresas')
-            .select('logotipo')
+            .select('logotipo, chat_enabled')
             .eq('id', empresaId)
             .single()
 
-          if (data && !error && data.logotipo) {
-            setEmpresaLogo(data.logotipo)
+          if (data && !error) {
+            if (data.logotipo) setEmpresaLogo(data.logotipo)
+            if (typeof data.chat_enabled === 'boolean') setChatEnabled(Boolean(data.chat_enabled))
           }
         } catch (error) {
           console.error('Erro ao buscar logo da empresa:', error)
@@ -292,6 +298,21 @@ const Layout: React.FC<LayoutProps> = ({ user, children }) => {
       <main className="min-h-screen">
         {children}
       </main>
+
+      {chatEnabled && showChat && (
+        <ChatWidget onClose={() => setShowChat(false)} user={user} />
+      )}
+
+      {chatEnabled && (
+      <button
+        onClick={() => setShowChat(v => !v)}
+        className="fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 flex items-center justify-center"
+        title={showChat ? 'Fechar chat' : 'Abrir chat'}
+        aria-label={showChat ? 'Fechar chat' : 'Abrir chat'}
+      >
+        <MessageSquare className="h-6 w-6" />
+      </button>
+      )}
     </div>
   )
 }
