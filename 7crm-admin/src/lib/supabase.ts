@@ -18,6 +18,7 @@ if (!isSupabaseConfigured) {
   }
 }
 
-export const supabase: SupabaseClient | null = isSupabaseConfigured
-  ? createClient(supabaseUrl, supabaseAnonKey)
-  : null
+export const supabase: SupabaseClient = createClient(
+  supabaseUrl || '',
+  supabaseAnonKey || ''
+)
