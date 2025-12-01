@@ -208,19 +208,20 @@ const Dashboard = () => {
         const { data: contasRelacionadas, error: cpError } = await cpQuery
         if (cpError) throw cpError
 
-        const porCotacao = new Map<string, any[]>()
-        (contasRelacionadas || []).forEach((cp: any) => {
+        const porCotacao: Record<string, any[]> = {};
+        const contas: any[] = (contasRelacionadas || []) as any[]
+        contas.forEach((cp: any) => {
           const cid = String(cp?.origem_id || '')
           if (!cid) return
-          if (!porCotacao.has(cid)) porCotacao.set(cid, [])
-          porCotacao.get(cid)!.push(cp)
+          if (!porCotacao[cid]) porCotacao[cid] = []
+          porCotacao[cid].push(cp)
         })
 
-        vendasIds.forEach(cid => {
-          const lista = porCotacao.get(cid) || []
+        vendasIds.forEach((cid: string) => {
+          const lista: any[] = porCotacao[cid] || []
           if (lista.length === 0) return
-          const tem7c = lista.some(x => Number(x.fornecedor_id) === 3)
-          const temOutro = lista.some(x => x.fornecedor_id != null && Number(x.fornecedor_id) !== 3)
+          const tem7c = lista.some((x: any) => Number(x.fornecedor_id) === 3)
+          const temOutro = lista.some((x: any) => x.fornecedor_id != null && Number(x.fornecedor_id) !== 3)
           if (tem7c) {
             seteC += 1
           } else if (temOutro) {
