@@ -20,8 +20,9 @@ import {
 } from 'lucide-react'
 import { User } from '@supabase/supabase-js'
 import NotificationCenter from './NotificationCenter'
-import TopAnnouncementBar from './TopAnnouncementBar'
 import ChatWidget from './ChatWidget'
+import Sidebar from './Sidebar'
+import RoadmapCard from './RoadmapCard'
 
 interface LayoutProps {
   user: User
@@ -40,6 +41,11 @@ const Layout: React.FC<LayoutProps> = ({ user, children }) => {
   const [empresaLogo, setEmpresaLogo] = useState<string | null>(null)
   const [chatEnabled, setChatEnabled] = useState<boolean>(true)
   const [showChat, setShowChat] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    const v = localStorage.getItem(`sidebar_collapsed_${user.id}`)
+    return v === '1'
+  })
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
 
   // Buscar logo da empresa
   useEffect(() => {
@@ -90,8 +96,7 @@ const Layout: React.FC<LayoutProps> = ({ user, children }) => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <TopAnnouncementBar />
-      {/* Header Moderno */}
+      {false && (
       <header className="bg-white shadow-lg border-b border-gray-100 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="flex items-center justify-between h-18 py-3">
@@ -101,7 +106,7 @@ const Layout: React.FC<LayoutProps> = ({ user, children }) => {
               <Link to="/dashboard" className="flex items-center group">
                 {empresaLogo ? (
                   <img 
-                    src={empresaLogo} 
+                    src={empresaLogo || ''} 
                     alt="Logo da empresa"
                     className="h-10 w-10 rounded-xl object-cover border-2 border-gray-100 group-hover:border-blue-200 group-hover:scale-105 transition-all duration-200 shadow-sm"
                     onError={(e) => {
@@ -125,36 +130,16 @@ const Layout: React.FC<LayoutProps> = ({ user, children }) => {
               </Link>
             </div>
 
-            {/* Menu Central Moderno */}
-            <div className="hidden lg:flex items-center justify-center flex-1 max-w-2xl mx-8">
-              <nav className="flex items-center space-x-1 bg-gray-50 rounded-full p-2 border border-gray-200 shadow-sm">
-                {navigation.map((item) => {
-                  const Icon = item.icon
-                  const isActive = location.pathname === item.href
-                  
-                  return (
-                    <Link
-                      key={item.name}
-                      to={item.href}
-                      className={`group relative inline-flex items-center px-4 py-2.5 rounded-full text-sm font-medium transition-all duration-200 ${
-                        isActive
-                          ? 'bg-white text-blue-700 shadow-md border border-blue-100'
-                          : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
-                      }`}
-                    >
-                      <Icon className={`h-4 w-4 mr-2 transition-colors ${
-                        isActive ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-600'
-                      }`} />
-                      <span className="hidden xl:block">{item.name}</span>
-                      <span className="xl:hidden">{item.name.split(' ')[0]}</span>
-                      
-                      {isActive && (
-                        <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 w-1 h-1 bg-blue-600 rounded-full"></div>
-                      )}
-                    </Link>
-                  )
-                })}
-              </nav>
+            {/* Botão para mobile abrir sidebar */}
+            <div className="lg:hidden flex-1 flex justify-center">
+              <button
+                onClick={() => setMobileSidebarOpen(true)}
+                className="p-2.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-full transition-all duration-200"
+                aria-label="Abrir menu"
+                title="Abrir menu"
+              >
+                <Menu className="h-5 w-5" />
+              </button>
             </div>
 
             {/* Perfil e Ações - Direita */}
@@ -221,83 +206,25 @@ const Layout: React.FC<LayoutProps> = ({ user, children }) => {
                 <LogOut className="h-5 w-5 group-hover:scale-110 transition-transform" />
               </button>
 
-              {/* Mobile menu button */}
-              <button
-                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                className="lg:hidden p-2.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-full transition-all duration-200"
-              >
-                {mobileMenuOpen ? (
-                  <X className="h-5 w-5" />
-                ) : (
-                  <Menu className="h-5 w-5" />
-                )}
-              </button>
+              {/* Mobile menu legacy removido */}
             </div>
           </div>
         </div>
-
-        {/* Mobile Navigation Moderna */}
-        {mobileMenuOpen && (
-          <div className="lg:hidden border-t border-gray-100 bg-white/95 backdrop-blur-sm">
-            <div className="px-4 pt-4 pb-6 space-y-2">
-              {navigation.map((item) => {
-                const Icon = item.icon
-                const isActive = location.pathname === item.href
-                
-                return (
-                  <Link
-                    key={item.name}
-                    to={item.href}
-                    onClick={() => setMobileMenuOpen(false)}
-                    className={`flex items-center px-4 py-3 rounded-xl text-base font-medium transition-all duration-200 ${
-                      isActive
-                        ? 'bg-blue-50 text-blue-700 border border-blue-200 shadow-sm'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                    }`}
-                  >
-                    <Icon className={`h-5 w-5 mr-4 ${isActive ? 'text-blue-600' : 'text-gray-400'}`} />
-                    {item.name}
-                    {isActive && (
-                      <div className="ml-auto w-2 h-2 bg-blue-600 rounded-full"></div>
-                    )}
-                  </Link>
-                )
-              })}
-            </div>
-            
-            {/* Mobile user info moderna */}
-            <div className="border-t border-gray-100 bg-gray-50/50 px-4 py-4">
-              <Link 
-                to="/perfil" 
-                className="flex items-center space-x-4 group" 
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                <div className="h-12 w-12 bg-gradient-to-br from-blue-100 to-blue-200 rounded-xl flex items-center justify-center border-2 border-white shadow-sm">
-                  <UserIcon className="h-6 w-6 text-blue-700" />
-                </div>
-                <div className="flex-1">
-                  <div className="text-base font-medium text-gray-800 group-hover:text-blue-600 transition-colors">
-                    {user.user_metadata?.nome || 'Usuário'}
-                  </div>
-                  <div className="text-sm text-gray-500 group-hover:text-blue-500 transition-colors">
-                    {user.email}
-                  </div>
-                </div>
-                <div className="text-gray-400 group-hover:text-blue-600 transition-colors">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </div>
-              </Link>
-            </div>
-          </div>
-        )}
       </header>
+      )}
 
-      {/* Main Content */}
-      <main className="min-h-screen">
-        {children}
-      </main>
+      <RoadmapCard />
+
+      <div className="min-h-screen flex">
+        <Sidebar collapsed={sidebarCollapsed} onToggle={() => {
+          const v = !sidebarCollapsed
+          setSidebarCollapsed(v)
+          localStorage.setItem(`sidebar_collapsed_${user.id}`, v ? '1' : '0')
+        }} empresaLogo={empresaLogo} userName={user.user_metadata?.empresa || 'Agência'} />
+        <main className="flex-1">
+          {children}
+        </main>
+      </div>
 
       {chatEnabled && showChat && (
         <ChatWidget onClose={() => setShowChat(false)} user={user} />
@@ -306,12 +233,24 @@ const Layout: React.FC<LayoutProps> = ({ user, children }) => {
       {chatEnabled && (
       <button
         onClick={() => setShowChat(v => !v)}
-        className="fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 flex items-center justify-center"
+        className={`fixed bottom-6 ${sidebarCollapsed ? 'right-6' : 'right-6 lg:right-20'} z-50 h-14 w-14 rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 flex items-center justify-center`}
         title={showChat ? 'Fechar chat' : 'Abrir chat'}
         aria-label={showChat ? 'Fechar chat' : 'Abrir chat'}
       >
         <MessageSquare className="h-6 w-6" />
       </button>
+      )}
+
+      {mobileSidebarOpen && (
+        <div className="lg:hidden fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/20" onClick={() => setMobileSidebarOpen(false)} />
+          <div className="absolute inset-y-0 left-0 w-64 bg-white border-r border-gray-200 shadow-xl p-2">
+            <Sidebar collapsed={false} onToggle={() => setMobileSidebarOpen(false)} />
+            <button className="absolute top-3 right-3 p-2 rounded-full hover:bg-gray-100" aria-label="Fechar" onClick={() => setMobileSidebarOpen(false)}>
+              <X className="h-5 w-5 text-gray-600" />
+            </button>
+          </div>
+        </div>
       )}
     </div>
   )

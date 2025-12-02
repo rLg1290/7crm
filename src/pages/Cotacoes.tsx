@@ -3745,7 +3745,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         valor: parseFloat(valorVendaSimples || '0'),
         formapagid: ((primeiro?.formapagid || formData.formapagid || '') || null),
         parcelamento: (primeiro?.parcelas || formData.parcelamento || '1'),
-        observacoes: serializePagamentosToObservacoes(editingCotacao?.observacoes || '', pagamentosCotacao, mostrarPagamentosInvestimento)
+        observacoes: serializePagamentosToObservacoes(editingCotacao?.observacoes || '', pagamentosCotacao, mostrarPagamentosInvestimento) || undefined
       };
       
       logger.debug('📊 Dados para atualização', {
@@ -3862,7 +3862,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         data_viagem: formData.diasViagem ? getLocalDateString(new Date()) : null,
         data_criacao: new Date().toISOString(),
         destino: '',
-        observacoes: serializePagamentosToObservacoes(formData.observacoesRoteiro || '', pagamentosCotacao, mostrarPagamentosInvestimento),
+        observacoes: serializePagamentosToObservacoes(formData.observacoesRoteiro || '', pagamentosCotacao, mostrarPagamentosInvestimento) || undefined,
         formapagid: ((primeiro?.formapagid || formData.formapagid || '') || null),
         parcelamento: (primeiro?.parcelas || formData.parcelamento || '1')
       };
@@ -8029,6 +8029,14 @@ function OpcoesVoo({ cotacaoId, trecho, permitirEscolha }:{ cotacaoId: number, t
         return copy
       })
     }
+  }
+
+  const comporTimestamp = (data: string | null, hora: string | null): string | null => {
+    const d = String(data || '').slice(0,10)
+    const h = String(hora || '').slice(0,5)
+    if (!d) return null
+    const hh = h && /^\d{2}:\d{2}$/.test(h) ? h : '00:00'
+    return `${d}T${hh}:00`
   }
 
   const addSegment = async (opcaoId:number) => {

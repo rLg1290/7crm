@@ -46,20 +46,9 @@ function dataPorDirecao(voos: any[], direcao: 'IDA'|'VOLTA'|'INTERNO'): string {
   if (!lista.length) return '';
   const datas: string[] = [];
   lista.forEach(v => {
-    const segs = obterSegmentosDoVoo(v as any);
-    let d = ''
-    if (Array.isArray(segs) && segs.length) {
-      const primeiro = segs[0]
-      const ultimo = segs[segs.length - 1]
-      d = direcao === 'VOLTA'
-        ? String(ultimo?.chegada || '').substring(0,10)
-        : String(primeiro?.partida || '').substring(0,10)
-    }
-    if (!d) {
-      d = direcao === 'VOLTA'
-        ? String(v.data_volta || v.dataVolta || '').slice(0,10)
-        : String(v.data_ida || v.dataIda || '').slice(0,10)
-    }
+    const d = direcao === 'VOLTA'
+      ? String(v.data_volta || v.dataVolta || '').slice(0,10)
+      : String(v.data_ida || v.dataIda || '').slice(0,10)
     if (d) datas.push(d);
   });
   if (!datas.length) return '';
@@ -303,13 +292,7 @@ const CotacaoView: React.FC = () => {
     return `${n} Conexões`
   }
 
-  function obterSegmentosDoVoo(voo: any): any[] {
-    const idNum = Number(voo.id)
-    if (Number.isFinite(idNum) && segmentosPorVooId[idNum] && segmentosPorVooId[idNum].length) {
-      return segmentosPorVooId[idNum]
-    }
-    return []
-  }
+  
 
   function iataFrom(s?: string): string | null {
     if (!s) return null

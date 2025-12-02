@@ -10,3 +10,4 @@ ALTER TABLE public.chat_messages
 
 CREATE UNIQUE INDEX IF NOT EXISTS chat_messages_client_id_key
 ON public.chat_messages (client_id);
+
