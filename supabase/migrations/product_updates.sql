@@ -1,22 +1,9 @@
-create table if not exists product_updates (
-  id bigserial primary key,
+create table if not exists public.product_updates (
+  id uuid primary key default gen_random_uuid(),
+  date date not null default now(),
   title text not null,
-  date date not null,
-  type text not null,
-  summary text not null,
-  tags text[] default '{}',
-  created_by uuid,
-  created_at timestamp with time zone default now()
+  summary text,
+  type text default 'release',
+  tags text[] default '{}'
 );
 
-alter table product_updates enable row level security;
-
-create policy product_updates_select_public on product_updates
-  for select using (true);
-
-create policy product_updates_write_admin on product_updates
-  for all using (
-    exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'admin')
-  ) with check (
-    exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'admin')
-  );

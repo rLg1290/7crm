@@ -159,11 +159,11 @@ body {
   }
 } 
 #chat-enter {
-  animation: chatSlideIn 600ms ease-out, chatPop 1000ms ease-out;
+  animation: chatSlideIn 300ms ease-out, chatPop 1000ms ease-out;
 }
 
 #chat-exit {
-  animation: chatSlideOut 360ms ease-in forwards;
+  animation: chatSlideOut 300ms ease-in forwards;
 }
 
 .bot-wave {

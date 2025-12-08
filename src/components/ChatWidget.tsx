@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { X, Send, Bot, Headphones } from 'lucide-react'
+import { X, Send, CheckCircle } from 'lucide-react'
 import { User } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 
 type ChatWidgetProps = {
   onClose: () => void
   user: User
+  initialMode?: 'ia' | 'central'
 }
 
 type Message = {
@@ -15,12 +16,13 @@ type Message = {
   ts: number
 }
 
-const ChatWidget: React.FC<ChatWidgetProps> = ({ onClose, user }) => {
-  const [mode, setMode] = useState<'ia' | 'central'>('ia')
+const ChatWidget: React.FC<ChatWidgetProps> = ({ onClose, user, initialMode }) => {
+  const [mode, setMode] = useState<'ia' | 'central'>(initialMode || 'ia')
   const [input, setInput] = useState('')
   const [messagesIA, setMessagesIA] = useState<Message[]>([])
   const [messagesCentral, setMessagesCentral] = useState<Message[]>([])
   const listRef = useRef<HTMLDivElement | null>(null)
+  const containerRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
   const [typingIA, setTypingIA] = useState(false)
   const [typingCentral, setTypingCentral] = useState(false)
@@ -29,16 +31,7 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({ onClose, user }) => {
   const [centralVisible, setCentralVisible] = useState<boolean>(false)
   const [empresaId, setEmpresaId] = useState<string | null>(null)
   const [animState, setAnimState] = useState<'in' | 'out'>('in')
-  const [showBotWave, setShowBotWave] = useState<boolean>(true)
-  const [botHint, setBotHint] = useState<string>('')
-  const hints = [
-    'Cadastre um novo cliente em segundos.',
-    'Vamos lançar contas a pagar e receber agora?',
-    'Crie uma tarefa no calendário para não esquecer.',
-    'Adicione um card no Kanban e organize seus clientes.',
-    'Quer ver voos e quem embarca? Eu consulto já.',
-    'Infos rápidas: destinos, vistos, passagens, hospedagem e câmbio.'
-  ]
+  
 
   const currentMessages = mode === 'ia' ? messagesIA : messagesCentral
   const setCurrentMessages = mode === 'ia' ? setMessagesIA : setMessagesCentral
@@ -83,16 +76,7 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({ onClose, user }) => {
     loadHistory()
   }, [])
 
-  useEffect(() => {
-    setShowBotWave(true)
-    const key = 'sette_hint_idx'
-    const last = Number(localStorage.getItem(key) || '0')
-    const next = (isNaN(last) ? 0 : last + 1) % hints.length
-    localStorage.setItem(key, String(next))
-    setBotHint(hints[next])
-    const t = setTimeout(() => setShowBotWave(false), 3200)
-    return () => clearTimeout(t)
-  }, [])
+  
 
   const resolveEmpresaId = async (): Promise<string | null> => {
     if (empresaId) return empresaId
@@ -324,31 +308,46 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({ onClose, user }) => {
     setAnimState('out')
     setTimeout(() => {
       onClose()
-    }, 220)
+    }, 300)
   }
 
+  useEffect(() => {
+    const onDocDown = (e: Event) => {
+      const target = e.target as Node | null
+      const el = containerRef.current
+      if (!el || !target) return
+      if (!el.contains(target)) {
+        handleClose()
+      }
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') handleClose()
+    }
+    document.addEventListener('mousedown', onDocDown)
+    document.addEventListener('touchstart', onDocDown, { passive: true })
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDocDown)
+      document.removeEventListener('touchstart', onDocDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [])
+
   return (
-    <div id={animState === 'in' ? 'chat-enter' : 'chat-exit'} className="fixed bottom-24 right-6 z-50 w-96 sm:w-[30rem] bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-visible">
+    <div
+      ref={containerRef}
+      id={animState === 'in' ? 'chat-enter' : 'chat-exit'}
+      className={`fixed bottom-24 right-6 z-50 w-96 sm:w-[30rem] bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-visible transition-all duration-300 ${mode === 'ia' ? 'ring-2 ring-blue-500' : 'ring-2 ring-gray-800'}`}
+    >
       <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-b border-gray-200">
         <div className="flex items-center gap-2">
-          {setteVisible && (
-            <button
-              onClick={() => setMode('ia')}
-              className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-sm ${mode === 'ia' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-200'}`}
-            >
-              <Bot className="h-4 w-4" />
-              Sette
-            </button>
-          )}
-          {centralVisible && (
-            <button
-              onClick={() => setMode('central')}
-              className={`inline-flex items-center gap-1 px-3 py-1.5 rounded_full text-sm ${mode === 'central' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-200'}`}
-            >
-              <Headphones className="h-4 w-4" />
-              Central 7C
-            </button>
-          )}
+          <span className="text-xs font-semibold text-gray-600">Ativo:</span>
+          <span
+            className={`inline-flex items-center gap-1 px-2 py-1 rounded-full border text-xs select-none transition-colors duration-300 ${mode === 'ia' ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-gray-100 border-gray-300 text-gray-800'}`}
+          >
+            <CheckCircle className="h-3.5 w-3.5" />
+            {mode === 'ia' ? 'Sette' : 'Central 7C'}
+          </span>
         </div>
         <button
           onClick={handleClose}
@@ -429,17 +428,7 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({ onClose, user }) => {
           </button>
         </div>
       </div>
-      {showBotWave && (
-        <div className="absolute -top-10 left-6 z-50 pointer-events-none">
-          <div className="h-10 w-10 bg-blue-600 text-white rounded-full flex items-center justify-center shadow-lg bot-wave">
-            <Bot className="h-5 w-5" />
-          </div>
-          <div className="bot-bubble absolute -top-2 left-14 bg-white border border-gray-200 rounded-2xl px-4 py-2 text-sm text-gray-800 shadow-lg whitespace-nowrap min-w-[18rem]">
-            {botHint}
-            <div className="absolute left-2 top-full w-0 h-0 border-l-8 border-r-8 border-t-8 border-l-transparent border-r-transparent border-t-white"></div>
-          </div>
-        </div>
-      )}
+      
     </div>
   )
 }

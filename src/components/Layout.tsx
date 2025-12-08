@@ -32,6 +32,8 @@ interface LayoutProps {
 interface EmpresaLogo {
   logotipo: string | null
   chat_enabled?: boolean | null
+  sette_visible?: boolean | null
+  central_visible?: boolean | null
 }
 
 const Layout: React.FC<LayoutProps> = ({ user, children }) => {
@@ -46,6 +48,10 @@ const Layout: React.FC<LayoutProps> = ({ user, children }) => {
     return v === '1'
   })
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+  const [showChatMenu, setShowChatMenu] = useState(false)
+  const [setteVisible, setSetteVisible] = useState<boolean>(true)
+  const [centralVisible, setCentralVisible] = useState<boolean>(false)
+  const [chatInitialMode, setChatInitialMode] = useState<'ia' | 'central'>('ia')
 
   // Buscar logo da empresa
   useEffect(() => {
@@ -56,13 +62,15 @@ const Layout: React.FC<LayoutProps> = ({ user, children }) => {
         try {
           const { data, error } = await supabase
             .from('empresas')
-            .select('logotipo, chat_enabled')
+            .select('logotipo, chat_enabled, sette_visible, central_visible')
             .eq('id', empresaId)
             .single()
 
           if (data && !error) {
             if (data.logotipo) setEmpresaLogo(data.logotipo)
             if (typeof data.chat_enabled === 'boolean') setChatEnabled(Boolean(data.chat_enabled))
+            if (typeof data.sette_visible === 'boolean') setSetteVisible(Boolean(data.sette_visible))
+            if (typeof data.central_visible === 'boolean') setCentralVisible(Boolean(data.central_visible))
           }
         } catch (error) {
           console.error('Erro ao buscar logo da empresa:', error)
@@ -227,19 +235,53 @@ const Layout: React.FC<LayoutProps> = ({ user, children }) => {
       </div>
 
       {chatEnabled && showChat && (
-        <ChatWidget onClose={() => setShowChat(false)} user={user} />
+        <ChatWidget onClose={() => setShowChat(false)} user={user} initialMode={chatInitialMode} />
       )}
 
       {chatEnabled && (
-      <button
-        onClick={() => setShowChat(v => !v)}
-        className={`fixed bottom-6 ${sidebarCollapsed ? 'right-6' : 'right-6 lg:right-20'} z-50 h-14 w-14 rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 flex items-center justify-center`}
-        title={showChat ? 'Fechar chat' : 'Abrir chat'}
-        aria-label={showChat ? 'Fechar chat' : 'Abrir chat'}
+      <div
+        className="fixed bottom-6 right-6 z-50"
+        onMouseEnter={() => setShowChatMenu(true)}
+        onMouseLeave={() => setShowChatMenu(false)}
       >
-        <MessageSquare className="h-6 w-6" />
-      </button>
+        <div
+          className="h-14 w-14 rounded-full bg-blue-600 text-white shadow-lg flex items-center justify-center select-none"
+          aria-hidden="true"
+        >
+          <MessageSquare className="h-6 w-6" />
+        </div>
+        {showChatMenu && <div className="absolute bottom-full right-0 h-2 w-56" />}
+        {showChatMenu && (
+          <div className="absolute bottom-full right-0 mb-2 w-56 bg-white border border-gray-200 rounded-2xl shadow-2xl overflow-hidden transform transition-all duration-200 ease-out origin-bottom scale-100 opacity-100">
+            <div className="px-3 py-2 border-b border-gray-100 text-xs font-semibold text-gray-500">Abrir como</div>
+            <div className="p-2 space-y-1">
+              {setteVisible && (
+                <button
+                  type="button"
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-gray-700 hover:bg-gray-50"
+                  onClick={() => { setChatInitialMode('ia'); setShowChat(true); setShowChatMenu(false) }}
+                >
+                  <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-white text-[11px]">AI</span>
+                  <span>Sette (I.A)</span>
+                </button>
+              )}
+              {centralVisible && (
+                <button
+                  type="button"
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-gray-700 hover:bg-gray-50"
+                  onClick={() => { setChatInitialMode('central'); setShowChat(true); setShowChatMenu(false) }}
+                >
+                  <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-gray-800 text-white text-[11px]">7C</span>
+                  <span>Central 7C</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
       )}
+
+      
 
       {mobileSidebarOpen && (
         <div className="lg:hidden fixed inset-0 z-50">

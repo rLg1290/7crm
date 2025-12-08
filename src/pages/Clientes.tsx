@@ -7,7 +7,6 @@ import { User as SupabaseUser } from '@supabase/supabase-js'
 interface Cliente {
   id: number
   nome: string
-  sobrenome: string
   email: string
   telefone: string
   data_nascimento: string | null
@@ -151,7 +150,6 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
       
       const clienteData = {
         nome: formData.nome,
-        sobrenome: null,
         email: formData.email,
         telefone: formData.telefone,
         data_nascimento: formData.dataNascimento,
@@ -349,7 +347,7 @@ const Clientes: React.FC<ClientesProps> = ({ user }) => {
     
     // Preencher o formulário com os dados do cliente
     setFormData({
-      nome: `${cliente.nome}${cliente.sobrenome ? ' ' + cliente.sobrenome : ''}`,
+      nome: `${cliente.nome}`,
       dataNascimento: cliente.data_nascimento || '',
       cpf: cliente.cpf,
       rg: cliente.rg || '',

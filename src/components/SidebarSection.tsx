@@ -10,7 +10,7 @@ export default function SidebarSection({ title, children, collapsed }: SidebarSe
   return (
     <div className="mb-2">
       {!collapsed && (
-        <div className="px-3 py-2 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
+        <div className="px-3 py-2 text-[11px] font-semibold text-gray-500 uppercase tracking-wider leading-none">
           {title}
         </div>
       )}
@@ -20,4 +20,3 @@ export default function SidebarSection({ title, children, collapsed }: SidebarSe
     </div>
   )
 }
-
