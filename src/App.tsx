@@ -9,6 +9,8 @@ import Clientes from './pages/Clientes'
 import Financeiro from './pages/Financeiro'
 import Calendario from './pages/Calendario'
 import Aereo from './pages/Aereo'
+import AereoDomestico from './pages/AereoDomestico'
+import AereoInter from './pages/AereoInter'
 // Removendo import da página Hotelaria (não será utilizada por enquanto)
 import QuadroVoos from './pages/QuadroVoos'
 import Perfil from './pages/Perfil'
@@ -112,7 +114,9 @@ VITE_SUPABASE_ANON_KEY=sua_chave_anonima`}</pre>
                 <Route path="/clientes" element={<Clientes user={user} />} />
                 <Route path="/financeiro" element={<Financeiro />} />
                 <Route path="/calendario" element={<Calendario />} />
-                <Route path="/aereo" element={<Aereo />} />
+                <Route path="/aereo" element={<Navigate to="/aereodomestico" replace />} />
+                <Route path="/aereodomestico" element={<AereoDomestico />} />
+                <Route path="/aereointer" element={<AereoInter />} />
                 {/* Removendo rota /hotelaria do roteador */}
                 <Route path="/quadro-voos" element={<QuadroVoos />} />
                 <Route path="/educacao" element={<EducacaoHome />} />

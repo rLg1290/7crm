@@ -37,6 +37,151 @@ const Aereo = () => {
   const [destinoSugestoes, setDestinoSugestoes] = useState<any[]>([])
   const [showOrigemSugestoes, setShowOrigemSugestoes] = useState(false)
   const [showDestinoSugestoes, setShowDestinoSugestoes] = useState(false)
+  const [variantSelected, setVariantSelected] = useState<Record<string, number>>({})
+  const [viewMode, setViewMode] = useState<'cards'|'table'>('table')
+  const [scope, setScope] = useState<'domestico'|'internacional'>('domestico')
+  const resultadosStoreRef = useRef<{domestico:any[], internacional:any[]}>({domestico:[], internacional:[]})
+  const variantStoreRef = useRef<{domestico:Record<string,number>, internacional:Record<string,number>}>({domestico:{}, internacional:{}})
+  const formStoreRef = useRef<{domestico:BuscaPassagem, internacional:BuscaPassagem}>({
+    domestico: {
+      origem: '', destino: '', dataIda: '', dataVolta: '', somenteIda: false, adultos: 1, criancas: 0, bebes: 0, classe: 'ECONÔMICA'
+    },
+    internacional: {
+      origem: '', destino: '', dataIda: '', dataVolta: '', somenteIda: false, adultos: 1, criancas: 0, bebes: 0, classe: 'ECONÔMICA'
+    }
+  })
+  const exemploVoosRaw = [
+    {
+      cia_aparente: 'GOL LINHAS AEREAS',
+      numero_voo: 'G3-1381',
+      origem: 'GIG',
+      destino: 'GRU',
+      embarque: '06/06/2026 06:15',
+      desembarque: '06/06/2026 07:30',
+      duracao: '01:15',
+      numero_conexoes: 0,
+      adulto: 608.09,
+      taxa_embarque: 34.11,
+      adicionais: 0,
+      bagagem_despachada_23kg: 0,
+      bagagem_mao_10kg: 1
+    },
+    {
+      cia_aparente: 'GOL LINHAS AEREAS',
+      numero_voo: 'G3-1375',
+      origem: 'GIG',
+      destino: 'GRU',
+      embarque: '06/06/2026 11:10',
+      desembarque: '06/06/2026 12:25',
+      duracao: '01:15',
+      numero_conexoes: 0,
+      adulto: 608.09,
+      taxa_embarque: 34.11,
+      adicionais: 0,
+      bagagem_despachada_23kg: 0,
+      bagagem_mao_10kg: 1
+    },
+    {
+      cia_aparente: 'GOL LINHAS AEREAS',
+      numero_voo: 'G3-1377',
+      origem: 'GIG',
+      destino: 'GRU',
+      embarque: '06/06/2026 15:15',
+      desembarque: '06/06/2026 16:30',
+      duracao: '01:15',
+      numero_conexoes: 0,
+      adulto: 608.09,
+      taxa_embarque: 34.11,
+      adicionais: 0,
+      bagagem_despachada_23kg: 0,
+      bagagem_mao_10kg: 1
+    },
+    {
+      cia_aparente: 'GOL LINHAS AEREAS',
+      numero_voo: 'G3-1379',
+      origem: 'GIG',
+      destino: 'GRU',
+      embarque: '06/06/2026 21:00',
+      desembarque: '06/06/2026 22:05',
+      duracao: '01:05',
+      numero_conexoes: 0,
+      adulto: 608.09,
+      taxa_embarque: 34.11,
+      adicionais: 0,
+      bagagem_despachada_23kg: 1,
+      bagagem_mao_10kg: 1
+    },
+    {
+      cia_aparente: 'GOL LINHAS AEREAS',
+      numero_voo: 'G3-1001',
+      origem: 'SDU',
+      destino: 'CGH',
+      embarque: '06/06/2026 06:30',
+      desembarque: '06/06/2026 07:35',
+      duracao: '01:05',
+      numero_conexoes: 0,
+      adulto: 615.85,
+      taxa_embarque: 59.95,
+      adicionais: 0,
+      bagagem_despachada_23kg: 0,
+      bagagem_mao_10kg: 1
+    }
+  ]
+  const brToIso = (s: string) => {
+    const [date, time] = s.split(' ')
+    const [d, m, y] = date.split('/')
+    return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}T${time}:00`
+  }
+  const buildResultadosFromRaw = (raw: any[], classe: string) => {
+    return raw.slice(0, 5).map((r: any) => ({
+      cia: r.cia_aparente,
+      numero: r.numero_voo,
+      origem: r.origem,
+      destino: r.destino,
+      partida: brToIso(r.embarque),
+      chegada: brToIso(r.desembarque),
+      duracao: r.duracao,
+      preco: Number(r.adulto) + Number(r.taxa_embarque) + Number(r.adicionais),
+      adulto: Number(r.adulto),
+      taxa_embarque: Number(r.taxa_embarque),
+      adicionais: Number(r.adicionais),
+      bag_mao: Boolean(r.bagagem_mao_10kg),
+      bag_23: Boolean(r.bagagem_despachada_23kg),
+      bag_mao_qty: Number(r.bagagem_mao_10kg || 0),
+      bag_23_qty: Number(r.bagagem_despachada_23kg || 0),
+      classe: classe,
+      escala: r.numero_conexoes || 0
+    }))
+  }
+  const mergeVoos = (items: any[]) => {
+    const map = new Map<string, any>()
+    items.forEach((r) => {
+      const key = `${r.cia}|${r.numero}|${r.partida}|${r.chegada}`
+      const varianteBase = {
+        bag_mao_qty: r.bag_mao_qty,
+        bag_23_qty: r.bag_23_qty,
+        adicionais: r.adicionais,
+        preco_total: r.adulto + r.taxa_embarque + r.adicionais
+      }
+      const varianteAlternativa = {
+        bag_mao_qty: r.bag_mao_qty, // mantém mão
+        bag_23_qty: r.bag_23_qty === 1 ? 0 : 1,
+        adicionais: r.bag_23_qty === 1 ? 0 : 105.73,
+        preco_total: r.adulto + r.taxa_embarque + (r.bag_23_qty === 1 ? 0 : 105.73)
+      }
+      if (!map.has(key)) {
+        map.set(key, { ...r, variantes: [varianteBase, varianteAlternativa] })
+      } else {
+        const v = map.get(key)
+        // evita duplicações idênticas
+        const exists = v.variantes.some((va: any) => va.bag_23_qty === varianteBase.bag_23_qty)
+        if (!exists) v.variantes.push(varianteBase)
+      }
+    })
+    const merged = Array.from(map.values())
+    merged.forEach(m => m.variantes.sort((a: any, b: any) => a.bag_23_qty - b.bag_23_qty))
+    return merged
+  }
   const fallbackAirports = [
     { id: 'GIG', iata_code: 'GIG', name: 'Rio de Janeiro', municipality: 'Rio de Janeiro', iso_country: 'BR' },
     { id: 'GRU', iata_code: 'GRU', name: 'São Paulo/Guarulhos', municipality: 'Guarulhos', iso_country: 'BR' },
@@ -61,11 +206,13 @@ const Aereo = () => {
         ...prev,
         [name]: checked
       }))
+      formStoreRef.current[scope] = { ...formStoreRef.current[scope], [name]: checked } as BuscaPassagem
     } else {
       setFormData(prev => ({
         ...prev,
         [name]: value
       }))
+      formStoreRef.current[scope] = { ...formStoreRef.current[scope], [name]: value } as BuscaPassagem
     }
   }
 
@@ -100,29 +247,27 @@ const Aereo = () => {
     setResultados([])
     setCollapsed(true)
     setTimeout(() => {
-      const fake = [
-        {
-          cia: 'LATAM', numero: 'LA1234', origem: formData.origem || 'GRU', destino: formData.destino || 'JFK',
-          partida: '2025-12-20T09:40:00', chegada: '2025-12-20T17:10:00',
-          duracao: '7h 30m', preco: 2890.50, classe: formData.classe, escala: 0
-        },
-        {
-          cia: 'AZUL', numero: 'AD5678', origem: formData.origem || 'GRU', destino: formData.destino || 'MIA',
-          partida: '2025-12-21T22:15:00', chegada: '2025-12-22T06:05:00',
-          duracao: '7h 50m', preco: 3120.00, classe: formData.classe, escala: 1, conexao: 'REC'
-        },
-        {
-          cia: 'GOL', numero: 'G3 9012', origem: formData.origem || 'CGH', destino: formData.destino || 'EZE',
-          partida: '2025-12-19T07:10:00', chegada: '2025-12-19T09:30:00',
-          duracao: '2h 20m', preco: 890.90, classe: formData.classe, escala: 0
-        }
-      ]
-      setResultados(fake)
+      const exemplos = buildResultadosFromRaw(exemploVoosRaw, formData.classe)
+      const merged = mergeVoos(exemplos)
+      resultadosStoreRef.current[scope] = merged
+      setResultados(merged)
       setLoading(false)
     }, 1800)
   }
 
   const totalPassageiros = formData.adultos + formData.criancas + formData.bebes
+
+  useEffect(() => {
+    if (!searched) {
+      const exemplos = buildResultadosFromRaw(exemploVoosRaw, formData.classe)
+      const merged = mergeVoos(exemplos)
+      resultadosStoreRef.current.domestico = merged
+      resultadosStoreRef.current.internacional = merged
+      setResultados(resultadosStoreRef.current[scope])
+      setSearched(true)
+      setCollapsed(true)
+    }
+  }, [])
 
   useEffect(() => {
     const term = formData.origem.trim()
@@ -150,6 +295,10 @@ const Aereo = () => {
   }, [formData.origem, origemSelecionada])
 
   useEffect(() => {
+    variantStoreRef.current[scope] = variantSelected
+  }, [variantSelected, scope])
+
+  useEffect(() => {
     const term = formData.destino.trim()
     if (term.length < 2) {
       setDestinoSugestoes([])
@@ -174,6 +323,45 @@ const Aereo = () => {
     return () => clearTimeout(handler)
   }, [formData.destino, destinoSelecionada])
 
+  const grupos = React.useMemo(() => {
+    const map: Record<string, any> = {}
+    resultados.forEach((r) => {
+      const key = `${r.origem}-${r.destino}-${Number(r.adulto || 0).toFixed(2)}`
+      if (!map[key]) {
+        map[key] = {
+          origem: r.origem,
+          destino: r.destino,
+          adulto: Number(r.adulto || 0),
+          taxa: Number(r.taxa_embarque || 0),
+          voos: [] as any[]
+        }
+      }
+      map[key].voos.push(r)
+    })
+    return Object.values(map)
+  }, [resultados])
+
+  const linhas = React.useMemo(() => {
+    const list = resultados.map((r) => {
+      const key = `${r.cia}|${r.numero}|${r.partida}|${r.chegada}`
+      const idx = variantSelected[key] ?? 0
+      const v = (r as any).variantes ? (r as any).variantes[idx] : { bag_mao_qty: r.bag_mao_qty, bag_23_qty: r.bag_23_qty, preco_total: r.adulto + r.taxa_embarque + r.adicionais }
+      return {
+        cia: r.cia,
+        numero: r.numero,
+        partida: r.partida,
+        chegada: r.chegada,
+        origem: r.origem,
+        destino: r.destino,
+        escala: r.escala,
+        bag: `${v.bag_mao_qty}Mão ${v.bag_23_qty}Desp`,
+        classe: r.classe,
+        total: v.preco_total
+      }
+    })
+    return list.sort((a,b) => new Date(a.partida).getTime() - new Date(b.partida).getTime())
+  }, [resultados, variantSelected])
+
   return (
     <div className="p-4 sm:p-6 lg:p-8">
       <div className="max-w-6xl mx-auto">
@@ -187,6 +375,12 @@ const Aereo = () => {
               <div>
                 <h1 className="text-3xl font-bold text-gray-900">Aéreo</h1>
                 <p className="text-gray-600">Busque e compare passagens aéreas</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="inline-flex rounded-full border border-gray-300 overflow-hidden text-xs bg-white">
+                <button type="button" className={`px-4 py-2 ${scope==='domestico'?'bg-teal-600 text-white':'text-gray-700'}`} onClick={() => { setScope('domestico'); setResultados(resultadosStoreRef.current.domestico || []); setVariantSelected(variantStoreRef.current.domestico || {}); setFormData(formStoreRef.current.domestico) }}>Doméstico</button>
+                <button type="button" className={`px-4 py-2 border-l border-gray-300 ${scope==='internacional'?'bg-teal-600 text-white':'text-gray-700'}`} onClick={() => { setScope('internacional'); setResultados(resultadosStoreRef.current.internacional || []); setVariantSelected(variantStoreRef.current.internacional || {}); setFormData(formStoreRef.current.internacional) }}>Internacional</button>
               </div>
             </div>
           </div>
@@ -726,47 +920,145 @@ const Aereo = () => {
                 <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
                   <div>
                     <h2 className="text-xl font-bold text-gray-900">Resultados da Busca</h2>
-                    <p className="text-sm text-gray-600">{resultados.length} opções encontradas</p>
+                    <p className="text-sm text-gray-600">{viewMode==='table' ? `${linhas.length} voos` : `${grupos.length} grupos por valor`}</p>
                     {collapsed && (
                       <p className="text-xs text-gray-500 mt-1">
                         {`${formData.origem || 'Origem'} → ${formData.destino || 'Destino'}`} • {formData.dataIda || 'Ida'}{!formData.somenteIda ? ` • ${formData.dataVolta || 'Volta'}` : ''} • {totalPassageiros} pax • {formData.classe === 'EXECUTIVA' ? 'Executiva' : 'Econômica'}
                       </p>
                     )}
                   </div>
-                  {collapsed && (
-                    <button
-                      type="button"
-                      onClick={() => setCollapsed(false)}
-                      className="text-sm px-3 py-2 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-700"
-                      title="Editar busca"
-                    >
-                      Editar busca
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2">
+                    <div className="inline-flex rounded-md border border-gray-300 overflow-hidden text-xs">
+                      <button type="button" className={`px-3 py-2 ${viewMode==='table'?'bg-gray-200 font-semibold':'bg-white'}`} onClick={() => setViewMode('table')}>Tabela</button>
+                      <button type="button" className={`px-3 py-2 border-l border-gray-300 ${viewMode==='cards'?'bg-gray-200 font-semibold':'bg-white'}`} onClick={() => setViewMode('cards')}>Cards</button>
+                    </div>
+                    {collapsed && (
+                      <button
+                        type="button"
+                        onClick={() => setCollapsed(false)}
+                        className="text-sm px-3 py-2 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-700"
+                        title="Editar busca"
+                      >
+                        Editar busca
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="p-6 space-y-4">
-                  {resultados.map((r, idx) => (
-                    <div key={idx} className="border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="h-9 w-9 bg-purple-600 text-white rounded-lg flex items-center justify-center font-semibold">{r.cia.substring(0,1)}</div>
-                          <div>
-                            <div className="text-sm font-semibold text-gray-900">{r.cia} • {r.numero}</div>
-                            <div className="text-xs text-gray-600">{r.classe} {r.escala > 0 ? `• ${r.escala} escala${r.escala>1?'s':''}` : '• direto'}</div>
+                  {viewMode==='table' ? (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-left text-gray-600 border-b">
+                            <th className="py-2 pr-3">cia</th>
+                            <th className="py-2 pr-3">voo</th>
+                            <th className="py-2 pr-3">saída</th>
+                            <th className="py-2 pr-3">chegada</th>
+                            <th className="py-2 pr-3">origem</th>
+                            <th className="py-2 pr-3">destino</th>
+                            <th className="py-2 pr-3">esc</th>
+                            <th className="py-2 pr-3">tipo</th>
+                            <th className="py-2 pr-3">bag.</th>
+                            <th className="py-2 pr-3">classe</th>
+                            <th className="py-2 pr-3 text-right">total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {linhas.map((l, i) => (
+                            <tr key={i} className="border-b hover:bg-gray-50">
+                              <td className="py-2 pr-3 text-gray-900">{l.cia}</td>
+                              <td className="py-2 pr-3 font-semibold text-gray-900">{l.numero}</td>
+                              <td className="py-2 pr-3 text-gray-900">{new Date(l.partida).toLocaleDateString('pt-BR')} • {new Date(l.partida).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</td>
+                              <td className="py-2 pr-3 text-gray-900">{new Date(l.chegada).toLocaleDateString('pt-BR')} • {new Date(l.chegada).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</td>
+                              <td className="py-2 pr-3 text-gray-900">{l.origem}</td>
+                              <td className="py-2 pr-3 text-gray-900">{l.destino}</td>
+                              <td className="py-2 pr-3 text-gray-900">{l.escala}</td>
+                              <td className="py-2 pr-3 text-gray-900">OW</td>
+                              <td className="py-2 pr-3 text-gray-900">{l.bag}</td>
+                              <td className="py-2 pr-3 text-gray-900">{l.classe}</td>
+                              <td className="py-2 pr-3 text-right font-semibold text-gray-900">R$ {Number(l.total).toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                  grupos.map((g, idx) => (
+                    <div key={idx} className="border border-gray-200 rounded-xl p-0 overflow-hidden">
+                      <div className="grid grid-cols-1 md:grid-cols-[1fr_280px]">
+                        <div className="p-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="text-sm font-semibold text-gray-900">{g.origem} → {g.destino}</div>
+                            <div className="text-xs text-gray-600">{g.voos.length} opções</div>
+                          </div>
+                          <div className="space-y-2">
+                            {g.voos.map((r: any, i: number) => (
+                              <div key={i} className="grid grid-cols-2 md:grid-cols-[220px_1fr_200px_1fr_140px] gap-3 items-center px-3 py-2 rounded-lg hover:bg-gray-50">
+                                <div className="flex items-center gap-2">
+                                  <div className="h-7 w-7 bg-purple-600 text-white rounded-md flex items-center justify-center text-xs font-semibold">{r.cia.substring(0,1)}</div>
+                                  <div>
+                                    <div className="text-xs text-gray-500">{r.cia}</div>
+                                    <div className="text-xs font-semibold text-gray-900">{r.numero}</div>
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="text-[11px] text-gray-500">Origem</div>
+                                  <div className="text-sm font-semibold text-gray-900">{r.origem} • {new Date(r.partida).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</div>
+                                </div>
+                                <div>
+                                  <div className="text-[11px] text-gray-500">Duração / Conexões</div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs px-2 py-1 rounded-full border border-orange-300 text-orange-700">{r.duracao}</span>
+                                    <span className="text-xs text-gray-700">{r.escala > 0 ? `${r.escala} conexão${r.escala>1?'es':''}` : 'Voo direto'}</span>
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="text-[11px] text-gray-500">Destino</div>
+                                  <div className="text-sm font-semibold text-gray-900">{r.destino} • {new Date(r.chegada).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</div>
+                                </div>
+                                <div className="md:flex md:justify-end items-center gap-2">
+                                  {(() => {
+                                    const vooKey = `${r.cia}|${r.numero}|${r.partida}|${r.chegada}`
+                                    const selectedIdx = variantSelected[vooKey] ?? 0
+                                    const variante = (r as any).variantes ? (r as any).variantes[selectedIdx] : { bag_mao_qty: r.bag_mao_qty, bag_23_qty: r.bag_23_qty }
+                                    return (
+                                      <>
+                                        <div className="inline-flex items-center px-3 py-1 rounded-md border border-blue-300 text-xs font-medium text-blue-700">
+                                          {`${variante.bag_mao_qty}Mão ${variante.bag_23_qty}Desp`}
+                                        </div>
+                                        {(r as any).variantes && (
+                                          <div className="inline-flex rounded-md border border-gray-300 overflow-hidden text-xs">
+                                            <button type="button" className={`px-2 py-1 ${selectedIdx===0?'bg-gray-200 font-semibold':'bg-white'}`} onClick={() => setVariantSelected(prev => ({...prev, [vooKey]: 0}))}>Sem desp</button>
+                                            <button type="button" className={`px-2 py-1 border-l border-gray-300 ${selectedIdx===1?'bg-gray-200 font-semibold':'bg-white'}`} onClick={() => setVariantSelected(prev => ({...prev, [vooKey]: 1}))}>Com desp</button>
+                                          </div>
+                                        )}
+                                      </>
+                                    )
+                                  })()}
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         </div>
-                        <div className="text-right">
-                          <div className="text-lg font-bold text-gray-900">R$ {Number(r.preco).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
-                          <div className="text-xs text-gray-600">ida: {new Date(r.partida).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})} • {r.duracao}</div>
+                        <div className="bg-orange-50 border-l border-gray-200 p-4">
+                          <div className="text-right">
+                            <div className="text-xs text-orange-700">Por adulto, sem taxas</div>
+                            <div className="text-2xl font-extrabold text-orange-700">R$ {Number(g.adulto).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+                          </div>
+                          <div className="mt-3 bg-white rounded-lg border border-orange-200 p-3 text-sm">
+                            <div className="flex items-center justify-between"><span className="text-gray-600">1 adulto</span><span className="font-semibold text-gray-900">R$ {Number(g.adulto).toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
+                            <div className="flex items-center justify-between"><span className="text-gray-600">Taxa embarque (adulto)</span><span className="font-semibold text-gray-900">R$ {Number(g.taxa).toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
+                            <div className="mt-2 pt-2 border-t border-gray-200 flex items-center justify-between"><span className="text-gray-700">Total</span><span className="font-bold text-gray-900">R$ {Number(g.adulto + g.taxa).toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
+                          </div>
+                          <div className="mt-3 flex flex-col gap-2">
+                            <button type="button" className="w-full py-2 rounded-md bg-orange-600 text-white text-sm font-semibold">Comprar</button>
+                            <button type="button" className="w-full py-2 rounded-md bg-white border border-orange-300 text-orange-700 text-sm font-semibold">Baixar orçamento</button>
+                          </div>
                         </div>
                       </div>
-                      <div className="mt-3 grid grid-cols-3 gap-2 text-sm text-gray-700">
-                        <div className="bg-gray-50 rounded-lg p-2"><div className="text-xs text-gray-500">Origem</div><div className="font-semibold">{r.origem}</div></div>
-                        <div className="bg-gray-50 rounded-lg p-2"><div className="text-xs text-gray-500">Destino</div><div className="font-semibold">{r.destino}</div></div>
-                        <div className="bg-gray-50 rounded-lg p-2"><div className="text-xs text-gray-500">Chegada</div><div className="font-semibold">{new Date(r.chegada).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</div></div>
-                      </div>
                     </div>
-                  ))}
+                  ))
+                  )}
                 </div>
               </div>
             )}
