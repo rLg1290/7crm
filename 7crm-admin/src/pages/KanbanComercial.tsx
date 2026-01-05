@@ -244,22 +244,29 @@ export default function KanbanComercial() {
       if (response.ok) {
         // Tenta ler como JSON primeiro
         try {
-          const data = await response.json()
+          // Primeiro lemos como texto para não consumir o body caso o JSON falhe
+          const text = await response.text()
           
-          if (Array.isArray(data) && data.length > 0) {
-              meetingLink = data[0].hangoutLink || data[0].htmlLink || ''
-          } else if (typeof data === 'object') {
-              meetingLink = data.hangoutLink || data.htmlLink || data.link || data.url || data.meeting_link || data.join_url || (typeof data === 'string' ? data : '')
-              if (!meetingLink && data.message) meetingLink = data.message 
-          } else if (typeof data === 'string') {
-              meetingLink = data
+          try {
+             // Tenta parsear o texto como JSON
+             const data = JSON.parse(text)
+             
+             if (Array.isArray(data) && data.length > 0) {
+                 meetingLink = data[0].hangoutLink || data[0].htmlLink || ''
+             } else if (typeof data === 'object') {
+                 meetingLink = data.hangoutLink || data.htmlLink || data.link || data.url || data.meeting_link || data.join_url || (typeof data === 'string' ? data : '')
+                 if (!meetingLink && data.message) meetingLink = data.message 
+             } else if (typeof data === 'string') {
+                 meetingLink = data
+             }
+          } catch {
+             // Se não for JSON, usa o texto puro se parecer uma URL
+             if (text && text.startsWith('http')) {
+                 meetingLink = text
+             }
           }
         } catch (e) {
-            // Se falhar ao ler JSON, tenta ler como texto puro
-            const text = await response.text()
-            if (text && text.startsWith('http')) {
-                meetingLink = text
-            }
+            console.error('Erro ao processar resposta do webhook:', e)
         }
       }
     } catch (err) {
