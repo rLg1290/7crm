@@ -12,7 +12,9 @@ import {
   BarChart3,
   Search,
   BookOpen,
-  ListTodo
+  ListTodo,
+  Lock,
+  Calendar
 } from 'lucide-react'
 
 interface RolePermission {
@@ -26,13 +28,15 @@ interface RolePermission {
 // Mapa de páginas disponíveis no sistema Admin para configuração
 const ADMIN_PAGES = [
   { id: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: '/kanban', label: 'Kanban', icon: ListTodo },
   { id: '/relatorios', label: 'Relatórios', icon: BarChart3 },
   { id: '/empresas', label: 'Empresas', icon: Building2 },
   { id: '/usuarios', label: 'Usuários', icon: Users },
+  { id: '/permissoes', label: 'Permissões', icon: Lock },
   { id: '/promocoes', label: 'Promoções', icon: Tag },
   { id: '/educacao', label: 'Educação', icon: BookOpen },
   { id: '/atualizacoes', label: 'Atualizações', icon: Tag },
+  { id: '/comercial/kanban', label: 'Kanban Comercial', icon: ListTodo },
+  { id: '/comercial/calendario', label: 'Calendário Comercial', icon: Calendar },
   { id: '/pesquisas', label: 'Pesquisas', icon: Search },
 ]
 

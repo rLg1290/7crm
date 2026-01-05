@@ -19,7 +19,7 @@ interface Usuario {
   id: string
   email: string
   nome?: string
-  role: 'user' | 'admin'
+  role: 'user' | 'admin' | 'comercial' | 'financeiro'
   empresa_id?: string
   // Pode vir como objeto (padrão 1:N) ou array dependendo da query
   empresa?: {
