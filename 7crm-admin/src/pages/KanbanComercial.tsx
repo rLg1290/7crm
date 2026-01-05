@@ -13,11 +13,13 @@ import {
 
 // Definição dos status do funil
 const PIPELINE_STEPS = [
-  { id: 'LEAD', label: 'Novo', color: 'bg-blue-50 border-blue-200' },
-  { id: 'APRESENTACAO', label: 'Qualificação', color: 'bg-yellow-50 border-yellow-200' },
-  { id: 'REUNIAO', label: 'Proposta', color: 'bg-orange-50 border-orange-200' },
-  { id: 'ENVIAR_CONTRATO', label: 'Negociação', color: 'bg-purple-50 border-purple-200' },
-  { id: 'ASSINADO', label: 'Fechado', color: 'bg-green-50 border-green-200' },
+  { id: 'LEAD', label: 'Lead', color: 'bg-blue-50 border-blue-200' },
+  { id: 'APRESENTACAO', label: 'Contato Inicial', color: 'bg-yellow-50 border-yellow-200' },
+  { id: 'REUNIAO', label: 'Reunião Agendada', color: 'bg-orange-50 border-orange-200' },
+  { id: 'ENVIAR_CONTRATO', label: 'Enviar Contrato', color: 'bg-purple-50 border-purple-200' },
+  { id: 'ASSINADO', label: 'Contrato Assinado', color: 'bg-green-50 border-green-200' },
+  { id: 'CADASTROS', label: 'Cadastros', color: 'bg-teal-50 border-teal-200' },
+  { id: 'CONCLUIDO', label: 'Concluído', color: 'bg-emerald-50 border-teal-200' },
   { id: 'PERDIDO', label: 'Perdido', color: 'bg-red-50 border-red-200' }
 ]
 
