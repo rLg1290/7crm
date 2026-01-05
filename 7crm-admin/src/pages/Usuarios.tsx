@@ -294,7 +294,11 @@ type TabType = 'crm' | 'admin' | 'internal'
       (usuario.nome && usuario.nome.toLowerCase().includes(searchTerm.toLowerCase())) ||
       empresaData?.nome.toLowerCase().includes(searchTerm.toLowerCase())
     
-    const matchesTab = activeTab === 'crm' ? usuario.role === 'user' : usuario.role === 'admin'
+    const matchesTab = activeTab === 'crm' 
+      ? usuario.role === 'user' 
+      : activeTab === 'admin' 
+        ? usuario.role === 'admin'
+        : ['comercial', 'financeiro'].includes(usuario.role)
     
     return matchesSearch && matchesTab
   })
@@ -370,6 +374,20 @@ type TabType = 'crm' | 'admin' | 'internal'
                 <span>Administradores</span>
                 <span className="bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full text-xs ml-2">
                   {usuarios.filter(u => u.role === 'admin').length}
+                </span>
+              </button>
+              <button
+                onClick={() => setActiveTab('internal')}
+                className={`flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                  activeTab === 'internal'
+                    ? 'bg-white text-orange-600 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <Shield className="h-4 w-4" />
+                <span>Equipe Interna</span>
+                <span className="bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full text-xs ml-2">
+                  {usuarios.filter(u => ['comercial', 'financeiro'].includes(u.role)).length}
                 </span>
               </button>
             </div>
@@ -455,10 +473,14 @@ type TabType = 'crm' | 'admin' | 'internal'
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                         usuario.role === 'admin'
                           ? 'bg-purple-100 text-purple-800'
-                          : 'bg-green-100 text-green-800'
+                          : ['comercial', 'financeiro'].includes(usuario.role)
+                            ? 'bg-orange-100 text-orange-800'
+                            : 'bg-green-100 text-green-800'
                       }`}>
                         {usuario.role === 'admin' ? (
                           <><ShieldCheck className="h-3 w-3 mr-1" /> Admin</>
+                        ) : ['comercial', 'financeiro'].includes(usuario.role) ? (
+                          <><Shield className="h-3 w-3 mr-1" /> {usuario.role === 'comercial' ? 'Comercial' : 'Financeiro'}</>
                         ) : (
                           <><Users className="h-3 w-3 mr-1" /> Ativo</>
                         )}
@@ -518,7 +540,7 @@ type TabType = 'crm' | 'admin' | 'internal'
                       {searchTerm ? 'Tente ajustar os termos da busca.' : 
                         activeTab === 'crm' ? 'Não há usuários do CRM cadastrados.' : 
                         activeTab === 'admin' ? 'Não há administradores cadastrados.' : 
-                        'Não há usuários internos cadastrados.'}
+                        'Não há equipe interna cadastrada.'}
                     </p>
                   </td>
                 </tr>
