@@ -52,9 +52,10 @@ const LoginPage = () => {
           return
         }
         
-        if (profile.role !== 'admin') {
-          console.error('❌ Usuário não é admin. Role atual:', profile.role)
-          setError('Acesso negado. Este sistema é exclusivo para administradores.')
+        const allowedRoles = ['admin', 'comercial', 'financeiro']
+        if (!allowedRoles.includes(profile.role)) {
+          console.error('❌ Usuário sem permissão de acesso. Role atual:', profile.role)
+          setError('Acesso negado. Este sistema é exclusivo para a equipe interna.')
           await supabase.auth.signOut()
           return
         }
@@ -159,7 +160,7 @@ const LoginPage = () => {
 
           <div className="mt-6 text-center">
             <p className="text-xs text-gray-500">
-              Sistema exclusivo para administradores do 7CRM
+              Sistema exclusivo para equipe interna do 7CRM
             </p>
           </div>
         </div>
