@@ -231,8 +231,14 @@ export default function KanbanComercial() {
       const start = new Date(`${meetingForm.data}T${meetingForm.hora}:00`)
       const end = new Date(start.getTime() + 40 * 60000) // + 40 minutes
 
+      // Determine webhook URL based on environment
+      const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+      const webhookUrl = isLocalhost 
+        ? 'https://n8n.srv999039.hstgr.cloud/webhook-test/ae685aca-2256-42f0-839c-587616f27591'
+        : 'https://n8n.srv999039.hstgr.cloud/webhook/ae685aca-2256-42f0-839c-587616f27591'
+
       // Send to n8n webhook
-      const response = await fetch('https://n8n.srv999039.hstgr.cloud/webhook/ae685aca-2256-42f0-839c-587616f27591', {
+      const response = await fetch(webhookUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
