@@ -24,7 +24,6 @@ interface Meeting {
 export default function CalendarioComercial() {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [meetings, setMeetings] = useState<Meeting[]>([])
-  const [loading, setLoading] = useState(true)
   const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null)
 
   useEffect(() => {
@@ -33,7 +32,6 @@ export default function CalendarioComercial() {
 
   const fetchMeetings = async () => {
     try {
-      setLoading(true)
       // Buscar leads que tenham data de próxima ação definida e sejam do tipo reunião ou status REUNIAO
       const { data, error } = await supabase
         .from('funil_vendas')
@@ -45,8 +43,6 @@ export default function CalendarioComercial() {
       setMeetings(data || [])
     } catch (error) {
       console.error('Erro ao carregar reuniões:', error)
-    } finally {
-      setLoading(false)
     }
   }
 

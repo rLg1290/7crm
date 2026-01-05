@@ -1,20 +1,12 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { 
-  LayoutDashboard, 
   Plus, 
-  Search, 
   MoreHorizontal, 
   Calendar, 
-  Phone, 
-  Mail, 
-  DollarSign,
   User,
-  AlertCircle,
   X,
-  MessageSquare,
   Clock,
-  Building2,
   Trash2,
   History
 } from 'lucide-react'
@@ -58,6 +50,24 @@ interface Log {
   user_email?: string // Join with users if possible, or just store email in details
 }
 
+interface LeadFormData {
+  data_criacao: string
+  responsavel_nome: string
+  nome_empresa: string
+  contato_info: string
+  origem: string
+  valor_mensalidade: string
+  status: string
+  proxima_acao_data: string
+  proxima_acao_descricao: string
+  motivo_perda: string
+  cidade_uf: string
+  tipo_agencia: string
+  nivel_demanda: string
+  produtos_interesse: string[]
+  nivel_interesse: string
+}
+
 const PRODUCTS_OPTIONS = [
   'Aéreo', 'Hotelaria', 'Pacotes', 'Aluguel de Carro', 
   'Ingressos', 'Passeios', 'Cruzeiro'
@@ -65,7 +75,6 @@ const PRODUCTS_OPTIONS = [
 
 export default function KanbanComercial() {
   const [leads, setLeads] = useState<Lead[]>([])
-  const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [showMeetingModal, setShowMeetingModal] = useState(false)
   const [meetingForm, setMeetingForm] = useState({
@@ -85,7 +94,7 @@ export default function KanbanComercial() {
   const [isScheduling, setIsScheduling] = useState(false)
 
   // Form state
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<LeadFormData>({
     data_criacao: new Date().toISOString().slice(0, 16),
     responsavel_nome: '', // Nome do Responsável
     nome_empresa: '', // Nome da Agência
@@ -97,7 +106,13 @@ export default function KanbanComercial() {
     status: 'LEAD',
     proxima_acao_data: '',
     proxima_acao_descricao: '',
-    motivo_perda: ''
+    motivo_perda: '',
+    
+    cidade_uf: '',
+    tipo_agencia: '',
+    nivel_demanda: '',
+    nivel_interesse: '',
+    produtos_interesse: []
   })
 
   useEffect(() => {
@@ -161,7 +176,6 @@ export default function KanbanComercial() {
 
   const fetchLeads = async () => {
     try {
-      setLoading(true)
       const { data, error } = await supabase
         .from('funil_vendas')
         .select('*')
@@ -171,8 +185,6 @@ export default function KanbanComercial() {
       setLeads(data || [])
     } catch (error) {
       console.error('Erro ao carregar leads:', error)
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -406,16 +418,21 @@ export default function KanbanComercial() {
 
   const resetForm = () => {
     setFormData({
+      data_criacao: new Date().toISOString().slice(0, 16),
       nome_empresa: '',
-      contato_nome: '',
-      contato_email: '',
-      contato_telefone: '',
+      responsavel_nome: '',
+      contato_info: '',
       origem: '',
       valor_mensalidade: '',
       status: 'LEAD',
       proxima_acao_data: '',
       proxima_acao_descricao: '',
-      motivo_perda: ''
+      motivo_perda: '',
+      cidade_uf: '',
+      tipo_agencia: '',
+      nivel_demanda: '',
+      nivel_interesse: '',
+      produtos_interesse: []
     })
   }
 
@@ -431,7 +448,12 @@ export default function KanbanComercial() {
       status: lead.status,
       proxima_acao_data: lead.proxima_acao_data ? lead.proxima_acao_data.slice(0, 16) : '',
       proxima_acao_descricao: lead.proxima_acao_descricao || '',
-      motivo_perda: lead.motivo_perda || ''
+      motivo_perda: lead.motivo_perda || '',
+      cidade_uf: lead.cidade_uf || '',
+      tipo_agencia: lead.tipo_agencia || '',
+      nivel_demanda: lead.nivel_demanda || '',
+      nivel_interesse: lead.nivel_interesse || '',
+      produtos_interesse: lead.produtos_interesse || []
     })
     setShowModal(true)
   }

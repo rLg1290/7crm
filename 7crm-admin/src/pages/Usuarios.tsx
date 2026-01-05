@@ -12,8 +12,7 @@ import {
   Building2,
   Mail,
   Calendar,
-  User,
-  Filter
+  User
 } from 'lucide-react'
 
 interface Usuario {
@@ -209,7 +208,8 @@ type TabType = 'crm' | 'admin' | 'internal'
       nome: usuario.nome || '',
       password: '',
       role: usuario.role,
-      empresa_id: usuario.empresa_id || ''
+      empresa_id: usuario.empresa_id || '',
+      autoConfirm: false
     })
     setShowModal(true)
   }
@@ -272,7 +272,8 @@ type TabType = 'crm' | 'admin' | 'internal'
       nome: '',
       password: '',
       role: activeTab === 'admin' ? 'admin' : 'user',
-      empresa_id: ''
+      empresa_id: '',
+      autoConfirm: false
     })
   }
   
