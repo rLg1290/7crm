@@ -39,6 +39,7 @@ interface Lead {
   nivel_demanda?: string
   produtos_interesse?: string[]
   nivel_interesse?: string
+  link_reuniao?: string
 }
 
 interface Log {
@@ -65,6 +66,7 @@ interface LeadFormData {
   nivel_demanda: string
   produtos_interesse: string[]
   nivel_interesse: string
+  link_reuniao?: string
 }
 
 const PRODUCTS_OPTIONS = [
@@ -111,7 +113,8 @@ export default function KanbanComercial() {
     tipo_agencia: '',
     nivel_demanda: '',
     nivel_interesse: '',
-    produtos_interesse: []
+    produtos_interesse: [],
+    link_reuniao: ''
   })
 
   useEffect(() => {
@@ -310,7 +313,8 @@ export default function KanbanComercial() {
         valor_mensalidade: dataToUse.valor_mensalidade ? Number(dataToUse.valor_mensalidade) : null,
         proxima_acao_data: dataToUse.proxima_acao_data || null,
         proxima_acao_descricao: dataToUse.proxima_acao_descricao,
-        motivo_perda: dataToUse.motivo_perda
+        motivo_perda: dataToUse.motivo_perda,
+        link_reuniao: dataToUse.link_reuniao
       }
 
       if (editingLead) {
@@ -431,7 +435,8 @@ export default function KanbanComercial() {
       tipo_agencia: '',
       nivel_demanda: '',
       nivel_interesse: '',
-      produtos_interesse: []
+      produtos_interesse: [],
+      link_reuniao: ''
     })
   }
 
@@ -452,7 +457,8 @@ export default function KanbanComercial() {
       tipo_agencia: lead.tipo_agencia || '',
       nivel_demanda: lead.nivel_demanda || '',
       nivel_interesse: lead.nivel_interesse || '',
-      produtos_interesse: lead.produtos_interesse || []
+      produtos_interesse: lead.produtos_interesse || [],
+      link_reuniao: lead.link_reuniao || ''
     })
     setShowModal(true)
   }
@@ -709,6 +715,23 @@ export default function KanbanComercial() {
                       </div>
                     </div>
                   </div>
+
+                  {formData.link_reuniao && (
+                    <div className="bg-purple-50 p-3 rounded-lg border border-purple-200 flex items-start gap-3">
+                      <Calendar className="h-5 w-5 text-purple-600 mt-0.5 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <h4 className="text-sm font-semibold text-purple-900">Reunião Agendada</h4>
+                        <a 
+                          href={formData.link_reuniao} 
+                          target="_blank" 
+                          rel="noopener noreferrer" 
+                          className="text-sm text-purple-700 hover:text-purple-900 underline truncate block mt-1"
+                        >
+                          {formData.link_reuniao}
+                        </a>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="space-y-3">
                     <h4 className="text-sm font-semibold text-gray-900 border-b pb-2">Qualificação da Agência</h4>
