@@ -245,7 +245,8 @@ export default function KanbanComercial() {
           Titulo: `${formData.nome_empresa} - Reunião de Apresentação 7C Turismo & Consultoria`,
           Inicio: start.toISOString(),
           Fim: end.toISOString(),
-          Email: meetingForm.email
+          emailagencia: meetingForm.email,
+          emailcomercial: currentUser?.email
         })
       })
 
