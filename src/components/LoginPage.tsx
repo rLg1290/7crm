@@ -158,6 +158,15 @@ const LoginPage = () => {
         } else {
           // Após login, vincular automaticamente o usuário à empresa
           await ensureUsuarioEmpresaLink()
+          
+          // Atualizar last_sign_in_at no profile
+          const { data: { user } } = await supabase.auth.getUser()
+          if (user) {
+            await supabase
+              .from('profiles')
+              .update({ last_sign_in_at: new Date().toISOString() })
+              .eq('id', user.id)
+          }
         }
       } else {
         // Cadastro - Validar código de agência primeiro

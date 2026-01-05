@@ -184,6 +184,7 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({ onClose, user, initialMode }) =
   }, [user])
 
   const webhookUrl = (import.meta as any).env.VITE_SETTE_WEBHOOK_URL || 'https://n8n.srv999039.hstgr.cloud/webhook/400e1a10-1a0f-4e50-bdac-1e4c3797c6d4'
+  const setteDebug = String(((import.meta as any).env.VITE_SETTE_DEBUG || '')).toLowerCase() === 'true'
 
   const sendToWebhook = async (text: string) => {
     const payload = {
@@ -195,11 +196,16 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({ onClose, user, initialMode }) =
       timestamp: new Date().toISOString()
     }
     try {
+      const ctrl = new AbortController()
+      const tid = setTimeout(() => ctrl.abort(), 8000)
       const res = await fetch(webhookUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        signal: ctrl.signal,
+        credentials: 'omit',
       })
+      clearTimeout(tid)
       let reply = 'Sette: sua mensagem foi recebida.'
       const ct = res.headers.get('content-type') || ''
       if (ct.includes('application/json')) {
@@ -209,9 +215,16 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({ onClose, user, initialMode }) =
         const textBody = await res.text()
         if (textBody) reply = textBody
       }
+      if (!res.ok && setteDebug) {
+        reply = `Erro HTTP ${res.status}: ${reply}`
+      }
       return { ok: res.ok, reply }
-    } catch {
-      return { ok: false, reply: 'Sette: houve um erro ao enviar sua mensagem.' }
+    } catch (e: any) {
+      const isAbort = e?.name === 'AbortError'
+      const hint = isAbort ? 'Timeout ao conectar' : 'Erro de rede/Possível CORS'
+      const base = 'Sette: houve um erro ao enviar sua mensagem.'
+      const detail = setteDebug ? ` (${hint}; url: ${webhookUrl})` : ''
+      return { ok: false, reply: base + detail }
     }
   }
 

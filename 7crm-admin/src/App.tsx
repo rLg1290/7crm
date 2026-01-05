@@ -7,15 +7,24 @@ import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
 import EducacaoAdminPage from './pages/Educacao'
 import Kanban from './pages/Kanban'
+import KanbanComercial from './pages/KanbanComercial'
+import CalendarioComercial from './pages/CalendarioComercial'
 import Empresas from './pages/Empresas'
 import Promocoes from './pages/Promocoes'
 import Usuarios from './pages/Usuarios'
 import Pesquisas from './pages/Pesquisas'
+import Permissoes from './pages/Permissoes'
 import Relatorios from './pages/Relatorios'
 import AtualizacoesAdminPage from './pages/AtualizacoesAdmin'
 
+// Extender o tipo User para incluir permissões
+type UserWithPermissions = User & {
+  role?: string
+  allowed_pages?: string[]
+}
+
 function App() {
-  const [user, setUser] = useState<User | null>(null)
+  const [user, setUser] = useState<UserWithPermissions | null>(null)
   const [loading, setLoading] = useState(true)
 
   const checkAdminRole = async (user: User | null) => {
@@ -26,22 +35,44 @@ function App() {
     }
 
     try {
-      const { data: profile, error } = await supabase!
+      // 1. Buscar o profile para saber a role
+      const { data: profile, error: profileError } = await supabase!
         .from('profiles')
         .select('role')
         .eq('id', user.id)
         .single()
 
-      if (error || !profile || profile.role !== 'admin') {
-        console.log('❌ Acesso negado: usuário não é admin')
+      if (profileError || !profile) throw profileError || new Error('Perfil não encontrado')
+
+      // 2. Buscar as permissões dessa role
+      const { data: permissions, error: permError } = await supabase!
+        .from('role_permissions')
+        .select('can_access_admin, allowed_pages')
+        .eq('role', profile.role)
+        .single()
+
+      if (permError) {
+        console.error('Erro ao buscar permissões:', permError)
+        // Fallback seguro: se não tiver permissão definida, nega acesso (exceto admin hardcoded se necessário, mas melhor negar)
+        throw new Error('Permissões não configuradas')
+      }
+
+      if (!permissions.can_access_admin) {
+        console.log(`❌ Acesso negado: role '${profile.role}' não tem permissão de Admin`)
         await supabase!.auth.signOut()
         setUser(null)
       } else {
-        console.log('✅ Usuário admin verificado')
-        setUser(user)
+        // Injetar role e permissões no usuário
+        const userWithPerms = { 
+          ...user, 
+          role: profile.role,
+          allowed_pages: permissions.allowed_pages as string[]
+        }
+        console.log('✅ Acesso permitido:', profile.role)
+        setUser(userWithPerms)
       }
     } catch (err) {
-      console.error('Erro ao verificar role:', err)
+      console.error('Erro de autenticação:', err)
       await supabase!.auth.signOut()
       setUser(null)
     }
@@ -103,12 +134,14 @@ VITE_SUPABASE_ANON_KEY=sua_chave_anonima`}</pre>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/educacao" element={<EducacaoAdminPage />} />
-          <Route path="/kanban" element={<Kanban />} />
           <Route path="/empresas" element={<Empresas />} />
           <Route path="/promocoes" element={<Promocoes />} />
           <Route path="/atualizacoes" element={<AtualizacoesAdminPage />} />
           <Route path="/usuarios" element={<Usuarios />} />
+          <Route path="/permissoes" element={<Permissoes />} />
           <Route path="/pesquisas" element={<Pesquisas />} />
+          <Route path="/comercial/kanban" element={<KanbanComercial />} />
+          <Route path="/comercial/calendario" element={<CalendarioComercial />} />
           <Route path="/relatorios" element={<Relatorios />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
