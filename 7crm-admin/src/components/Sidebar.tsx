@@ -1,21 +1,12 @@
 import { 
-  LayoutDashboard,
-  Building2,
-  Tag,
-  Users,
-  BarChart3,
-  Search,
-  BookOpen,
   Shield,
   LogOut,
-  ListTodo,
-  Lock,
-  Calendar
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import NavItem from './NavItem'
 import SidebarSection from './SidebarSection'
 import { User } from '@supabase/supabase-js'
+import { navSchema } from '../config/navigation'
 
 // Extender o tipo User para incluir a role e permissões
 type UserWithPermissions = User & {
@@ -30,52 +21,6 @@ type SidebarProps = {
   onLogout: () => void
   className?: string
 }
-
-type NavItemConfig = {
-  to: string
-  label: string
-  icon: React.ReactNode
-}
-
-type NavSectionConfig = {
-  title: string
-  items: NavItemConfig[]
-}
-
-// Configuração base do Menu (sem roles, pois será filtrado dinamicamente)
-const navSchema: NavSectionConfig[] = [
-  {
-    title: 'Gestão',
-    items: [
-      { to: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard className="h-5 w-5" /> },
-      { to: '/relatorios', label: 'Relatórios', icon: <BarChart3 className="h-5 w-5" /> },
-    ]
-  },
-  {
-    title: 'Administração',
-    items: [
-      { to: '/empresas', label: 'Empresas', icon: <Building2 className="h-5 w-5" /> },
-      { to: '/usuarios', label: 'Usuários', icon: <Users className="h-5 w-5" /> },
-      { to: '/permissoes', label: 'Permissões', icon: <Lock className="h-5 w-5" /> },
-      { to: '/promocoes', label: 'Promoções', icon: <Tag className="h-5 w-5" /> },
-      { to: '/educacao', label: 'Educação', icon: <BookOpen className="h-5 w-5" /> },
-      { to: '/atualizacoes', label: 'Atualizações', icon: <Tag className="h-5 w-5" /> },
-    ]
-  },
-  {
-    title: 'Comercial',
-    items: [
-      { to: '/comercial/kanban', label: 'Kanban Comercial', icon: <ListTodo className="h-5 w-5" /> },
-      { to: '/comercial/calendario', label: 'Calendário Comercial', icon: <Calendar className="h-5 w-5" /> },
-    ]
-  },
-  {
-    title: 'Outros',
-    items: [
-      { to: '/pesquisas', label: 'Pesquisas', icon: <Search className="h-5 w-5" /> },
-    ]
-  }
-]
 
 export default function Sidebar({ collapsed, onToggle, user, onLogout, className }: SidebarProps) {
   // Função para traduzir a role para exibição
@@ -113,15 +58,17 @@ export default function Sidebar({ collapsed, onToggle, user, onLogout, className
       onMouseLeave={() => { if (!collapsed) onToggle() }}
     >
       <div className={`px-3 py-3 border-b border-gray-100 flex items-center ${collapsed ? 'justify-center' : 'justify-start'} gap-3 min-h-[64px]`}>
-        <div className="h-9 w-9 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm">
-           <Shield className="h-5 w-5 text-white" />
-        </div>
-        {!collapsed && (
-          <div className="flex flex-col">
-            <span className="text-sm font-bold text-gray-900 leading-none">7CRM Admin</span>
-            <span className="text-xs text-gray-500 mt-0.5">Sistema Administrativo</span>
+        <Link to="/" className="flex items-center gap-3">
+          <div className="h-9 w-9 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm">
+             <Shield className="h-5 w-5 text-white" />
           </div>
-        )}
+          {!collapsed && (
+            <div className="flex flex-col">
+              <span className="text-sm font-bold text-gray-900 leading-none">7CRM Admin</span>
+              <span className="text-xs text-gray-500 mt-0.5">Sistema Administrativo</span>
+            </div>
+          )}
+        </Link>
       </div>
       
       <div className="flex-1 overflow-y-auto py-3">

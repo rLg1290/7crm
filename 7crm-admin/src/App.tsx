@@ -16,6 +16,8 @@ import Permissoes from './pages/Permissoes'
 import Relatorios from './pages/Relatorios'
 import AtualizacoesAdminPage from './pages/AtualizacoesAdmin'
 import Settings from './pages/Settings'
+import Home from './pages/Home'
+import ProtectedRoute from './components/ProtectedRoute'
 
 // Extender o tipo User para incluir permissões
 type UserWithPermissions = User & {
@@ -131,20 +133,20 @@ VITE_SUPABASE_ANON_KEY=sua_chave_anonima`}</pre>
     <Router>
       <Layout user={user}>
         <Routes>
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/educacao" element={<EducacaoAdminPage />} />
-          <Route path="/empresas" element={<Empresas />} />
-          <Route path="/promocoes" element={<Promocoes />} />
-          <Route path="/atualizacoes" element={<AtualizacoesAdminPage />} />
-          <Route path="/usuarios" element={<Usuarios />} />
-          <Route path="/permissoes" element={<Permissoes />} />
-          <Route path="/pesquisas" element={<Pesquisas />} />
-          <Route path="/comercial/kanban" element={<KanbanComercial />} />
-          <Route path="/comercial/calendario" element={<CalendarioComercial />} />
-          <Route path="/relatorios" element={<Relatorios />} />
+          <Route path="/" element={<Home user={user} />} />
+          <Route path="/dashboard" element={<ProtectedRoute user={user} path="/dashboard"><Dashboard /></ProtectedRoute>} />
+          <Route path="/educacao" element={<ProtectedRoute user={user} path="/educacao"><EducacaoAdminPage /></ProtectedRoute>} />
+          <Route path="/empresas" element={<ProtectedRoute user={user} path="/empresas"><Empresas /></ProtectedRoute>} />
+          <Route path="/promocoes" element={<ProtectedRoute user={user} path="/promocoes"><Promocoes /></ProtectedRoute>} />
+          <Route path="/atualizacoes" element={<ProtectedRoute user={user} path="/atualizacoes"><AtualizacoesAdminPage /></ProtectedRoute>} />
+          <Route path="/usuarios" element={<ProtectedRoute user={user} path="/usuarios"><Usuarios /></ProtectedRoute>} />
+          <Route path="/permissoes" element={<ProtectedRoute user={user} path="/permissoes"><Permissoes /></ProtectedRoute>} />
+          <Route path="/pesquisas" element={<ProtectedRoute user={user} path="/pesquisas"><Pesquisas /></ProtectedRoute>} />
+          <Route path="/comercial/kanban" element={<ProtectedRoute user={user} path="/comercial/kanban"><KanbanComercial /></ProtectedRoute>} />
+          <Route path="/comercial/calendario" element={<ProtectedRoute user={user} path="/comercial/calendario"><CalendarioComercial /></ProtectedRoute>} />
+          <Route path="/relatorios" element={<ProtectedRoute user={user} path="/relatorios"><Relatorios /></ProtectedRoute>} />
           <Route path="/settings" element={<Settings />} />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Layout>
     </Router>
