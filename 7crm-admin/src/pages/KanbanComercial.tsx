@@ -12,7 +12,6 @@ import {
   FileText,
   CheckSquare,
   Upload,
-  Download,
   Folder,
   AlertCircle,
   Eye,
