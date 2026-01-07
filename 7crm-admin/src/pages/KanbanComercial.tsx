@@ -8,7 +8,15 @@ import {
   X,
   Clock,
   Trash2,
-  History
+  History,
+  FileText,
+  CheckSquare,
+  Upload,
+  Download,
+  Folder,
+  AlertCircle,
+  Eye,
+  Building
 } from 'lucide-react'
 
 // Definição dos status do funil
@@ -42,6 +50,13 @@ interface Lead {
   produtos_interesse?: string[]
   nivel_interesse?: string
   link_reuniao?: string
+  razao_social?: string
+  cnpj?: string
+  endereco?: string
+  tipo_empresa?: string
+  nome_socio_administrador?: string
+  cpf_administrador?: string
+  relatorio_reuniao?: string
 }
 
 interface Log {
@@ -69,11 +84,24 @@ interface LeadFormData {
   produtos_interesse: string[]
   nivel_interesse: string
   link_reuniao?: string
+  razao_social: string
+  cnpj: string
+  endereco: string
+  tipo_empresa: string
+  nome_socio_administrador: string
+  cpf_administrador: string
+  relatorio_reuniao: string
 }
 
 const PRODUCTS_OPTIONS = [
   'Aéreo', 'Hotelaria', 'Pacotes', 'Aluguel de Carro', 
   'Ingressos', 'Passeios', 'Cruzeiro'
+]
+
+const DOCUMENT_TYPES = [
+  { id: 'cnpj_contrato_social', label: 'Cartão CNPJ/Contrato Social', multiple: true },
+  { id: 'docs_admin', label: 'Documentos Administrador', multiple: true },
+  { id: 'comprovante_endereco', label: 'Comprovante de Endereço da Agência', multiple: false }
 ]
 
 export default function KanbanComercial() {
@@ -95,6 +123,9 @@ export default function KanbanComercial() {
   const [currentUser, setCurrentUser] = useState<any>(null)
 
   const [isScheduling, setIsScheduling] = useState(false)
+  const [activeTab, setActiveTab] = useState('geral')
+  const [documents, setDocuments] = useState<any[]>([])
+  const [uploading, setUploading] = useState(false)
 
   // Form state
   const [formData, setFormData] = useState<LeadFormData>({
@@ -116,7 +147,14 @@ export default function KanbanComercial() {
     nivel_demanda: '',
     nivel_interesse: '',
     produtos_interesse: [],
-    link_reuniao: ''
+    link_reuniao: '',
+    razao_social: '',
+    cnpj: '',
+    endereco: '',
+    tipo_empresa: '',
+    nome_socio_administrador: '',
+    cpf_administrador: '',
+    relatorio_reuniao: ''
   })
 
   useEffect(() => {
@@ -300,11 +338,41 @@ export default function KanbanComercial() {
       tipo_agencia: formData.tipo_agencia,
       nivel_demanda: formData.nivel_demanda,
       nivel_interesse: formData.nivel_interesse,
-      produtos_interesse: formData.produtos_interesse
+      produtos_interesse: formData.produtos_interesse,
+
+      // Preserve company details
+      razao_social: formData.razao_social,
+      cnpj: formData.cnpj,
+      endereco: formData.endereco,
+      tipo_empresa: formData.tipo_empresa,
+      nome_socio_administrador: formData.nome_socio_administrador,
+      cpf_administrador: formData.cpf_administrador,
+      relatorio_reuniao: formData.relatorio_reuniao
     })
     
     setIsScheduling(false)
     setShowMeetingModal(false)
+  }
+
+  // Format CNPJ
+  const formatCNPJ = (value: string) => {
+    return value
+      .replace(/\D/g, '')
+      .replace(/^(\d{2})(\d)/, '$1.$2')
+      .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
+      .replace(/\.(\d{3})(\d)/, '.$1/$2')
+      .replace(/(\d{4})(\d)/, '$1-$2')
+      .slice(0, 18)
+  }
+
+  // Format CPF
+  const formatCPF = (value: string) => {
+    return value
+      .replace(/\D/g, '')
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d{1,2})/, '$1-$2')
+      .replace(/(-\d{2})\d+?$/, '$1')
   }
 
   const handleSave = async (e?: React.FormEvent, overrideData?: any) => {
@@ -330,7 +398,15 @@ export default function KanbanComercial() {
         proxima_acao_data: dataToUse.proxima_acao_data || null,
         proxima_acao_descricao: dataToUse.proxima_acao_descricao,
         motivo_perda: dataToUse.motivo_perda,
-        link_reuniao: dataToUse.link_reuniao
+        link_reuniao: dataToUse.link_reuniao,
+
+        razao_social: dataToUse.razao_social,
+        cnpj: dataToUse.cnpj,
+        endereco: dataToUse.endereco,
+        tipo_empresa: dataToUse.tipo_empresa,
+        nome_socio_administrador: dataToUse.nome_socio_administrador,
+        cpf_administrador: dataToUse.cpf_administrador,
+        relatorio_reuniao: dataToUse.relatorio_reuniao
       }
 
       if (editingLead) {
@@ -436,6 +512,7 @@ export default function KanbanComercial() {
   }
 
   const resetForm = () => {
+    setActiveTab('geral')
     setFormData({
       data_criacao: new Date().toISOString().slice(0, 16),
       nome_empresa: '',
@@ -452,12 +529,21 @@ export default function KanbanComercial() {
       nivel_demanda: '',
       nivel_interesse: '',
       produtos_interesse: [],
-      link_reuniao: ''
+      link_reuniao: '',
+      razao_social: '',
+      cnpj: '',
+      endereco: '',
+      tipo_empresa: '',
+      nome_socio_administrador: '',
+      cpf_administrador: '',
+      relatorio_reuniao: ''
     })
   }
 
   const openEdit = (lead: Lead) => {
+    setActiveTab('geral')
     setEditingLead(lead)
+    fetchDocuments(lead.id)
     setFormData({
       data_criacao: lead.data_criacao ? new Date(lead.data_criacao).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
       responsavel_nome: lead.contato_nome || '',
@@ -474,9 +560,24 @@ export default function KanbanComercial() {
       nivel_demanda: lead.nivel_demanda || '',
       nivel_interesse: lead.nivel_interesse || '',
       produtos_interesse: lead.produtos_interesse || [],
-      link_reuniao: lead.link_reuniao || ''
+      link_reuniao: lead.link_reuniao || '',
+      razao_social: lead.razao_social || '',
+      cnpj: lead.cnpj || '',
+      endereco: lead.endereco || '',
+      tipo_empresa: lead.tipo_empresa || '',
+      nome_socio_administrador: lead.nome_socio_administrador || '',
+      cpf_administrador: lead.cpf_administrador || '',
+      relatorio_reuniao: lead.relatorio_reuniao || ''
     })
     setShowModal(true)
+  }
+
+  const handleGenerateContract = () => {
+    if (!formData.razao_social || !formData.cnpj) {
+      alert('Por favor, preencha e salve os dados da empresa (Razão Social e CNPJ) antes de gerar o contrato.')
+      return
+    }
+    alert(`Gerando contrato para ${formData.razao_social} (CNPJ: ${formData.cnpj})...\n\n(Funcionalidade em desenvolvimento)`)
   }
 
   // Agrupamento por colunas
@@ -494,6 +595,118 @@ export default function KanbanComercial() {
     })
     return cols
   }, [leads])
+
+  // Helper para gerar o caminho da pasta no storage
+  const getStoragePath = (lead: Lead) => {
+    // Sanitiza o nome da empresa para usar como nome da pasta
+    // Remove acentos e caracteres especiais, mantendo apenas letras, números, espaços, hífens e underscores
+    const sanitizedName = lead.nome_empresa
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9 -_]/g, '')
+      .trim()
+      .replace(/\s+/g, '_')
+    
+    // Usa Nome_da_Agencia como nome da pasta
+    // NOTA: Se o nome da agência for alterado, os arquivos antigos não serão migrados automaticamente
+    return `leads/${sanitizedName || 'sem_nome'}`
+  }
+
+  const fetchDocuments = async (leadId: string) => {
+    if (!leadId) return
+    const lead = leads.find(l => l.id === leadId)
+    if (!lead) return
+
+    try {
+      const path = getStoragePath(lead)
+      const { data, error } = await supabase.storage
+        .from('documents')
+        .list(path)
+      
+      if (error) {
+         console.error('Erro ao listar documentos:', error)
+         return
+      }
+      
+      setDocuments(data || [])
+    } catch (error) {
+      console.error('Erro:', error)
+    }
+  }
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: string) => {
+    if (!e.target.files || e.target.files.length === 0 || !editingLead) return
+    
+    // Check constraints
+    const docType = DOCUMENT_TYPES.find(d => d.id === type)
+    if (docType && !docType.multiple) {
+        const existing = documents.filter(doc => doc.name.startsWith(type))
+        if (existing.length > 0) {
+            alert('Este documento permite apenas 1 arquivo. Exclua o atual antes de enviar um novo.')
+            return
+        }
+    }
+
+    setUploading(true)
+    const file = e.target.files[0]
+    // Sanitize file name
+    const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_')
+    const fileName = `${type}_${Date.now()}_${sanitizedFileName}`
+    const folderPath = getStoragePath(editingLead)
+    const filePath = `${folderPath}/${fileName}`
+
+    try {
+      const { error } = await supabase.storage
+        .from('documents')
+        .upload(filePath, file)
+
+      if (error) throw error
+      
+      await fetchDocuments(editingLead.id)
+      alert('Documento enviado com sucesso!')
+    } catch (error) {
+      console.error('Erro ao enviar documento:', error)
+      alert('Erro ao enviar documento. Verifique se o bucket "documents" existe no Supabase.')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleDeleteDocument = async (fileName: string) => {
+    if (!editingLead || !window.confirm('Tem certeza que deseja excluir este documento?')) return
+    
+    try {
+      const folderPath = getStoragePath(editingLead)
+      const { error } = await supabase.storage
+        .from('documents')
+        .remove([`${folderPath}/${fileName}`])
+
+      if (error) throw error
+      
+      await fetchDocuments(editingLead.id)
+    } catch (error) {
+      console.error('Erro ao excluir documento:', error)
+      alert('Erro ao excluir documento')
+    }
+  }
+
+  const handleOpenDocument = async (fileName: string) => {
+    if (!editingLead) return
+    try {
+      const folderPath = getStoragePath(editingLead)
+      const { data, error } = await supabase.storage
+        .from('documents')
+        .createSignedUrl(`${folderPath}/${fileName}`, 3600)
+        
+      if (error) throw error
+      window.open(data.signedUrl, '_blank')
+    } catch (error) {
+      console.error('Erro ao abrir documento:', error)
+      alert('Erro ao abrir documento')
+    }
+  }
+
+  const currentStepIndex = PIPELINE_STEPS.findIndex(step => step.id === formData.status)
 
   return (
     <div className="h-full flex flex-col p-6 overflow-hidden">
@@ -617,8 +830,8 @@ export default function KanbanComercial() {
       {/* Modal Cadastro/Edição */}
       {showModal && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-5xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 flex flex-col h-[90vh]">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50 flex-shrink-0">
               <h3 className="text-lg font-bold text-gray-900">
                 {editingLead ? 'Editar Oportunidade' : 'Novo Lead'}
               </h3>
@@ -631,252 +844,501 @@ export default function KanbanComercial() {
               </button>
             </div>
 
-            <form onSubmit={handleSave} className="p-5 space-y-4">
-              {formData.status === 'LEAD' ? (
-                // FORMULÁRIO LEAD (Passo 1)
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Data</label>
-                      <input
-                        required
-                        type="date"
-                        value={formData.data_criacao}
-                        disabled={!!editingLead}
-                        onChange={(e) => setFormData({ ...formData, data_criacao: e.target.value })}
-                        className={`w-full bg-white text-gray-900 border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none ${editingLead ? 'opacity-60 cursor-not-allowed bg-gray-50' : ''}`}
-                        style={{ colorScheme: 'light' }}
-                      />
-                    </div>
+            <div className="flex flex-1 overflow-hidden">
+              {/* Sidebar do Modal */}
+              <div className="w-64 bg-gray-50 border-r border-gray-100 p-4 space-y-2 flex-shrink-0 overflow-y-auto">
+                <button
+                  onClick={() => setActiveTab('geral')}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                    activeTab === 'geral' 
+                      ? 'bg-blue-100 text-blue-700' 
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  <User className="h-4 w-4" />
+                  Dados do Lead
+                </button>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Responsável Agência</label>
-                      <input
-                        type="text"
-                        value={formData.responsavel_nome}
-                        onChange={(e) => setFormData({ ...formData, responsavel_nome: e.target.value })}
-                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Quem está atendendo?"
-                      />
-                    </div>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Nome da Agência *</label>
-                      <input
-                        required
-                        type="text"
-                        value={formData.nome_empresa}
-                        onChange={(e) => setFormData({ ...formData, nome_empresa: e.target.value })}
-                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none"
-                        placeholder="Ex: 7C Turismo"
-                      />
-                    </div>
+                <button
+                  onClick={() => setActiveTab('qualificacao')}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                    activeTab === 'qualificacao' 
+                      ? 'bg-blue-100 text-blue-700' 
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  <CheckSquare className="h-4 w-4" />
+                  Primeiro Contato
+                </button>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">WhatsApp</label>
-                      <input
-                        type="text"
-                        value={formData.contato_info}
-                        onChange={(e) => setFormData({ ...formData, contato_info: e.target.value })}
-                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="(11) 99999-9999"
-                      />
-                    </div>
-                  </div>
+                {currentStepIndex >= 1 && (
+                  <button
+                    onClick={() => setActiveTab('reuniao')}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                      activeTab === 'reuniao' 
+                        ? 'bg-blue-100 text-blue-700' 
+                        : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    <Calendar className="h-4 w-4" />
+                    Reunião / Apresentação
+                  </button>
+                )}
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Origem</label>
-                    <select
-                      value={formData.origem}
-                      disabled={!!editingLead}
-                      onChange={(e) => setFormData({ ...formData, origem: e.target.value })}
-                      className={`w-full bg-white text-gray-900 border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 ${editingLead ? 'opacity-60 cursor-not-allowed bg-gray-50' : ''}`}
+                {currentStepIndex >= 3 && (
+                  <>
+                    <button
+                      onClick={() => setActiveTab('contrato')}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                        activeTab === 'contrato' 
+                          ? 'bg-blue-100 text-blue-700' 
+                          : 'text-gray-600 hover:bg-gray-100'
+                      }`}
                     >
-                      <option value="">Selecione...</option>
-                      <option value="Indicação">Indicação</option>
-                      <option value="Instagram">Instagram</option>
-                      <option value="Tráfego Pago">Tráfego Pago</option>
-                      <option value="Site">Site</option>
-                      <option value="Prospecção Ativa">Prospecção Ativa</option>
-                    </select>
-                  </div>
-                </div>
-              ) : (
-                // FORMULÁRIO APRESENTAÇÃO / OUTROS (Passo 2)
-                <div className="space-y-4">
-                  {/* Resumo da Fase 1 */}
-                  <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 space-y-2">
-                    <h4 className="text-sm font-semibold text-gray-900 flex items-center gap-2 mb-2">
-                      <User className="h-4 w-4 text-blue-600" />
-                      Dados do Lead
-                    </h4>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                      <div>
-                        <span className="block text-gray-500 text-xs">Agência</span>
-                        <span className="font-medium text-gray-900 truncate block">{formData.nome_empresa}</span>
-                      </div>
-                      <div>
-                        <span className="block text-gray-500 text-xs">Responsável</span>
-                        <span className="font-medium text-gray-900 truncate block">{formData.responsavel_nome}</span>
-                      </div>
-                      <div>
-                        <span className="block text-gray-500 text-xs">WhatsApp</span>
-                        <span className="font-medium text-gray-900 truncate block">{formData.contato_info}</span>
-                      </div>
-                      <div>
-                        <span className="block text-gray-500 text-xs">Origem</span>
-                        <span className="font-medium text-gray-900 truncate block">{formData.origem}</span>
-                      </div>
-                    </div>
-                  </div>
+                      <Building className="h-4 w-4" />
+                      Dados Contrato
+                    </button>
 
-                  {formData.link_reuniao && (
-                    <div className="bg-purple-50 p-3 rounded-lg border border-purple-200 flex items-start gap-3">
-                      <Calendar className="h-5 w-5 text-purple-600 mt-0.5 flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <h4 className="text-sm font-semibold text-purple-900">Reunião Agendada</h4>
-                        <a 
-                          href={formData.link_reuniao} 
-                          target="_blank" 
-                          rel="noopener noreferrer" 
-                          className="text-sm text-purple-700 hover:text-purple-900 underline truncate block mt-1"
-                        >
-                          {formData.link_reuniao}
-                        </a>
-                      </div>
-                    </div>
-                  )}
+                    <button
+                      onClick={() => setActiveTab('documentos')}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                        activeTab === 'documentos' 
+                          ? 'bg-blue-100 text-blue-700' 
+                          : 'text-gray-600 hover:bg-gray-100'
+                      }`}
+                    >
+                      <Folder className="h-4 w-4" />
+                      Documentos
+                    </button>
+                  </>
+                )}
+              </div>
 
-                  <div className="space-y-3">
-                    <h4 className="text-sm font-semibold text-gray-900 border-b pb-2">Qualificação da Agência</h4>
-                    
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Cidade - UF</label>
-                        <input
-                          type="text"
-                          value={formData.cidade_uf}
-                          onChange={(e) => setFormData({ ...formData, cidade_uf: e.target.value })}
-                          className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
-                          placeholder="Ex: São Paulo - SP"
-                        />
-                      </div>
+              {/* Conteúdo do Modal */}
+              <form onSubmit={handleSave} className="flex-1 flex flex-col min-w-0">
+                <div className="flex-1 overflow-y-auto p-6">
+                  {/* TAB GERAL */}
+                  {activeTab === 'geral' && (
+                    <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                      <h4 className="text-sm font-semibold text-gray-900 border-b pb-2 mb-4">Informações Básicas</h4>
+                      
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Data de Entrada</label>
+                          <input
+                            required
+                            type="date"
+                            value={formData.data_criacao}
+                            disabled={!!editingLead}
+                            onChange={(e) => setFormData({ ...formData, data_criacao: e.target.value })}
+                            className={`w-full bg-white text-gray-900 border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none ${editingLead ? 'opacity-60 cursor-not-allowed bg-gray-50' : ''}`}
+                            style={{ colorScheme: 'light' }}
+                          />
+                        </div>
 
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Agência</label>
-                        <select
-                          value={formData.tipo_agencia}
-                          onChange={(e) => setFormData({ ...formData, tipo_agencia: e.target.value })}
-                          className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                          <option value="">Selecione...</option>
-                          <option value="Lazer">Lazer</option>
-                          <option value="Corporativo">Corporativo</option>
-                          <option value="Misto">Misto</option>
-                        </select>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Responsável Agência</label>
+                          <input
+                            type="text"
+                            value={formData.responsavel_nome}
+                            onChange={(e) => setFormData({ ...formData, responsavel_nome: e.target.value })}
+                            className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="Quem está atendendo?"
+                          />
+                        </div>
                       </div>
-                    </div>
+                      
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Nome da Agência *</label>
+                          <input
+                            required
+                            type="text"
+                            value={formData.nome_empresa}
+                            onChange={(e) => setFormData({ ...formData, nome_empresa: e.target.value })}
+                            className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none"
+                            placeholder="Ex: 7C Turismo"
+                          />
+                        </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Nível de Demanda</label>
-                        <div className="flex gap-2">
-                          {['$', '$$', '$$$'].map(level => (
-                            <label key={level} className="flex items-center gap-1.5 cursor-pointer">
-                              <input
-                                type="radio"
-                                name="nivel_demanda"
-                                value={level}
-                                checked={formData.nivel_demanda === level}
-                                onChange={(e) => setFormData({ ...formData, nivel_demanda: e.target.value })}
-                                className="w-4 h-4 text-blue-600 bg-white border-gray-300 focus:ring-blue-500 focus:ring-2"
-                                style={{ colorScheme: 'light' }}
-                              />
-                              <span className="text-sm text-gray-700">{level}</span>
-                            </label>
-                          ))}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">WhatsApp / Contato</label>
+                          <input
+                            type="text"
+                            value={formData.contato_info}
+                            onChange={(e) => setFormData({ ...formData, contato_info: e.target.value })}
+                            className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="(11) 99999-9999"
+                          />
                         </div>
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Interesse</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Origem do Lead</label>
                         <select
-                          value={formData.nivel_interesse}
-                          onChange={(e) => setFormData({ ...formData, nivel_interesse: e.target.value })}
-                          className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                          value={formData.origem}
+                          disabled={!!editingLead}
+                          onChange={(e) => setFormData({ ...formData, origem: e.target.value })}
+                          className={`w-full bg-white text-gray-900 border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 ${editingLead ? 'opacity-60 cursor-not-allowed bg-gray-50' : ''}`}
                         >
                           <option value="">Selecione...</option>
-                          <option value="Baixo">Baixo</option>
-                          <option value="Médio">Médio</option>
-                          <option value="Alto">Alto</option>
+                          <option value="Indicação">Indicação</option>
+                          <option value="Instagram">Instagram</option>
+                          <option value="Tráfego Pago">Tráfego Pago</option>
+                          <option value="Site">Site</option>
+                          <option value="Prospecção Ativa">Prospecção Ativa</option>
                         </select>
                       </div>
-                    </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Produtos de Interesse</label>
-                      <div className="grid grid-cols-3 gap-2">
-                        {PRODUCTS_OPTIONS.map(product => (
-                          <label key={product} className="flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={(formData.produtos_interesse || []).includes(product)}
-                              onChange={() => toggleProduct(product)}
-                              className="w-4 h-4 text-blue-600 bg-white border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
-                              style={{ colorScheme: 'light' }}
-                            />
-                            <span className="text-xs text-gray-700 truncate" title={product}>{product}</span>
-                          </label>
-                        ))}
+
+                    </div>
+                  )}
+
+                  {/* TAB QUALIFICACAO */}
+                  {activeTab === 'qualificacao' && (
+                    <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                      <h4 className="text-sm font-semibold text-gray-900 border-b pb-2 mb-4">Primeiro Contato</h4>
+                      
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Cidade - UF</label>
+                          <input
+                            type="text"
+                            value={formData.cidade_uf}
+                            onChange={(e) => setFormData({ ...formData, cidade_uf: e.target.value })}
+                            className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="Ex: São Paulo - SP"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Agência</label>
+                          <select
+                            value={formData.tipo_agencia}
+                            onChange={(e) => setFormData({ ...formData, tipo_agencia: e.target.value })}
+                            className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            <option value="">Selecione...</option>
+                            <option value="Lazer">Lazer</option>
+                            <option value="Corporativo">Corporativo</option>
+                            <option value="Misto">Misto</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Nível de Demanda</label>
+                          <div className="flex gap-2">
+                            {['$', '$$', '$$$'].map(level => (
+                              <label key={level} className="flex items-center gap-1.5 cursor-pointer">
+                                <input
+                                  type="radio"
+                                  name="nivel_demanda"
+                                  value={level}
+                                  checked={formData.nivel_demanda === level}
+                                  onChange={(e) => setFormData({ ...formData, nivel_demanda: e.target.value })}
+                                  className="w-4 h-4 text-blue-600 bg-white border-gray-300 focus:ring-blue-500 focus:ring-2"
+                                  style={{ colorScheme: 'light' }}
+                                />
+                                <span className="text-sm text-gray-700">{level}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Interesse</label>
+                          <select
+                            value={formData.nivel_interesse}
+                            onChange={(e) => setFormData({ ...formData, nivel_interesse: e.target.value })}
+                            className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            <option value="">Selecione...</option>
+                            <option value="Baixo">Baixo</option>
+                            <option value="Médio">Médio</option>
+                            <option value="Alto">Alto</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Produtos de Interesse</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          {PRODUCTS_OPTIONS.map(product => (
+                            <label key={product} className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={(formData.produtos_interesse || []).includes(product)}
+                                onChange={() => toggleProduct(product)}
+                                className="w-4 h-4 text-blue-600 bg-white border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                                style={{ colorScheme: 'light' }}
+                              />
+                              <span className="text-sm text-gray-700 truncate" title={product}>{product}</span>
+                            </label>
+                          ))}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </div>
-              )}
+                  )}
 
-              <div className="flex justify-between items-center pt-4 border-t border-gray-100">
-                {editingLead && (
-                  <button
-                    type="button"
-                    onClick={handleDelete}
-                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                    title="Excluir Lead"
-                  >
-                    <Trash2 className="h-5 w-5" />
-                  </button>
-                )}
-                
-                <div className={editingLead ? '' : 'ml-auto'}>
-                  <button
-                    type="button"
-                    onClick={() => setShowModal(false)}
-                    className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg mr-2"
-                  >
-                    Cancelar
-                  </button>
-                  
-                  {formData.status === 'APRESENTACAO' ? (
+                  {/* TAB DOCUMENTOS */}
+                  {activeTab === 'documentos' && (
+                    <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                      <h4 className="text-sm font-semibold text-gray-900 border-b pb-2">Documentação da Agência</h4>
+                      
+                      {/* Upload Areas */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {DOCUMENT_TYPES.map(docType => (
+                          <div key={docType.id} className="border border-dashed border-gray-300 rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="font-medium text-gray-700 text-sm">{docType.label}</span>
+                              <label className={`cursor-pointer bg-blue-50 border border-blue-200 text-blue-700 rounded px-2 py-1 text-xs font-medium hover:bg-blue-100 transition-colors flex items-center gap-1 ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                                <Upload className="h-3 w-3" />
+                                {uploading ? 'Enviando...' : 'Enviar'}
+                                <input 
+                                  type="file" 
+                                  className="hidden" 
+                                  onChange={(e) => handleFileUpload(e, docType.id)}
+                                  disabled={uploading}
+                                />
+                              </label>
+                            </div>
+                            
+                            {/* List files for this type */}
+                            <div className="space-y-2 mt-3">
+                              {documents
+                                .filter(doc => doc.name.startsWith(docType.id))
+                                .map(doc => (
+                                  <div key={doc.name} className="flex items-center justify-between bg-white border border-gray-200 p-2 rounded text-xs">
+                                    <div className="flex items-center gap-2 overflow-hidden">
+                                      <FileText className="h-3 w-3 text-blue-500 flex-shrink-0" />
+                                      <span className="truncate max-w-[120px] text-gray-700" title={doc.name}>
+                                        {(() => {
+                                          const prefix = docType.id + '_'
+                                          if (!doc.name.startsWith(prefix)) return doc.name
+                                          const afterType = doc.name.substring(prefix.length)
+                                          const firstUnderscore = afterType.indexOf('_')
+                                          return firstUnderscore !== -1 ? afterType.substring(firstUnderscore + 1) : afterType
+                                        })()}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenDocument(doc.name)}
+                                        className="p-1 hover:bg-gray-100 rounded text-gray-600"
+                                        title="Visualizar"
+                                      >
+                                        <Eye className="h-3 w-3" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteDocument(doc.name)}
+                                        className="p-1 hover:bg-red-50 rounded text-red-500"
+                                        title="Excluir"
+                                      >
+                                        <Trash2 className="h-3 w-3" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                                {documents.filter(doc => doc.name.startsWith(docType.id)).length === 0 && (
+                                  <div className="text-center py-2 text-gray-400 text-xs italic">
+                                    Nenhum arquivo enviado
+                                  </div>
+                                )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="bg-blue-50 p-4 rounded-lg text-xs text-blue-800 flex items-start gap-2">
+                        <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                        <div>
+                          <p className="font-semibold">Informação de Armazenamento</p>
+                          <p>Os documentos são armazenados de forma segura e organizados por agência. Apenas usuários autorizados têm acesso.</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB REUNIAO */}
+                  {activeTab === 'reuniao' && (
+                    <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                      <h4 className="text-sm font-semibold text-gray-900 border-b pb-2 mb-4">Detalhes da Reunião</h4>
+                      
+                      {formData.link_reuniao ? (
+                        <div className="bg-purple-50 p-4 rounded-lg border border-purple-200 flex flex-col gap-2">
+                          <div className="flex items-center gap-2 text-purple-800 font-medium">
+                            <Calendar className="h-5 w-5" />
+                            <span>Link da Reunião Gerado</span>
+                          </div>
+                          <a 
+                            href={formData.link_reuniao} 
+                            target="_blank" 
+                            rel="noopener noreferrer" 
+                            className="text-sm text-purple-700 hover:text-purple-900 underline break-all"
+                          >
+                            {formData.link_reuniao}
+                          </a>
+                        </div>
+                      ) : (
+                        <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 text-center text-gray-500 text-sm">
+                          Nenhuma reunião agendada ou link gerado ainda.
+                        </div>
+                      )}
+
+                      <div className="pt-4">
+                         <div className="flex justify-between items-center mb-2">
+                            <label className="block text-sm font-medium text-gray-700">Relatório / Anotações</label>
+                            <span className="text-xs text-gray-500">Privado</span>
+                         </div>
+                         <textarea
+                            value={formData.relatorio_reuniao}
+                            onChange={(e) => setFormData({ ...formData, relatorio_reuniao: e.target.value })}
+                            className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 min-h-[150px]"
+                            placeholder="Descreva aqui o que foi conversado na reunião, objeções, pontos de atenção..."
+                          />
+                      </div>
+                      
+                      <div className="pt-4 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={handleOpenMeeting}
+                          className="px-4 py-2 bg-purple-100 text-purple-700 font-medium rounded-lg hover:bg-purple-200 transition-colors flex items-center gap-2"
+                        >
+                          <Calendar className="h-4 w-4" />
+                          {formData.link_reuniao ? 'Reagendar Reunião' : 'Agendar Nova Reunião'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB CONTRATO */}
+                  {activeTab === 'contrato' && (
+                    <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                      <h4 className="text-sm font-semibold text-gray-900 border-b pb-2 mb-4">Dados Contrato</h4>
+                      
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Razão Social</label>
+                          <input
+                            type="text"
+                            value={formData.razao_social}
+                            onChange={(e) => setFormData({ ...formData, razao_social: e.target.value })}
+                            className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="Razão Social Ltda"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">CNPJ</label>
+                          <input
+                            type="text"
+                            value={formData.cnpj}
+                            onChange={(e) => setFormData({ ...formData, cnpj: formatCNPJ(e.target.value) })}
+                            maxLength={18}
+                            className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="00.000.000/0000-00"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Endereço Completo</label>
+                        <input
+                          type="text"
+                          value={formData.endereco}
+                          onChange={(e) => setFormData({ ...formData, endereco: e.target.value })}
+                          className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="Rua, Número, Bairro, Cidade - UF, CEP"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Empresa</label>
+                          <select
+                            value={formData.tipo_empresa}
+                            onChange={(e) => setFormData({ ...formData, tipo_empresa: e.target.value })}
+                            className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            <option value="">Selecione...</option>
+                            <option value="MEI">MEI</option>
+                            <option value="LTDA">LTDA</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">CPF Administrador</label>
+                          <input
+                            type="text"
+                            value={formData.cpf_administrador}
+                            onChange={(e) => setFormData({ ...formData, cpf_administrador: formatCPF(e.target.value) })}
+                            maxLength={14}
+                            className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="000.000.000-00"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Nome Completo Sócio Administrador</label>
+                        <input
+                          type="text"
+                          value={formData.nome_socio_administrador}
+                          onChange={(e) => setFormData({ ...formData, nome_socio_administrador: e.target.value })}
+                          className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="Nome Completo"
+                        />
+                      </div>
+
+                      <div className="pt-4 flex justify-end">
+                         <button
+                            type="button"
+                            onClick={handleGenerateContract}
+                            className="px-4 py-2 bg-green-100 text-green-700 font-medium rounded-lg hover:bg-green-200 transition-colors flex items-center gap-2"
+                          >
+                            <FileText className="h-4 w-4" />
+                            Gerar Contrato
+                          </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer Fixo */}
+                <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex items-center justify-between flex-shrink-0">
+                  {editingLead ? (
                     <button
                       type="button"
-                      onClick={handleOpenMeeting}
-                      className="px-6 py-2 bg-purple-600 text-white font-medium rounded-lg hover:bg-purple-700 shadow-sm flex items-center gap-2 inline-flex"
+                      onClick={handleDelete}
+                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center gap-2"
+                      title="Excluir Lead"
                     >
-                      <Calendar className="h-4 w-4" />
-                      Marcar Reunião
+                      <Trash2 className="h-5 w-5" />
+                      <span className="text-sm font-medium">Excluir</span>
                     </button>
-                  ) : (
+                  ) : <div></div>}
+                  
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowModal(false)}
+                      className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg font-medium"
+                    >
+                      Cancelar
+                    </button>
+                    
                     <button
                       type="submit"
                       className="px-6 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 shadow-sm"
                     >
-                      Salvar
+                      Salvar Alterações
                     </button>
-                  )}
+                  </div>
                 </div>
-              </div>
-            </form>
+              </form>
+            </div>
           </div>
         </div>
       )}

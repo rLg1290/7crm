@@ -15,6 +15,7 @@ import Pesquisas from './pages/Pesquisas'
 import Permissoes from './pages/Permissoes'
 import Relatorios from './pages/Relatorios'
 import AtualizacoesAdminPage from './pages/AtualizacoesAdmin'
+import Settings from './pages/Settings'
 
 // Extender o tipo User para incluir permissões
 type UserWithPermissions = User & {
@@ -142,6 +143,7 @@ VITE_SUPABASE_ANON_KEY=sua_chave_anonima`}</pre>
           <Route path="/comercial/kanban" element={<KanbanComercial />} />
           <Route path="/comercial/calendario" element={<CalendarioComercial />} />
           <Route path="/relatorios" element={<Relatorios />} />
+          <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </Layout>

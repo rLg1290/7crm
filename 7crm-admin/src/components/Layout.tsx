@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { User } from '@supabase/supabase-js'
 import Sidebar from './Sidebar'
@@ -10,15 +11,18 @@ interface LayoutProps {
 }
 
 const Layout: React.FC<LayoutProps> = ({ user, children }) => {
+  const location = useLocation()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+
+  const isFixedPage = ['/comercial/kanban'].includes(location.pathname)
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <div className={`${isFixedPage ? 'h-screen overflow-hidden' : 'min-h-screen'} bg-gray-50 flex`}>
       {/* Desktop Sidebar */}
       <Sidebar 
         collapsed={sidebarCollapsed} 
@@ -41,7 +45,7 @@ const Layout: React.FC<LayoutProps> = ({ user, children }) => {
         </div>
 
         {/* Page Content */}
-        <main className="flex-1 p-6 overflow-y-auto">
+        <main className={`flex-1 ${isFixedPage ? 'overflow-hidden flex flex-col' : 'p-6 overflow-y-auto'}`}>
           {children}
         </main>
       </div>

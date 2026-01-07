@@ -12,6 +12,7 @@ import {
   Lock,
   Calendar
 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import NavItem from './NavItem'
 import SidebarSection from './SidebarSection'
 import { User } from '@supabase/supabase-js'
@@ -135,8 +136,12 @@ export default function Sidebar({ collapsed, onToggle, user, onLogout, className
       
       <div className="border-t border-gray-100 p-2">
          {/* User Profile */}
-          <div className={`flex items-center ${collapsed ? 'justify-center' : 'justify-start'} gap-2 px-2 py-2 rounded-xl text-sm text-gray-700`}>
-             <div className={`h-8 w-8 rounded-full flex items-center justify-center text-white flex-shrink-0 ${
+          <Link 
+            to="/settings"
+            className={`flex items-center ${collapsed ? 'justify-center' : 'justify-start'} gap-2 px-2 py-2 rounded-xl text-sm text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer group`}
+            title="Configurações"
+          >
+             <div className={`h-8 w-8 rounded-full flex items-center justify-center text-white flex-shrink-0 group-hover:ring-2 ring-blue-100 transition-all ${
                user.role === 'admin' ? 'bg-gradient-to-br from-purple-500 to-indigo-600' :
                ['comercial', 'financeiro'].includes(user.role || '') ? 'bg-gradient-to-br from-orange-500 to-red-500' :
                'bg-gray-400'
@@ -149,7 +154,7 @@ export default function Sidebar({ collapsed, onToggle, user, onLogout, className
                  <span className="text-xs text-blue-600 uppercase">{getRoleLabel(user.role)}</span>
                </div>
              )}
-          </div>
+          </Link>
           
           <button 
             onClick={onLogout}
