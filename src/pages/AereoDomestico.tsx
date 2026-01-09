@@ -1019,7 +1019,7 @@ const AereoDomestico = () => {
                                               <>
                                                 <td className="py-3 px-2 text-center text-gray-600 uppercase font-medium text-xs align-middle" rowSpan={l.conexoes.length}>{l.tarifa}</td>
                                                 <td className="py-3 px-2 text-center align-middle" rowSpan={l.conexoes.length}>
-                                                  {l.hasBag ? <div className="flex items-center justify-center text-purple-700" title="Bagagem Inclusa"><Luggage className="h-5 w-5" /></div> : <div className="flex items-center justify-center text-red-400" title="Sem Bagagem"><Ban className="h-5 w-5" /></div>}
+                                                  {l.hasBag ? <div className="flex items-center justify-center text-teal-600" title="Bagagem Inclusa"><Luggage className="h-5 w-5" /></div> : <div className="flex items-center justify-center text-red-400" title="Sem Bagagem"><Ban className="h-5 w-5" /></div>}
                                                 </td>
                                                 <td className="py-3 pl-2 pr-4 text-right align-middle" rowSpan={l.conexoes.length}>
                                                   <div className="flex items-center justify-end gap-2">
@@ -1049,7 +1049,7 @@ const AereoDomestico = () => {
                                       <td className="py-3 px-2 text-gray-600 truncate max-w-[200px]" title={l.destino}>{l.destino}</td>
                                       <td className="py-3 px-2 text-center text-gray-600 uppercase font-medium text-xs">{l.tarifa}</td>
                                       <td className="py-3 px-2 text-center">
-                                        {l.hasBag ? <div className="flex items-center justify-center text-purple-700" title="Bagagem Inclusa"><Luggage className="h-5 w-5" /></div> : <div className="flex items-center justify-center text-red-400" title="Sem Bagagem"><Ban className="h-5 w-5" /></div>}
+                                        {l.hasBag ? <div className="flex items-center justify-center text-teal-600" title="Bagagem Inclusa"><Luggage className="h-5 w-5" /></div> : <div className="flex items-center justify-center text-red-400" title="Sem Bagagem"><Ban className="h-5 w-5" /></div>}
                                       </td>
                                       <td className="py-3 pl-2 pr-4 text-right">
                                         <div className="flex items-center justify-end gap-2">
