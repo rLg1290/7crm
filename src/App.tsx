@@ -125,9 +125,6 @@ VITE_SUPABASE_ANON_KEY=sua_chave_anonima`}</pre>
                 <Route path="/atualizacoes" element={<AtualizacoesPage />} />
                 <Route path="/promocoes" element={<Promocoes user={user} />} />
                 <Route path="/perfil" element={<Perfil user={user} />} />
-                
-                {/* Admin Routes */}
-                <Route path="/admin/agencias" element={<AdminAgencias />} />
               </Routes>
             </Layout>
           } />

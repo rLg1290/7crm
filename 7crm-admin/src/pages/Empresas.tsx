@@ -22,6 +22,7 @@ interface Empresa {
   chat_enabled?: boolean
   sette_visible?: boolean
   central_visible?: boolean
+  aereo_enabled?: boolean
   created_at: string
 }
 
@@ -402,6 +403,21 @@ const Empresas = () => {
                         <><Check className="h-3 w-3 mr-1" /> Central Visível</>
                       ) : (
                         <><X className="h-3 w-3 mr-1" /> Central Oculta</>
+                      )}
+                    </button>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <button
+                      onClick={() => toggleAereo(empresa)}
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        empresa.aereo_enabled ? 'bg-sky-100 text-sky-800' : 'bg-gray-100 text-gray-800'
+                      }`}
+                      title={empresa.aereo_enabled ? 'Bloquear Aéreo' : 'Liberar Aéreo'}
+                    >
+                      {empresa.aereo_enabled ? (
+                        <><Check className="h-3 w-3 mr-1" /> Aéreo Liberado</>
+                      ) : (
+                        <><X className="h-3 w-3 mr-1" /> Aéreo Bloqueado</>
                       )}
                     </button>
                   </td>

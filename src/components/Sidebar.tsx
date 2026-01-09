@@ -54,15 +54,6 @@ export default function Sidebar({ collapsed, onToggle, empresaLogo, userName, ae
     return section
   }).filter(section => section.items.length > 0)
 
-  if (userRole === 'admin') {
-    filteredNavSchema.push({
-      title: 'Administração',
-      items: [
-        { to: '/admin/agencias', label: 'Gerenciar Agências', icon: <Building className="h-5 w-5" /> }
-      ]
-    })
-  }
-
   return (
     <aside
       className={`${collapsed ? 'w-20' : 'w-64'} hidden lg:flex flex-col bg-white border-r border-gray-200 transition-all duration-200 ease-out`}
