@@ -363,6 +363,24 @@ const AereoDomestico = () => {
     loadLogos()
   }, [])
 
+  // Check Aereo Permission
+  useEffect(() => {
+    const checkPermission = async () => {
+      if (empresaId) {
+        const { data, error } = await supabase
+          .from('empresas')
+          .select('aereo_enabled')
+          .eq('id', empresaId)
+          .single()
+        
+        if (data && data.aereo_enabled === false) {
+          navigate('/dashboard')
+        }
+      }
+    }
+    checkPermission()
+  }, [empresaId, navigate])
+
   useEffect(() => {
     const term = formData.origem.trim()
     if (term.length < 2) {

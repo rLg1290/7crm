@@ -228,7 +228,7 @@ const Layout: React.FC<LayoutProps> = ({ user, children }) => {
           const v = !sidebarCollapsed
           setSidebarCollapsed(v)
           localStorage.setItem(`sidebar_collapsed_${user.id}`, v ? '1' : '0')
-        }} empresaLogo={empresaLogo} userName={user.user_metadata?.empresa || 'Agência'} />
+        }} empresaLogo={empresaLogo} userName={user.user_metadata?.empresa || 'Agência'} aereoEnabled={aereoEnabled} />
         <main className="flex-1">
           {children}
         </main>

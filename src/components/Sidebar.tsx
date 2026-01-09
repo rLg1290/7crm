@@ -41,7 +41,17 @@ const navSchema = [
   }
 ]
 
-export default function Sidebar({ collapsed, onToggle, empresaLogo, userName }: SidebarProps) {
+export default function Sidebar({ collapsed, onToggle, empresaLogo, userName, aereoEnabled }: SidebarProps) {
+  const filteredNavSchema = navSchema.map(section => {
+    if (section.title === '7C Turismo') {
+      return {
+        ...section,
+        items: section.items.filter(item => item.label !== 'Aéreo' || aereoEnabled)
+      }
+    }
+    return section
+  }).filter(section => section.items.length > 0)
+
   return (
     <aside
       className={`${collapsed ? 'w-20' : 'w-64'} hidden lg:flex flex-col bg-white border-r border-gray-200 transition-all duration-200 ease-out`}
@@ -61,7 +71,7 @@ export default function Sidebar({ collapsed, onToggle, empresaLogo, userName }: 
         )}
       </div>
       <div className="flex-1 overflow-y-auto py-3">
-        {navSchema.map(section => (
+        {filteredNavSchema.map(section => (
           <SidebarSection key={section.title} title={section.title} collapsed={collapsed}>
             {section.items.map(item => (
               <NavItem key={item.to} to={item.to} label={item.label} icon={item.icon} collapsed={collapsed} disabled={(item as any).disabled} />
