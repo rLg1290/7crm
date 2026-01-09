@@ -22,7 +22,7 @@ export default function NavItem({ to, icon, label, collapsed, disabled }: NavIte
       >
         <div className={`h-5 w-5 text-gray-400`}>{icon}</div>
         {!collapsed && <span className="text-sm truncate">{label}</span>}
-        <Lock className="h-4 w-4 ml-auto text-gray-400" />
+        {!collapsed && <Lock className="h-4 w-4 ml-auto text-gray-400" />}
       </div>
     )
   }
