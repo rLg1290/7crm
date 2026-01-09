@@ -64,7 +64,7 @@ const Layout: React.FC<LayoutProps> = ({ user, children }) => {
         try {
           const { data, error } = await supabase
             .from('empresas')
-            .select('logotipo, chat_enabled, sette_visible, central_visible')
+            .select('logotipo, chat_enabled, sette_visible, central_visible, aereo_enabled')
             .eq('id', empresaId)
             .single()
 
@@ -73,6 +73,11 @@ const Layout: React.FC<LayoutProps> = ({ user, children }) => {
             if (typeof data.chat_enabled === 'boolean') setChatEnabled(Boolean(data.chat_enabled))
             if (typeof data.sette_visible === 'boolean') setSetteVisible(Boolean(data.sette_visible))
             if (typeof data.central_visible === 'boolean') setCentralVisible(Boolean(data.central_visible))
+            if (typeof data.aereo_enabled === 'boolean') {
+              setAereoEnabled(Boolean(data.aereo_enabled))
+            } else {
+              setAereoEnabled(false) // Default to false if not present/null
+            }
           }
         } catch (error) {
           console.error('Erro ao buscar logo da empresa:', error)

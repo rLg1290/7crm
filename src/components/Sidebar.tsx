@@ -52,7 +52,7 @@ export default function Sidebar({ collapsed, onToggle, empresaLogo, userName, ae
           if (item.label === 'Aéreo') {
             return {
               ...item,
-              disabled: !aereoEnabled
+              disabled: aereoEnabled === false // Explicit check for false, so null/undefined (loading) or true (enabled) doesn't disable it
             }
           }
           return item
