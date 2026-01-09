@@ -51,7 +51,9 @@ const Layout: React.FC<LayoutProps> = ({ user, children }) => {
   const [showChatMenu, setShowChatMenu] = useState(false)
   const [setteVisible, setSetteVisible] = useState<boolean>(true)
   const [centralVisible, setCentralVisible] = useState<boolean>(false)
+  const [aereoEnabled, setAereoEnabled] = useState<boolean>(false)
   const [chatInitialMode, setChatInitialMode] = useState<'ia' | 'central'>('ia')
+  const [userRole, setUserRole] = useState<string>('user')
 
   // Buscar logo da empresa
   useEffect(() => {
