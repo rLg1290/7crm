@@ -46,13 +46,18 @@ const navSchema = [
 export default function Sidebar({ collapsed, onToggle, empresaLogo, userName, aereoEnabled, userRole }: SidebarProps) {
   const filteredNavSchema = navSchema.map(section => {
     if (section.title === '7C Turismo') {
+      const filteredItems = section.items.filter(item => item.label !== 'Aéreo' || aereoEnabled)
+      
+      // Se não tiver nenhum item (aereo desativado e era o único), não retorna a seção
+      if (filteredItems.length === 0) return null
+
       return {
         ...section,
-        items: section.items.filter(item => item.label !== 'Aéreo' || aereoEnabled)
+        items: filteredItems
       }
     }
     return section
-  }).filter(section => section.items.length > 0)
+  }).filter(Boolean) as typeof navSchema
 
   return (
     <aside
