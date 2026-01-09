@@ -1,7 +1,9 @@
 import { Home, FileText, Users, DollarSign, Calendar, Tag, BookOpen, Plane, Building, User as UserIcon, Milestone } from 'lucide-react'
 import NavItem from './NavItem'
 import SidebarSection from './SidebarSection'
-import { Link } from 'react-router-dom'type SidebarProps = {
+import { Link } from 'react-router-dom'
+
+type SidebarProps = {
   collapsed: boolean
   onToggle: () => void
   empresaLogo?: string | null
@@ -49,6 +51,15 @@ export default function Sidebar({ collapsed, onToggle, empresaLogo, userName, ae
     }
     return section
   }).filter(section => section.items.length > 0)
+
+  if (userRole === 'admin') {
+    filteredNavSchema.push({
+      title: 'Administração',
+      items: [
+        { to: '/admin/agencias', label: 'Gerenciar Agências', icon: <Building className="h-5 w-5" /> }
+      ]
+    })
+  }
 
   return (
     <aside
