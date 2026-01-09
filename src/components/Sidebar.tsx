@@ -10,7 +10,9 @@ type SidebarProps = {
   userName?: string | null
   aereoEnabled?: boolean | null
   userRole?: string
-}const navSchema = [
+}
+
+const navSchema = [
   {
     title: '7C Turismo',
     items: [
