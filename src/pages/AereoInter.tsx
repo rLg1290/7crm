@@ -338,13 +338,14 @@ const AereoInter = () => {
       if (isSupabaseConfigured) {
         const { data, error } = await supabase
           .from('CiasAereas')
-          .select('NomeBuscador, logo_url')
+          .select('NomeBuscador, nome, logo_url')
         
         if (data && !error) {
           const logoMap: Record<string, string> = {}
           data.forEach((item: any) => {
-            if (item.NomeBuscador && item.logo_url) {
-              logoMap[item.NomeBuscador.toUpperCase()] = item.logo_url
+            const key = item.NomeBuscador || item.nome
+            if (key && item.logo_url) {
+              logoMap[key.trim().toUpperCase()] = item.logo_url
             }
           })
           setAirlineLogos(logoMap)
@@ -584,6 +585,7 @@ const AereoInter = () => {
     if (upperCia.includes('AZUL')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/1e/Azul_Linhas_Aereas_Brasileiras_logo.svg/2560px-Azul_Linhas_Aereas_Brasileiras_logo.svg.png'
     if (upperCia.includes('LATAM')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/fe/Latam-logo_-v_%28Indigo%29.svg/2560px-Latam-logo_-v_%28Indigo%29.svg.png'
     if (upperCia.includes('AVIANCA')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/6/64/Avianca_logo.svg/2560px-Avianca_logo.svg.png'
+    if (upperCia.includes('COPA')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/82/Copa_Airlines_Logo.svg/2560px-Copa_Airlines_Logo.svg.png'
     
     return null
   }
