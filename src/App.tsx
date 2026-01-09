@@ -25,6 +25,7 @@ import EducacaoHome from './pages/EducacaoHome'
 import EducacaoLives from './pages/EducacaoLives'
 import EducacaoItem from './pages/EducacaoItem'
 import AtualizacoesPage from './pages/Atualizacoes'
+import AdminAgencias from './pages/AdminAgencias'
 import { User } from '@supabase/supabase-js'
 
 function App() {

@@ -1,16 +1,14 @@
 import { Home, FileText, Users, DollarSign, Calendar, Tag, BookOpen, Plane, Building, User as UserIcon, Milestone } from 'lucide-react'
 import NavItem from './NavItem'
 import SidebarSection from './SidebarSection'
-import { Link } from 'react-router-dom'
-
-type SidebarProps = {
+import { Link } from 'react-router-dom'type SidebarProps = {
   collapsed: boolean
   onToggle: () => void
   empresaLogo?: string | null
   userName?: string | null
-}
-
-const navSchema = [
+  aereoEnabled?: boolean | null
+  userRole?: string
+}const navSchema = [
   {
     title: '7C Turismo',
     items: [
