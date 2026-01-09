@@ -118,7 +118,7 @@ const Empresas = () => {
     setShowModal(true)
   }
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     if (!confirm('Tem certeza que deseja excluir esta empresa?')) return
     
     try {
@@ -203,6 +203,38 @@ const Empresas = () => {
     } catch (err) {
       console.error('Erro ao alterar visibilidade da Central:', err)
       setError('Erro ao alterar visibilidade da Central')
+    }
+  }
+
+  const toggleAereo = async (empresa: Empresa) => {
+    try {
+      // Optimistic update
+      setEmpresas(prev => prev.map(e => 
+        e.id === empresa.id 
+          ? { ...e, aereo_enabled: !e.aereo_enabled } 
+          : e
+      ))
+
+      const { error } = await supabase
+        .from('empresas')
+        .update({ aereo_enabled: !empresa.aereo_enabled })
+        .eq('id', empresa.id)
+
+      if (error) {
+        // Revert on error
+        setEmpresas(prev => prev.map(e => 
+          e.id === empresa.id 
+            ? { ...e, aereo_enabled: empresa.aereo_enabled } 
+            : e
+        ))
+        throw error
+      }
+      
+      // Refresh to ensure consistency
+      carregarEmpresas()
+    } catch (err) {
+      console.error('Erro ao alterar acesso Aéreo:', err)
+      setError('Erro ao alterar acesso Aéreo')
     }
   }
 
