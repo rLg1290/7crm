@@ -41,7 +41,7 @@ type SidebarProps = {
   }
 ]
 
-export default function Sidebar({ collapsed, onToggle, empresaLogo, userName, aereoEnabled }: SidebarProps) {
+export default function Sidebar({ collapsed, onToggle, empresaLogo, userName, aereoEnabled, userRole }: SidebarProps) {
   const filteredNavSchema = navSchema.map(section => {
     if (section.title === '7C Turismo') {
       return {
