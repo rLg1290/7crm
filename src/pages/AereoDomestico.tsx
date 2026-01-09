@@ -265,8 +265,6 @@ const AereoDomestico = () => {
         bebe: formData.bebes
       }
 
-      console.log('Enviando Payload:', JSON.stringify(payload, null, 2))
-
       const response = await fetch('/api/7capi/search', {
         method: 'POST',
         headers: {
@@ -275,16 +273,13 @@ const AereoDomestico = () => {
         body: JSON.stringify(payload)
       })
 
-      console.log('Status da Resposta:', response.status)
-      
       if (!response.ok) {
         const errorText = await response.text()
-        console.error('Corpo do Erro:', errorText)
-        throw new Error(`Erro na API: ${response.status} - ${errorText}`)
+        console.error('Erro na API:', response.status)
+        throw new Error(`Erro na API: ${response.status}`)
       }
 
       const data = await response.json()
-      console.log('Dados Recebidos:', data)
       
       // The API returns { status: "success", data: [...], meta: {...} }
       // We need to pass data.data to mergeVoos
@@ -298,7 +293,7 @@ const AereoDomestico = () => {
         resultadosStoreRef.current.domestico = merged
         setResultados(merged)
       } else {
-        console.error('Formato de resposta inesperado:', data)
+        console.error('Formato de resposta inesperado')
         setResultados([])
       }
 
