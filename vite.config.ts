@@ -19,7 +19,11 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      // Integração com Hotelbeds desativada
+      '/api/7capi': {
+        target: 'https://7capi.vercel.app',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/7capi/, '/api')
+      }
     }
   }
 })

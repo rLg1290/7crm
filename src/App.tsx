@@ -8,7 +8,6 @@ import Cotacoes from './pages/Cotacoes'
 import Clientes from './pages/Clientes'
 import Financeiro from './pages/Financeiro'
 import Calendario from './pages/Calendario'
-import Aereo from './pages/Aereo'
 import AereoDomestico from './pages/AereoDomestico'
 import AereoInter from './pages/AereoInter'
 // Removendo import da página Hotelaria (não será utilizada por enquanto)
