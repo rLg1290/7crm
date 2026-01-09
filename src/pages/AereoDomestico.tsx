@@ -560,7 +560,7 @@ const AereoDomestico = () => {
 
   const getAirlineLogo = (cia: string) => {
     // Try to find exact match or partial match in loaded logos
-    const upperCia = cia.toUpperCase()
+    const upperCia = cia.trim().toUpperCase()
     
     // Direct match check from Supabase data
     for (const [key, url] of Object.entries(airlineLogos)) {
@@ -571,6 +571,7 @@ const AereoDomestico = () => {
     if (upperCia.includes('GOL')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b3/Gol_Transportes_A%C3%A9reos_-_Logo.svg/2560px-Gol_Transportes_A%C3%A9reos_-_Logo.svg.png'
     if (upperCia.includes('AZUL')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/1e/Azul_Linhas_Aereas_Brasileiras_logo.svg/2560px-Azul_Linhas_Aereas_Brasileiras_logo.svg.png'
     if (upperCia.includes('LATAM')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/fe/Latam-logo_-v_%28Indigo%29.svg/2560px-Latam-logo_-v_%28Indigo%29.svg.png'
+    if (upperCia.includes('AVIANCA')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/6/64/Avianca_logo.svg/2560px-Avianca_logo.svg.png'
     
     return null
   }
