@@ -583,7 +583,9 @@ export default function KanbanComercial() {
     }
 
     try {
-      const webhookUrl = 'https://n8n.srv999039.hstgr.cloud/webhook/zapsign/contrato-agencia'
+      // Usando o proxy da API para evitar erros de CORS na Vercel
+      // O arquivo api/proxy-n8n-contrato.ts redireciona para o n8n
+      const webhookUrl = '/api/proxy-n8n-contrato'
       
       const response = await fetch(webhookUrl, {
         method: 'POST',
