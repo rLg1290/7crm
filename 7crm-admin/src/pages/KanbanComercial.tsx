@@ -408,7 +408,8 @@ export default function KanbanComercial() {
         tipo_empresa: dataToUse.tipo_empresa,
         nome_socio_administrador: dataToUse.nome_socio_administrador,
         cpf_administrador: dataToUse.cpf_administrador,
-        relatorio_reuniao: dataToUse.relatorio_reuniao
+        relatorio_reuniao: dataToUse.relatorio_reuniao,
+        email_agencia: dataToUse.email_agencia
       }
 
       if (editingLead) {
