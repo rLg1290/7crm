@@ -56,6 +56,7 @@ interface Lead {
   nome_socio_administrador?: string
   cpf_administrador?: string
   relatorio_reuniao?: string
+  email_agencia?: string
 }
 
 interface Log {
@@ -90,6 +91,7 @@ interface LeadFormData {
   nome_socio_administrador: string
   cpf_administrador: string
   relatorio_reuniao: string
+  email_agencia: string
 }
 
 const PRODUCTS_OPTIONS = [
@@ -153,7 +155,8 @@ export default function KanbanComercial() {
     tipo_empresa: '',
     nome_socio_administrador: '',
     cpf_administrador: '',
-    relatorio_reuniao: ''
+    relatorio_reuniao: '',
+    email_agencia: ''
   })
 
   useEffect(() => {
@@ -535,7 +538,8 @@ export default function KanbanComercial() {
       tipo_empresa: '',
       nome_socio_administrador: '',
       cpf_administrador: '',
-      relatorio_reuniao: ''
+      relatorio_reuniao: '',
+      email_agencia: ''
     })
   }
 
@@ -566,17 +570,50 @@ export default function KanbanComercial() {
       tipo_empresa: lead.tipo_empresa || '',
       nome_socio_administrador: lead.nome_socio_administrador || '',
       cpf_administrador: lead.cpf_administrador || '',
-      relatorio_reuniao: lead.relatorio_reuniao || ''
+      relatorio_reuniao: lead.relatorio_reuniao || '',
+      email_agencia: lead.email_agencia || ''
     })
     setShowModal(true)
   }
 
-  const handleGenerateContract = () => {
+  const handleGenerateContract = async () => {
     if (!formData.razao_social || !formData.cnpj) {
       alert('Por favor, preencha e salve os dados da empresa (Razão Social e CNPJ) antes de gerar o contrato.')
       return
     }
-    alert(`Gerando contrato para ${formData.razao_social} (CNPJ: ${formData.cnpj})...\n\n(Funcionalidade em desenvolvimento)`)
+
+    try {
+      const webhookUrl = 'https://n8n.srv999039.hstgr.cloud/webhook/zapsign/contrato-agencia'
+      
+      const response = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fields: {
+            CIDADE_ASSINATURA: "Florianópolis - SC",
+            DATA_ASSINATURA: new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' }),
+            AGENCIARAZAOSOCIAL: formData.razao_social,
+            AGENCIANOMEFANTASIA: formData.nome_empresa,
+            AGENCIARESPONSAVEL: formData.nome_socio_administrador,
+            AGENCIATIPOREPRESENTANTE: formData.tipo_empresa,
+            AGENCIACNPJ: formData.cnpj,
+            AGENCIACPF: formData.cpf_administrador,
+            AGENCIAENDERECOCOMPLETO: formData.endereco,
+            AGENCIAEMAIL: formData.email_agencia
+          }
+        })
+      })
+
+      if (response.ok) {
+        alert('Solicitação de contrato enviada com sucesso!')
+      } else {
+        alert('Erro ao enviar solicitação de contrato. Verifique os dados e tente novamente.')
+        console.error('Erro webhook contrato:', await response.text())
+      }
+    } catch (error) {
+      console.error('Erro ao gerar contrato:', error)
+      alert('Erro ao conectar com o serviço de geração de contrato.')
+    }
   }
 
   // Agrupamento por colunas
@@ -1251,6 +1288,17 @@ export default function KanbanComercial() {
                           onChange={(e) => setFormData({ ...formData, endereco: e.target.value })}
                           className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
                           placeholder="Rua, Número, Bairro, Cidade - UF, CEP"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Email Agência (Contrato)</label>
+                        <input
+                          type="email"
+                          value={formData.email_agencia}
+                          onChange={(e) => setFormData({ ...formData, email_agencia: e.target.value })}
+                          className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="email@agencia.com.br"
                         />
                       </div>
 

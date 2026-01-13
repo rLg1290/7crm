@@ -118,7 +118,7 @@ const Empresas = () => {
     setShowModal(true)
   }
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: number) => {
     if (!confirm('Tem certeza que deseja excluir esta empresa?')) return
     
     try {
