@@ -148,15 +148,6 @@ const CotacaoHtml: React.FC = () => {
     return date.toLocaleDateString('pt-BR');
   };
 
-  // Função para formatar nome completo
-  const formatarNomeCompleto = (nome: string, sobrenome?: string) => {
-    if (!nome) return '';
-    if (sobrenome) {
-      return `${nome} ${sobrenome}`;
-    }
-    return nome;
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -603,7 +594,7 @@ const CotacaoHtml: React.FC = () => {
                 <div className="info-item">
                   <div className="info-label">Cliente</div>
                   <div className="info-valor">
-                    {formatarNomeCompleto(cliente?.nome, cliente?.sobrenome)}
+                    {cliente?.nome}
                   </div>
                 </div>
                 <div className="info-item">
@@ -633,7 +624,7 @@ const CotacaoHtml: React.FC = () => {
                          passageiro.tipo === 'crianca' ? 'CHD' : 'INF'}
                       </div>
                       <div className="passageiro-nome">
-                        {formatarNomeCompleto(passageiro.nome, passageiro.sobrenome)}
+                        {passageiro.nome || ''}
                       </div>
                       {passageiro.documento && (
                         <div className="passageiro-doc">

@@ -11,17 +11,6 @@ function formatarDataLocal(dateString: string): string {
   return `${dia}/${mes}/${ano}`;
 }
 
-// Função para formatar nome completo
-function formatarNomeCompleto(nome: string, sobrenome?: string): string {
-  if (!sobrenome) return nome;
-  const sobrenomes = sobrenome.trim().split(' ').filter(Boolean);
-  if (sobrenomes.length > 0) {
-    const ultimoSobrenome = sobrenomes[sobrenomes.length - 1];
-    return `${nome} ${ultimoSobrenome}`;
-  }
-  return nome;
-}
-
 // Função para formatar horário sem segundos
 function formatarHorario(horario: string): string {
   if (!horario) return '-';
@@ -246,7 +235,7 @@ const CotacaoPrint: React.FC = () => {
       currentY += 8;
       
       if (cliente) {
-        const nomeCompleto = formatarNomeCompleto(cliente.nome, cliente.sobrenome);
+        const nomeCompleto = cliente.nome;
         currentY = addText(`Nome: ${nomeCompleto}`, margin, currentY, 12);
         currentY += 5;
         if (cliente.telefone) {
@@ -1394,7 +1383,7 @@ const CotacaoPrint: React.FC = () => {
                   <div class="reservado-por-titulo">
                     <div class="reservado-por-left">
                       <span class="reservado-label">Reservado por:</span>
-                      <span class="cliente-nome-principal">${cliente ? formatarNomeCompleto(cliente.nome, cliente.sobrenome) : 'Cliente não informado'}</span>
+                      <span class="cliente-nome-principal">${cliente ? cliente.nome : 'Cliente não informado'}</span>
                     </div>
                     <div class="codigo-agencia-right">
                       <span class="codigo-value">${cotacao?.codigo || cotacao?.id}</span>
@@ -1976,7 +1965,7 @@ const CotacaoPrint: React.FC = () => {
                     </div>
                     <div className="flex items-center space-x-2">
                       <User className="h-4 w-4 text-gray-400" />
-                      <span className="font-medium">{formatarNomeCompleto(cliente.nome, cliente.sobrenome)}</span>
+                      <span className="font-medium">{cliente.nome}</span>
                     </div>
                     {cliente.telefone && (
                       <div className="text-sm text-gray-600">

@@ -13,16 +13,6 @@ function formatarDataBR(dateString: string): string {
   return dateString;
 }
 
-function formatarNomeCompleto(nome: string, sobrenome?: string): string {
-  if (!sobrenome) return nome;
-  const sobrenomes = sobrenome.trim().split(' ').filter(Boolean);
-  if (sobrenomes.length > 0) {
-    const ultimoSobrenome = sobrenomes[sobrenomes.length - 1];
-    return `${nome} ${ultimoSobrenome}`;
-  }
-  return nome;
-}
-
 function formatarHorario(horario: string): string {
   if (!horario) return '-';
   if (horario.length === 8 && horario.includes(':')) {
@@ -62,6 +52,8 @@ const IconBag = ({size = 16, color = '#2563eb'}) => (
     <rect x="7" y="4" width="6" height="3" rx="1.5" fill={color} fillOpacity="0.7"/>
   </svg>
 );
+
+import { getAirlineLogoUrl } from '../utils/airlineLogos'
 
 const CotacaoPrintRaw: React.FC = () => {
   const { codigo } = useParams();
@@ -142,6 +134,11 @@ const CotacaoPrintRaw: React.FC = () => {
   // Função para buscar logo da companhia aérea
   function getLogoCompanhia(nomeCompanhia: string) {
     if (!nomeCompanhia) return null;
+
+    // Tenta primeiro pela utilitária (logo corrigida)
+    const logoUrl = getAirlineLogoUrl(nomeCompanhia);
+    if (logoUrl) return logoUrl;
+
     const cia = ciasAereas.find(c =>
       c.nome?.toLowerCase() === nomeCompanhia?.toLowerCase() ||
       c.nome?.toLowerCase().includes(nomeCompanhia?.toLowerCase())
@@ -401,7 +398,7 @@ const CotacaoPrintRaw: React.FC = () => {
               <div className="reservado-por-titulo">
                 <div className="reservado-por-left">
                   <span className="reservado-label">Reservado por:</span>
-                  <span className="cliente-nome-principal">{cliente ? formatarNomeCompleto(cliente.nome, cliente.sobrenome) : 'Cliente não informado'}</span>
+                  <span className="cliente-nome-principal">{cliente ? cliente.nome : 'Cliente não informado'}</span>
                 </div>
                 <div className="codigo-agencia-right">
                   <span className="codigo-value">{cotacao?.codigo || cotacao?.id}</span>
@@ -413,7 +410,7 @@ const CotacaoPrintRaw: React.FC = () => {
               <div className="passageiros-lista-completa">
                 {passageiros.length > 0 ? passageiros.map((passageiro, index) => (
                   <div className="passageiro-linha" key={index}>
-                    <span className="passageiro-nome-completo">{(passageiro.nome || passageiro.sobrenome) ? formatarNomeCompleto(passageiro.nome, passageiro.sobrenome) : 'Nome não informado'}</span>
+                    <span className="passageiro-nome-completo">{passageiro.nome || 'Nome não informado'}</span>
                     <span className="passageiro-cpf">{passageiro.cpf ? `CPF: ${passageiro.cpf}` : 'CPF: Não informado'}</span>
                     <span className="passageiro-nascimento">{passageiro.data_nascimento ? `Nascimento: ${formatarDataBR(passageiro.data_nascimento)}` : 'Nascimento: Não informado'}</span>
                   </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { User, Building, Mail, Save, ArrowLeft, Hash, FileText, Lock, Link, Copy, Check, Palette, Globe } from 'lucide-react'
+import { User, Building, Mail, Save, ArrowLeft, Hash, FileText, Lock, Link, Copy, Check, Palette, Globe, Percent } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
 import { User as SupabaseUser } from '@supabase/supabase-js'
@@ -41,7 +41,27 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
   const [corSecundaria, setCorSecundaria] = useState('#10B981') // Verde padrão
   const [salvandoCor, setSalvandoCor] = useState(false)
   const [salvandoPromocoes, setSalvandoPromocoes] = useState(false)
-  const [tab, setTab] = useState<'leads'|'promocoes'|'dados'>('leads')
+  const [tab, setTab] = useState<'leads'|'promocoes'|'dados'|'du'>('leads')
+  const [defaultDuRate, setDefaultDuRate] = useState<number>(0)
+  const [salvandoDu, setSalvandoDu] = useState(false)
+
+  // Buscar informações do perfil (DU)
+  useEffect(() => {
+    const fetchProfileInfo = async () => {
+      if (user?.id) {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('default_du_rate')
+          .eq('id', user.id)
+          .single()
+        
+        if (data && !error) {
+          setDefaultDuRate(data.default_du_rate || 0)
+        }
+      }
+    }
+    fetchProfileInfo()
+  }, [user])
 
   // Buscar informações da empresa
   useEffect(() => {
@@ -380,6 +400,29 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
     }
   }
 
+  // Função para salvar DU padrão
+  const salvarDu = async () => {
+    setSalvandoDu(true)
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ default_du_rate: defaultDuRate })
+        .eq('id', user.id)
+
+      if (error) {
+        throw error
+      }
+
+      setMessage('Taxa de DU padrão salva com sucesso!')
+      setTimeout(() => setMessage(''), 3000)
+    } catch (error) {
+      logger.error('Erro ao salvar DU:', error)
+      setMessage('Erro ao salvar DU: ' + (error as Error).message)
+    } finally {
+      setSalvandoDu(false)
+    }
+  }
+
   return (
     <div className="p-4 sm:p-6 lg:p-8">
       <div className="max-w-3xl mx-auto">
@@ -405,6 +448,7 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
           <div className="flex gap-2 mb-6">
             <button onClick={() => setTab('leads')} className={`px-4 py-2 rounded-lg text-sm font-medium border ${tab==='leads' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-blue-600 border-blue-200 hover:bg-blue-50'}`}>Página de Leads</button>
             <button onClick={() => setTab('promocoes')} className={`px-4 py-2 rounded-lg text-sm font-medium border ${tab==='promocoes' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-blue-600 border-blue-200 hover:bg-blue-50'}`}>Promoções Personalizada</button>
+            <button onClick={() => setTab('du')} className={`px-4 py-2 rounded-lg text-sm font-medium border ${tab==='du' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-blue-600 border-blue-200 hover:bg-blue-50'}`}>Configuração de DU</button>
             <button onClick={() => setTab('dados')} className={`px-4 py-2 rounded-lg text-sm font-medium border ${tab==='dados' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-blue-600 border-blue-200 hover:bg-blue-50'}`}>Dados Gerais</button>
           </div>
         </div>
@@ -759,6 +803,56 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
                   {salvandoPromocoes ? (<div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>) : (<Palette className="h-5 w-5 mr-2" />)}
                   {salvandoPromocoes ? 'Salvando Cores...' : 'Salvar Cores das Promoções'}
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {tab==='du' && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-6">
+            <div className="p-6">
+              <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                <Percent className="h-5 w-5 mr-2 text-blue-600" />
+                Configuração de DU (Service Fee)
+              </h4>
+              <p className="text-sm text-gray-600 mb-6">Defina a porcentagem padrão de DU que será aplicada automaticamente nas buscas de passagens aéreas.</p>
+              
+              <div className="max-w-md">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Porcentagem Padrão (%)
+                </label>
+                <div className="relative rounded-md shadow-sm">
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    value={defaultDuRate}
+                    onChange={(e) => setDefaultDuRate(parseFloat(e.target.value) || 0)}
+                    className="block w-full pr-10 border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 sm:text-sm py-3 px-4 border"
+                    placeholder="0"
+                  />
+                  <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                    <span className="text-gray-500 sm:text-sm">%</span>
+                  </div>
+                </div>
+                <p className="mt-2 text-xs text-gray-500">
+                  Exemplo: Se o valor da passagem for R$ 1.000,00 e a DU for 10%, o valor final será R$ 1.100,00.
+                </p>
+
+                <div className="mt-6">
+                  <button
+                    onClick={salvarDu}
+                    disabled={salvandoDu}
+                    className="inline-flex items-center px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                  >
+                    {salvandoDu ? (
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                    ) : (
+                      <Save className="h-5 w-5 mr-2" />
+                    )}
+                    {salvandoDu ? 'Salvando...' : 'Salvar DU Padrão'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>

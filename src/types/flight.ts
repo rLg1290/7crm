@@ -20,8 +20,9 @@ export interface Flight {
   TaxaEmbarque: number
   BagagemDespachada: number
   source: string
-  AdultoC: number
-  CriancaC: number
-  BebeC: number
+  AdultoC?: number
+  CriancaC?: number
+  BebeC?: number
   AdultoF: number
+  tipotarifario?: string
 }

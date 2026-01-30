@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
 import { Plane, Clock, MapPin, Users, AlertTriangle, CheckCircle, XCircle, RefreshCw, User } from 'lucide-react'
 
+import { getAirlineLogoUrl } from '../utils/airlineLogos'
+
 interface Voo {
   numero: string
   companhia: string
-  logo: string
   origem: string
   destino: string
   portao: string
@@ -21,7 +22,6 @@ const QuadroVoos = () => {
     {
       numero: '1265',
       companhia: 'LATAM',
-      logo: '🇧🇷',
       origem: 'Brasília',
       destino: 'Congonhas',
       portao: '08',
@@ -34,7 +34,6 @@ const QuadroVoos = () => {
     {
       numero: '1262',
       companhia: 'GOL',
-      logo: '🟠',
       origem: 'Brasília',
       destino: 'Guarulhos',
       portao: '02',
@@ -47,7 +46,6 @@ const QuadroVoos = () => {
     {
       numero: '1195',
       companhia: 'GOL',
-      logo: '🟠',
       origem: 'Brasília',
       destino: 'Porto Alegre',
       portao: '31',
@@ -60,7 +58,6 @@ const QuadroVoos = () => {
     {
       numero: '1174',
       companhia: 'LATAM',
-      logo: '🇧🇷',
       origem: 'Brasília',
       destino: 'Buenos Aires',
       portao: '30',
@@ -73,7 +70,6 @@ const QuadroVoos = () => {
     {
       numero: '1589',
       companhia: 'LATAM',
-      logo: '🇧🇷',
       origem: 'Brasília',
       destino: 'Curitiba',
       portao: '28',
@@ -86,7 +82,6 @@ const QuadroVoos = () => {
     {
       numero: '1457',
       companhia: 'Azul',
-      logo: '🔵',
       origem: 'Brasília',
       destino: 'Natal',
       portao: '02',
@@ -99,7 +94,6 @@ const QuadroVoos = () => {
     {
       numero: '4651',
       companhia: 'Azul',
-      logo: '🔵',
       origem: 'Brasília',
       destino: 'Maceió',
       portao: '22',
@@ -112,7 +106,6 @@ const QuadroVoos = () => {
     {
       numero: '2488',
       companhia: 'American Airlines',
-      logo: '🇺🇸',
       origem: 'Brasília',
       destino: 'Miami',
       portao: '18',
@@ -125,7 +118,6 @@ const QuadroVoos = () => {
     {
       numero: '1124',
       companhia: 'GOL',
-      logo: '🟠',
       origem: 'Brasília',
       destino: 'Recife',
       portao: '21',
@@ -138,7 +130,6 @@ const QuadroVoos = () => {
     {
       numero: '2236',
       companhia: 'TAP Portugal',
-      logo: '🇵🇹',
       origem: 'Brasília',
       destino: 'Lisboa',
       portao: '11',
@@ -151,7 +142,6 @@ const QuadroVoos = () => {
     {
       numero: '2488',
       companhia: 'Copa Airlines',
-      logo: '🇵🇦',
       origem: 'Brasília',
       destino: 'Panamá',
       portao: '18',
@@ -321,7 +311,17 @@ const QuadroVoos = () => {
                 {/* Companhia */}
                 <div className="col-span-2">
                   <div className="flex items-center space-x-3">
-                    <span className="text-2xl">{voo.logo}</span>
+                    <div className="w-8 h-8 flex items-center justify-center bg-white rounded-full shadow-sm overflow-hidden">
+                      {getAirlineLogoUrl(voo.companhia) ? (
+                        <img 
+                          src={getAirlineLogoUrl(voo.companhia) || ''} 
+                          alt={voo.companhia} 
+                          className="w-full h-full object-contain p-1"
+                        />
+                      ) : (
+                        <Plane className="w-5 h-5 text-slate-400" />
+                      )}
+                    </div>
                     <div className="font-semibold text-slate-700">
                       {voo.companhia}
                     </div>

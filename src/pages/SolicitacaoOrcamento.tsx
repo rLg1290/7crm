@@ -17,7 +17,6 @@ function formatarDataBR(dateString: string): string {
 
 interface SolicitacaoData {
   nome: string
-  sobrenome: string
   celular: string
   email: string
   origem: string
@@ -49,7 +48,6 @@ const SolicitacaoOrcamento = () => {
   const { nomeEmpresa } = useParams<{ nomeEmpresa: string }>()
   const [formData, setFormData] = useState<SolicitacaoData>({
     nome: '',
-    sobrenome: '',
     celular: '',
     email: '',
     origem: '',
@@ -246,7 +244,7 @@ ${formData.observacoes || 'Nenhuma observação adicional'}`
       logger.debug('📝 Iniciando envio do formulário...')
       
       // Validação básica
-      if (!formData.nome || !formData.sobrenome || !formData.email || !formData.celular || !formData.origem || !formData.destino) {
+      if (!formData.nome || !formData.email || !formData.celular || !formData.origem || !formData.destino) {
         throw new Error('Por favor, preencha todos os campos obrigatórios')
       }
 
@@ -272,7 +270,6 @@ ${formData.observacoes || 'Nenhuma observação adicional'}`
         const { data: rpcData, error: rpcError } = await supabase.rpc('create_cliente_lead_public', {
           p_empresa_slug: nomeEmpresa,
           p_nome: formData.nome,
-          p_sobrenome: formData.sobrenome,
           p_email: formData.email,
           p_telefone: formData.celular,
           p_observacao: observacaoFormatada
@@ -315,7 +312,6 @@ ${formData.observacoes || 'Nenhuma observação adicional'}`
           .from('clientes')
           .insert([{
             nome: formData.nome,
-            sobrenome: formData.sobrenome,
             email: formData.email,
             telefone: formData.celular,
             empresa_id: empresa.id,
@@ -459,7 +455,6 @@ ${formData.observacoes || 'Nenhuma observação adicional'}`
               setSubmitted(false)
               setFormData({
                 nome: '',
-                sobrenome: '',
                 celular: '',
                 email: '',
                 origem: '',
@@ -549,10 +544,10 @@ ${formData.observacoes || 'Nenhuma observação adicional'}`
               {/* Dados Pessoais */}
               <div className="mb-8">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Seus Dados</h3>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Nome *
+                      Nome Completo *
                     </label>
                     <input
                       type="text"
@@ -561,21 +556,7 @@ ${formData.observacoes || 'Nenhuma observação adicional'}`
                       onChange={handleInputChange}
                       required
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
-                      placeholder="Nome"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Sobrenome *
-                    </label>
-                    <input
-                      type="text"
-                      name="sobrenome"
-                      value={formData.sobrenome}
-                      onChange={handleInputChange}
-                      required
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
-                      placeholder="Sobrenome"
+                      placeholder="Nome Completo"
                     />
                   </div>
                   <div>

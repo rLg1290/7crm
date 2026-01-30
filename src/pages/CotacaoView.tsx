@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { getAirlineLogoUrl } from '../utils/airlineLogos';
 
 function formatarDataBR(dateString: string): string {
   if (!dateString) return '-';
@@ -42,18 +43,18 @@ function formatarDataSemana(dateString?: string): string {
 }
 
 function dataPorDirecao(voos: any[], direcao: 'IDA'|'VOLTA'|'INTERNO'): string {
-  const lista = voos.filter(v => v.direcao === direcao);
-  if (!lista.length) return '';
-  const datas: string[] = [];
-  lista.forEach(v => {
-    const d = direcao === 'VOLTA'
-      ? String(v.data_volta || v.dataVolta || '').slice(0,10)
-      : String(v.data_ida || v.dataIda || '').slice(0,10)
-    if (d) datas.push(d);
-  });
-  if (!datas.length) return '';
-  return datas.sort()[0];
-}
+    const lista = voos.filter(v => v.direcao === direcao || (v.dados_voo && v.dados_voo.sentido === direcao.toLowerCase()));
+    if (!lista.length) return '';
+    const datas: string[] = [];
+    lista.forEach(v => {
+      const d = direcao === 'VOLTA'
+        ? String(v.data_volta || v.dataVolta || '').slice(0,10)
+        : String(v.data_ida || v.dataIda || '').slice(0,10)
+      if (d) datas.push(d);
+    });
+    if (!datas.length) return '';
+    return datas.sort()[0];
+  }
 
 // Função utilitária para escurecer a cor
 function escurecerCor(hex: string, fator = 0.8) {
@@ -302,6 +303,31 @@ const CotacaoView: React.FC = () => {
 
   // Override com lógica mais robusta para escolher segmentos do card
   function obterSegmentosDoVoo(voo: any): any[] {
+    // Se existir dados_voo (JSON vindo do buscador), usa ele preferencialmente
+    if (voo.dados_voo) {
+        const dados = voo.dados_voo
+        if (dados.conexoes && dados.conexoes.length > 0) {
+            return dados.conexoes.map((c: any) => {
+                 const [datePart, timePart] = c.EmbarqueCompleto ? c.EmbarqueCompleto.split(' ') : ['','']
+                 const [dateCheg, timeCheg] = c.DesembarqueCompleto ? c.DesembarqueCompleto.split(' ') : ['','']
+                 const [day, month, year] = datePart.split('/')
+                 const isoDate = `${year}-${month}-${day}T${timePart}`
+                 const isoCheg = c.DesembarqueCompleto ? c.DesembarqueCompleto.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$3-$2-$1') : ''
+
+                 return {
+                     cia: dados.cia,
+                     numero_voo: c.NumeroVoo,
+                     partida: isoDate,
+                     chegada: isoCheg,
+                     origem: c.Origem,
+                     destino: c.Destino
+                 }
+            })
+        }
+        // Se for direto no JSON
+        return []
+    }
+
     const idNum = Number(voo.id)
     if (Number.isFinite(idNum) && segmentosPorVooId[idNum] && segmentosPorVooId[idNum].length) {
       return segmentosPorVooId[idNum]
@@ -312,6 +338,11 @@ const CotacaoView: React.FC = () => {
   // Função para buscar logo da companhia aérea
   function getLogoCompanhia(nomeCompanhia: string) {
     if (!nomeCompanhia) return null;
+    
+    // Tenta primeiro pela utilitária (logo corrigida)
+    const logoUrl = getAirlineLogoUrl(nomeCompanhia);
+    if (logoUrl) return logoUrl;
+
     const cia = ciasAereas.find(c =>
       c.nome?.toLowerCase() === nomeCompanhia?.toLowerCase() ||
       c.nome?.toLowerCase().includes(nomeCompanhia?.toLowerCase())
@@ -426,18 +457,84 @@ const CotacaoView: React.FC = () => {
       {voos.length > 0 && (
         <div style={{marginTop: 8, marginBottom: 8}}>
           {/* Voos de Ida */}
-          {voos.filter(v => v.direcao === 'IDA').length > 0 && (
+          {voos.filter(v => v.direcao === 'IDA' || (v.dados_voo && v.dados_voo.sentido === 'ida')).length > 0 && (
             <div className="mb-6">
               <div style={{background: corEmpresa, color:'#fff', borderRadius:10, padding:'6px 12px', display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10}}>
                 <div style={{display:'flex', alignItems:'center', gap:8}}>
                   <AviaoPaperSVG color="#fff" />
                   <span style={{fontSize:12, fontWeight:700}}>Opções de Ida</span>
                 </div>
-                <div style={{fontSize:12, fontWeight:700}}>{voos.filter(v=>v.direcao==='IDA').length} {voos.filter(v=>v.direcao==='IDA').length === 1 ? 'Opção' : 'Opções'}</div>
+                <div style={{fontSize:12, fontWeight:700}}>{voos.filter(v=>v.direcao==='IDA' || (v.dados_voo && v.dados_voo.sentido === 'ida')).length} {voos.filter(v=>v.direcao==='IDA' || (v.dados_voo && v.dados_voo.sentido === 'ida')).length === 1 ? 'Opção' : 'Opções'}</div>
               </div>
-          {voos.filter(v => v.direcao === 'IDA').map((voo, i) => (
+          {voos.filter(v => v.direcao === 'IDA' || (v.dados_voo && v.dados_voo.sentido === 'ida')).map((voo, i) => (
             <div key={`ida-${i}`} className="bg-white border border-gray-200 rounded-xl shadow-sm mb-2" style={{padding: 6, marginBottom: 10}}>
               {(() => {
+                // Tenta usar dados_voo primeiro
+                if (voo.dados_voo) {
+                    const d = voo.dados_voo
+                    const segs = d.conexoes && d.conexoes.length > 0 
+                        ? d.conexoes.map((c: any) => ({
+                            cia: d.cia,
+                            numero_voo: c.NumeroVoo,
+                            partida: c.EmbarqueCompleto ? new Date(c.EmbarqueCompleto.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$3-$2-$1')).toISOString() : '',
+                            chegada: c.DesembarqueCompleto ? new Date(c.DesembarqueCompleto.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$3-$2-$1')).toISOString() : '',
+                            origem: c.Origem,
+                            destino: c.Destino
+                        }))
+                        : [{
+                            cia: d.cia,
+                            numero_voo: d.numero,
+                            partida: d.partida,
+                            chegada: d.chegada,
+                            origem: d.origem,
+                            destino: d.destino
+                        }]
+                    
+                    return (
+                        <div style={{display:'flex', flexDirection:'column', gap:6}}>
+                            <div style={{display:'grid', gridTemplateColumns:'minmax(90px, 140px) 70px 130px 130px 2fr 2fr 100px 100px', alignItems:'center', gap:2, fontSize:11, fontWeight:700, color:'#6b7280', padding:'1px 0'}}>
+                                <div>Cia Aérea</div>
+                                <div>Nº Voo</div>
+                                <div>Saída</div>
+                                <div style={{borderLeft:'1px solid #e5e7eb', paddingLeft:6}}>Chegada</div>
+                                <div style={{borderLeft:'1px solid #e5e7eb', paddingLeft:6}}>Origem</div>
+                                <div>Destino</div>
+                                <div>Bagagem</div>
+                                <div>Total</div>
+                            </div>
+                            {segs.map((s:any, idx:number) => (
+                                <div key={idx} style={{display:'grid', gridTemplateColumns:'minmax(90px, 140px) 70px 130px 130px 2fr 2fr 100px 100px', alignItems:'center', gap:2}}>
+                                    <div style={{display:'flex', alignItems:'center', gap:4}}>
+                                        {getLogoCompanhia(s.cia) ? (
+                                            <img src={getLogoCompanhia(s.cia)} alt={s.cia} style={{width: 20, height: 20, objectFit: 'contain'}} />
+                                        ) : (
+                                            <div style={{width: 20, height: 20, background: '#f3f4f6', borderRadius: 4, display:'flex', alignItems:'center', justifyContent:'center', color:'#a3a3a3', fontWeight:700, fontSize:10}}>LOGO</div>
+                                        )}
+                                        <span style={{fontSize:12, fontWeight:700, color:'#111'}}>{s.cia}</span>
+                                    </div>
+                                    <div style={{fontSize:12, color:'#111'}}>{s.numero_voo}</div>
+                                    <div style={{display:'flex', alignItems:'center', gap:6}}>
+                                        <span style={{fontSize:12, color:'#6b7280'}}>{formatarDataBR(s.partida)}</span>
+                                        <span style={{fontSize:12, color: corEmpresa, border:`1px solid ${corEmpresa}`, borderRadius:8, padding:'2px 6px'}}>{new Date(s.partida).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',hour12:false})}</span>
+                                    </div>
+                                    <div style={{display:'flex', alignItems:'center', gap:6}}>
+                                        <span style={{fontSize:12, color:'#6b7280'}}>{formatarDataBR(s.chegada)}</span>
+                                        <span style={{fontSize:12, color: corEmpresa, border:`1px solid ${corEmpresa}`, borderRadius:8, padding:'2px 6px'}}>{new Date(s.chegada).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',hour12:false})}</span>
+                                    </div>
+                                    <div style={{fontSize:12, fontWeight:800, color: corEmpresa, whiteSpace:'nowrap', borderLeft:'1px solid #e5e7eb', paddingLeft:6}}>{s.origem}</div>
+                                    <div style={{fontSize:12, fontWeight:800, color: corEmpresa, whiteSpace:'nowrap'}}>{s.destino}</div>
+                                    <div style={{fontSize:12, color:'#111'}}>
+                                        {d.hasBag ? <IconBag size={14} color={corEmpresa} /> : <span style={{color:'#ef4444'}}>Sem bagagem</span>}
+                                    </div>
+                                    <div style={{fontSize:18, fontWeight:800, color:'#111', textAlign:'center', transform:'translateY(-50%)'}}>
+                                        {idx === Math.floor(segs.length/2) ? Number(d.total || 0).toLocaleString('pt-BR',{style:'currency', currency:'BRL'}) : ''}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )
+                }
+
                 const segs = obterSegmentosDoVoo(voo) || []
                 const partidaStr = (() => {
                   const hp = String(voo.horario_partida || voo.horarioPartida || '')
@@ -499,18 +596,84 @@ const CotacaoView: React.FC = () => {
             </div>
           )}
           {/* Voos Internos */}
-          {voos.filter(v => v.direcao === 'INTERNO').length > 0 && (
+          {voos.filter(v => v.direcao === 'INTERNO' || (v.dados_voo && v.dados_voo.sentido === 'interno')).length > 0 && (
             <div className="mb-6">
               <div style={{background: corEmpresa, color:'#fff', borderRadius:10, padding:'6px 12px', display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10}}>
                 <div style={{display:'flex', alignItems:'center', gap:8}}>
                   <AviaoPaperSVG color="#fff" />
                   <span style={{fontSize:12, fontWeight:700}}>Opções Internas</span>
                 </div>
-                <div style={{fontSize:12, fontWeight:700}}>{voos.filter(v=>v.direcao==='INTERNO').length} {voos.filter(v=>v.direcao==='INTERNO').length === 1 ? 'Opção' : 'Opções'}</div>
+                <div style={{fontSize:12, fontWeight:700}}>{voos.filter(v=>v.direcao==='INTERNO' || (v.dados_voo && v.dados_voo.sentido === 'interno')).length} {voos.filter(v=>v.direcao==='INTERNO' || (v.dados_voo && v.dados_voo.sentido === 'interno')).length === 1 ? 'Opção' : 'Opções'}</div>
               </div>
-              {voos.filter(v => v.direcao === 'INTERNO').map((voo, i) => (
+              {voos.filter(v => v.direcao === 'INTERNO' || (v.dados_voo && v.dados_voo.sentido === 'interno')).map((voo, i) => (
                 <div key={`interno-${i}`} className="bg-white border border-gray-200 rounded-xl shadow-sm mb-2" style={{padding: 6, marginBottom: 10}}>
                   {(() => {
+                    // Tenta usar dados_voo primeiro
+                    if (voo.dados_voo) {
+                        const d = voo.dados_voo
+                        const segs = d.conexoes && d.conexoes.length > 0 
+                            ? d.conexoes.map((c: any) => ({
+                                cia: d.cia,
+                                numero_voo: c.NumeroVoo,
+                                partida: c.EmbarqueCompleto ? new Date(c.EmbarqueCompleto.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$3-$2-$1')).toISOString() : '',
+                                chegada: c.DesembarqueCompleto ? new Date(c.DesembarqueCompleto.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$3-$2-$1')).toISOString() : '',
+                                origem: c.Origem,
+                                destino: c.Destino
+                            }))
+                            : [{
+                                cia: d.cia,
+                                numero_voo: d.numero,
+                                partida: d.partida,
+                                chegada: d.chegada,
+                                origem: d.origem,
+                                destino: d.destino
+                            }]
+                        
+                        return (
+                            <div style={{display:'flex', flexDirection:'column', gap:6}}>
+                                <div style={{display:'grid', gridTemplateColumns:'minmax(90px, 140px) 70px 130px 130px 2fr 2fr 100px 100px', alignItems:'center', gap:2, fontSize:11, fontWeight:700, color:'#6b7280', padding:'1px 0'}}>
+                                    <div>Cia Aérea</div>
+                                    <div>Nº Voo</div>
+                                    <div>Saída</div>
+                                    <div style={{borderLeft:'1px solid #e5e7eb', paddingLeft:6}}>Chegada</div>
+                                    <div style={{borderLeft:'1px solid #e5e7eb', paddingLeft:6}}>Origem</div>
+                                    <div>Destino</div>
+                                    <div>Bagagem</div>
+                                    <div>Total</div>
+                                </div>
+                                {segs.map((s:any, idx:number) => (
+                                    <div key={idx} style={{display:'grid', gridTemplateColumns:'minmax(90px, 140px) 70px 130px 130px 2fr 2fr 100px 100px', alignItems:'center', gap:2}}>
+                                        <div style={{display:'flex', alignItems:'center', gap:4}}>
+                                            {getLogoCompanhia(s.cia) ? (
+                                                <img src={getLogoCompanhia(s.cia)} alt={s.cia} style={{width: 20, height: 20, objectFit: 'contain'}} />
+                                            ) : (
+                                                <div style={{width: 20, height: 20, background: '#f3f4f6', borderRadius: 4, display:'flex', alignItems:'center', justifyContent:'center', color:'#a3a3a3', fontWeight:700, fontSize:10}}>LOGO</div>
+                                            )}
+                                            <span style={{fontSize:12, fontWeight:700, color:'#111'}}>{s.cia}</span>
+                                        </div>
+                                        <div style={{fontSize:12, color:'#111'}}>{s.numero_voo}</div>
+                                        <div style={{display:'flex', alignItems:'center', gap:6}}>
+                                            <span style={{fontSize:12, color:'#6b7280'}}>{formatarDataBR(s.partida)}</span>
+                                            <span style={{fontSize:12, color: corEmpresa, border:`1px solid ${corEmpresa}`, borderRadius:8, padding:'2px 6px'}}>{new Date(s.partida).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',hour12:false})}</span>
+                                        </div>
+                                        <div style={{display:'flex', alignItems:'center', gap:6}}>
+                                            <span style={{fontSize:12, color:'#6b7280'}}>{formatarDataBR(s.chegada)}</span>
+                                            <span style={{fontSize:12, color: corEmpresa, border:`1px solid ${corEmpresa}`, borderRadius:8, padding:'2px 6px'}}>{new Date(s.chegada).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',hour12:false})}</span>
+                                        </div>
+                                        <div style={{fontSize:12, fontWeight:800, color: corEmpresa, whiteSpace:'nowrap', borderLeft:'1px solid #e5e7eb', paddingLeft:6}}>{s.origem}</div>
+                                        <div style={{fontSize:12, fontWeight:800, color: corEmpresa, whiteSpace:'nowrap'}}>{s.destino}</div>
+                                        <div style={{fontSize:12, color:'#111'}}>
+                                            {d.hasBag ? <IconBag size={14} color={corEmpresa} /> : <span style={{color:'#ef4444'}}>Sem bagagem</span>}
+                                        </div>
+                                        <div style={{fontSize:18, fontWeight:800, color:'#111', textAlign:'center', transform:'translateY(-50%)'}}>
+                                            {idx === Math.floor(segs.length/2) ? Number(d.total || 0).toLocaleString('pt-BR',{style:'currency', currency:'BRL'}) : ''}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )
+                    }
+
                     const segs = obterSegmentosDoVoo(voo) || []
                     const partidaStr = (() => {
                       const hp = String(voo.horario_partida || voo.horarioPartida || '')
@@ -572,18 +735,84 @@ const CotacaoView: React.FC = () => {
             </div>
           )}
           {/* Voos de Volta */}
-          {voos.filter(v => v.direcao === 'VOLTA').length > 0 && (
+          {voos.filter(v => v.direcao === 'VOLTA' || (v.dados_voo && v.dados_voo.sentido === 'volta')).length > 0 && (
             <div className="mb-6">
               <div style={{background: corEmpresaEscuraVolta, color:'#fff', borderRadius:10, padding:'6px 12px', display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10}}>
                 <div style={{display:'flex', alignItems:'center', gap:8}}>
                   <AviaoPaperSVG color="#fff" flip={true} rotate={180} />
                   <span style={{fontSize:12, fontWeight:700}}>Opções de Volta</span>
                 </div>
-                <div style={{fontSize:12, fontWeight:700}}>{voos.filter(v=>v.direcao==='VOLTA').length} {voos.filter(v=>v.direcao==='VOLTA').length === 1 ? 'Opção' : 'Opções'}</div>
+                <div style={{fontSize:12, fontWeight:700}}>{voos.filter(v=>v.direcao==='VOLTA' || (v.dados_voo && v.dados_voo.sentido === 'volta')).length} {voos.filter(v=>v.direcao==='VOLTA' || (v.dados_voo && v.dados_voo.sentido === 'volta')).length === 1 ? 'Opção' : 'Opções'}</div>
               </div>
-              {voos.filter(v => v.direcao === 'VOLTA').map((voo, i) => (
+              {voos.filter(v => v.direcao === 'VOLTA' || (v.dados_voo && v.dados_voo.sentido === 'volta')).map((voo, i) => (
                 <div key={`volta-${i}`} className="bg-white border border-gray-200 rounded-xl shadow-sm mb-2" style={{padding: 6, marginBottom: 10}}>
                   {(() => {
+                    // Tenta usar dados_voo primeiro
+                    if (voo.dados_voo) {
+                        const d = voo.dados_voo
+                        const segs = d.conexoes && d.conexoes.length > 0 
+                            ? d.conexoes.map((c: any) => ({
+                                cia: d.cia,
+                                numero_voo: c.NumeroVoo,
+                                partida: c.EmbarqueCompleto ? new Date(c.EmbarqueCompleto.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$3-$2-$1')).toISOString() : '',
+                                chegada: c.DesembarqueCompleto ? new Date(c.DesembarqueCompleto.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$3-$2-$1')).toISOString() : '',
+                                origem: c.Origem,
+                                destino: c.Destino
+                            }))
+                            : [{
+                                cia: d.cia,
+                                numero_voo: d.numero,
+                                partida: d.partida,
+                                chegada: d.chegada,
+                                origem: d.origem,
+                                destino: d.destino
+                            }]
+                        
+                        return (
+                            <div style={{display:'flex', flexDirection:'column', gap:6}}>
+                                <div style={{display:'grid', gridTemplateColumns:'minmax(90px, 140px) 70px 130px 130px 2fr 2fr 100px 100px', alignItems:'center', gap:2, fontSize:11, fontWeight:700, color:'#6b7280', padding:'1px 0'}}>
+                                    <div>Cia Aérea</div>
+                                    <div>Nº Voo</div>
+                                    <div>Saída</div>
+                                    <div style={{borderLeft:'1px solid #e5e7eb', paddingLeft:6}}>Chegada</div>
+                                    <div style={{borderLeft:'1px solid #e5e7eb', paddingLeft:6}}>Origem</div>
+                                    <div>Destino</div>
+                                    <div>Bagagem</div>
+                                    <div>Total</div>
+                                </div>
+                                {segs.map((s:any, idx:number) => (
+                                    <div key={idx} style={{display:'grid', gridTemplateColumns:'minmax(90px, 140px) 70px 130px 130px 2fr 2fr 100px 100px', alignItems:'center', gap:2}}>
+                                        <div style={{display:'flex', alignItems:'center', gap:4}}>
+                                            {getLogoCompanhia(s.cia) ? (
+                                                <img src={getLogoCompanhia(s.cia)} alt={s.cia} style={{width: 20, height: 20, objectFit: 'contain'}} />
+                                            ) : (
+                                                <div style={{width: 20, height: 20, background: '#f3f4f6', borderRadius: 4, display:'flex', alignItems:'center', justifyContent:'center', color:'#a3a3a3', fontWeight:700, fontSize:10}}>LOGO</div>
+                                            )}
+                                            <span style={{fontSize:12, fontWeight:700, color:'#111'}}>{s.cia}</span>
+                                        </div>
+                                        <div style={{fontSize:12, color:'#111'}}>{s.numero_voo}</div>
+                                        <div style={{display:'flex', alignItems:'center', gap:6}}>
+                                            <span style={{fontSize:12, color:'#6b7280'}}>{formatarDataBR(s.partida)}</span>
+                                            <span style={{fontSize:12, color: corEmpresa, border:`1px solid ${corEmpresa}`, borderRadius:8, padding:'2px 6px'}}>{new Date(s.partida).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',hour12:false})}</span>
+                                        </div>
+                                        <div style={{display:'flex', alignItems:'center', gap:6}}>
+                                            <span style={{fontSize:12, color:'#6b7280'}}>{formatarDataBR(s.chegada)}</span>
+                                            <span style={{fontSize:12, color: corEmpresa, border:`1px solid ${corEmpresa}`, borderRadius:8, padding:'2px 6px'}}>{new Date(s.chegada).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',hour12:false})}</span>
+                                        </div>
+                                        <div style={{fontSize:12, fontWeight:800, color: corEmpresa, whiteSpace:'nowrap', borderLeft:'1px solid #e5e7eb', paddingLeft:6}}>{s.origem}</div>
+                                        <div style={{fontSize:12, fontWeight:800, color: corEmpresa, whiteSpace:'nowrap'}}>{s.destino}</div>
+                                        <div style={{fontSize:12, color:'#111'}}>
+                                            {d.hasBag ? <IconBag size={14} color={corEmpresa} /> : <span style={{color:'#ef4444'}}>Sem bagagem</span>}
+                                        </div>
+                                        <div style={{fontSize:18, fontWeight:800, color:'#111', textAlign:'center', transform:'translateY(-50%)'}}>
+                                            {idx === Math.floor(segs.length/2) ? Number(d.total || 0).toLocaleString('pt-BR',{style:'currency', currency:'BRL'}) : ''}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )
+                    }
+
                     const segs = obterSegmentosDoVoo(voo) || []
                     const partidaStr = (() => {
                       const hp = String(voo.horario_partida || voo.horarioPartida || '')

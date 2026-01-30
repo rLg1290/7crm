@@ -114,7 +114,7 @@ const Financeiro = () => {
   const [loadingFornecedores, setLoadingFornecedores] = useState(false)
   
   // Estados para clientes
-  const [clientes, setClientes] = useState<{ id: number; nome: string; sobrenome?: string; email: string; telefone: string; cpf?: string; rg?: string; passaporte?: string; data_nascimento?: string; data_expedicao?: string; data_expiracao?: string; nacionalidade?: string; rede_social?: string; observacoes?: string; endereco?: string; cidade?: string; estado?: string; cep?: string; created_at: string }[]>([])
+  const [clientes, setClientes] = useState<{ id: number; nome: string; email: string; telefone: string; cpf?: string; rg?: string; passaporte?: string; data_nascimento?: string; data_expedicao?: string; data_expiracao?: string; nacionalidade?: string; rede_social?: string; observacoes?: string; endereco?: string; cidade?: string; estado?: string; cep?: string; created_at: string }[]>([])
   const [loadingClientes, setLoadingClientes] = useState(false)
   
   // Estados para filtros e busca
@@ -1622,7 +1622,7 @@ const Financeiro = () => {
                       entidade: (() => {
                         if (conta.cliente_id) {
                           const cliente = clientes.find(c => c.id === parseInt(conta.cliente_id || '0'))
-                          return cliente ? `${cliente.nome}${cliente.sobrenome ? ` ${cliente.sobrenome}` : ''}` : 'Cliente'
+                          return cliente ? `${cliente.nome}` : 'Cliente'
                         } else if (conta.fornecedor_id) {
                           const fornecedor = fornecedores.find(f => f.id === conta.fornecedor_id)
                           return fornecedor ? fornecedor.nome : 'Fornecedor'
@@ -2035,7 +2035,7 @@ const Financeiro = () => {
                         
                         if (conta.cliente_id) {
                           const cliente = clientes.find(c => c.id === parseInt(conta.cliente_id || '0'))
-                          nomeEntidade = cliente ? `${cliente.nome}${cliente.sobrenome ? ` ${cliente.sobrenome}` : ''}` : `Cliente ID: ${conta.cliente_id}`
+                          nomeEntidade = cliente ? `${cliente.nome}` : `Cliente ID: ${conta.cliente_id}`
                         } else if (conta.fornecedor_id) {
                           const fornecedor = fornecedores.find(f => f.id === conta.fornecedor_id)
                           nomeEntidade = fornecedor ? fornecedor.nome : `Fornecedor ID: ${conta.fornecedor_id}`
@@ -2598,7 +2598,7 @@ const Financeiro = () => {
                             <option value="">Selecione um cliente</option>
                             {clientes.map((cliente) => (
                               <option key={cliente.id} value={cliente.id}>
-                                👤 {cliente.nome}{cliente.sobrenome ? ` ${cliente.sobrenome}` : ''} - {cliente.email}
+                                👤 {cliente.nome} - {cliente.email}
                               </option>
                             ))}
                           </select>
@@ -3332,7 +3332,7 @@ const Financeiro = () => {
                     contaReceberSelecionada.cliente_id 
                       ? (() => {
                           const cliente = clientes.find(c => c.id === parseInt(contaReceberSelecionada.cliente_id || '0'))
-                          return cliente ? `${cliente.nome}${cliente.sobrenome ? ` ${cliente.sobrenome}` : ''}` : `Cliente ID: ${contaReceberSelecionada.cliente_id}`
+                          return cliente ? `${cliente.nome}` : `Cliente ID: ${contaReceberSelecionada.cliente_id}`
                         })()
                       : contaReceberSelecionada.fornecedor_id
                         ? (() => {

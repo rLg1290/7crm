@@ -228,7 +228,9 @@ const Layout: React.FC<LayoutProps> = ({ user, children }) => {
       </header>
       )}
 
-      <RoadmapCard />
+      <div className="print:hidden">
+        <RoadmapCard />
+      </div>
 
       <div className="min-h-screen flex">
         <Sidebar collapsed={sidebarCollapsed} onToggle={() => {
@@ -247,7 +249,7 @@ const Layout: React.FC<LayoutProps> = ({ user, children }) => {
 
       {chatEnabled && (
       <div
-        className="fixed bottom-6 right-6 z-50"
+        className="fixed bottom-6 right-6 z-50 print:hidden"
         onMouseEnter={() => setShowChatMenu(true)}
         onMouseLeave={() => setShowChatMenu(false)}
       >

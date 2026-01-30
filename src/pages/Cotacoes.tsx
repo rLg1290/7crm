@@ -9,7 +9,6 @@ import { useNavigate } from 'react-router-dom'
 interface Cliente {
   id: number
   nome: string
-  sobrenome?: string
   email: string
   telefone: string
   cpf?: string
@@ -70,11 +69,12 @@ interface Cotacao {
   custo?: number // 🔧 CAMPO CUSTO ADICIONADO
   dataViagem: string
   dataCriacao: string
-  status: 'LEAD' | 'COTAR' | 'AGUARDANDO_CLIENTE' | 'APROVADO' | 'REPROVADO' | 'EMITIDO'
+  status: 'LEAD' | 'COTAR' | 'AGUARDANDO_CLIENTE' | 'APROVADO' | 'REPROVADO' | 'EMITIDO' | 'OP_GERADA' | 'PAGAMENTO_CONFIRMADO' | 'EM_EMISSAO' | 'EMITIDO7C'
   destino: string
   observacoes?: string
   formapagid?: string | null // <-- ajustado para aceitar null
   parcelamento?: string // 🔧 CAMPO PARCELAMENTO ADICIONADO
+  responsavel_emissao?: string // 🔧 CAMPO RESPONSAVEL ADICIONADO
   // Campos opcionais utilizados apenas quando a linha representa um lead no Kanban
   isLead?: boolean
   leadData?: Lead
@@ -114,12 +114,13 @@ interface Voo {
   bagagemMao?: string
   // Campo para rastrear se é edição
   idBanco?: string | number  // ID real do banco para atualizações
+  dados_voo?: any // Dados ricos do buscador
 }
 
 interface FormularioCotacao {
   titulo: string;
   cliente: string;
-  status: 'LEAD' | 'COTAR' | 'AGUARDANDO_CLIENTE' | 'APROVADO' | 'REPROVADO' | 'EMITIDO';
+  status: 'LEAD' | 'COTAR' | 'AGUARDANDO_CLIENTE' | 'APROVADO' | 'REPROVADO' | 'EMITIDO' | 'OP_GERADA' | 'PAGAMENTO_CONFIRMADO' | 'EM_EMISSAO' | 'EMITIDO7C';
   numeroAdultos: number;
   numeroCriancas: number;
   numeroBebes: number;
@@ -146,6 +147,7 @@ interface FormularioCotacao {
   observacoesVenda: string;
   formapagid: string;
   parcelamento: string;
+  responsavel_emissao?: string;
 }
 
 interface PagamentoCotacao {
@@ -560,7 +562,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
       // Gerar código único para a cotação
       const codigoUnico = await gerarCodigoUnico()
       const dataAtual = new Date().toLocaleDateString('pt-BR')
-      const nomeCompleto = `${lead.cliente.nome}${lead.cliente.sobrenome ? ' ' + lead.cliente.sobrenome : ''}`
+      const nomeCompleto = `${lead.cliente.nome}`
       const titulo = `${nomeCompleto} - ${dataAtual}`
 
       // Verificar se o usuário tem empresa_id
@@ -663,7 +665,6 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
   const [showNovoClienteModal, setShowNovoClienteModal] = useState(false);
   const [novoClienteData, setNovoClienteData] = useState({ 
     nome: '', 
-    sobrenome: '',
     email: '', 
     telefone: '', 
     cpf: '', 
@@ -1001,7 +1002,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
       // Para a coluna LEAD, retornar leads formatados como cotações
       const leadsFormatados = leads.map(lead => {
         const nomeCompleto = lead.cliente ? 
-          `${lead.cliente.nome}${lead.cliente.sobrenome ? ' ' + lead.cliente.sobrenome : ''}` : 
+          `${lead.cliente.nome}` : 
           'Cliente não encontrado';
         
         return {
@@ -1023,9 +1024,16 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
       // Aplicar filtro de data também aos leads
       return filtrarCotacoesPorData(leadsFormatados)
     } else if (status === 'APROVADO') {
-      // Exibir cotações APROVADO e LANÇADO na coluna APROVADO
+      // Exibir cotações APROVADO, EMITIDO, OP_GERADA, PAGAMENTO_CONFIRMADO, EM_EMISSAO e EMITIDO7C na coluna APROVADO
       const cotacoesFiltradas = filtrarCotacoesPorData(cotacoes)
-      return cotacoesFiltradas.filter(cotacao => cotacao.status === 'APROVADO' || cotacao.status === 'EMITIDO')
+      return cotacoesFiltradas.filter(cotacao => 
+        cotacao.status === 'APROVADO' || 
+        cotacao.status === 'EMITIDO' || 
+        cotacao.status === 'OP_GERADA' || 
+        cotacao.status === 'PAGAMENTO_CONFIRMADO' ||
+        cotacao.status === 'EM_EMISSAO' ||
+        cotacao.status === 'EMITIDO7C'
+      )
     } else {
       // Para outras colunas, retornar cotações normais
       const cotacoesFiltradas = filtrarCotacoesPorData(cotacoes)
@@ -1232,7 +1240,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
     carregarPassageirosCotacao(cotacao.id)
   }
 
-  const handleEditCotacao = (cotacao: Cotacao) => {
+  const handleEditCotacao = (cotacao: Cotacao, initialTab: 'VOOS' | 'HOTEIS' | 'SERVICOS' | 'PASSAGEIROS' | 'COTACAO' | 'VENDA' | 'OP' = 'VOOS') => {
     setEditingCotacao(cotacao);
     setFormData(prev => ({
       ...prev,
@@ -1245,6 +1253,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
       valorTotal: cotacao.valor || 0,
       formapagid: (cotacao as any).formapagid || '',
       parcelamento: (cotacao as any).parcelamento || '1',
+      responsavel_emissao: (cotacao as any).responsavel_emissao || '',
       // Adicione outros campos do formulário conforme necessário
     }));
     
@@ -1268,6 +1277,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
     
     setShowModal(true);
     setCurrentStep(2);
+    setAbaAtiva(initialTab); // Use the initialTab parameter here
     // Carregar voos da cotação
     carregarVoosCotacao(cotacao.id);
     // Carregar passageiros da cotação
@@ -1291,7 +1301,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         const voosFormatados = voosData.map((voo: any) => ({
           id: voo.id.toString(),
           idBanco: voo.id, // Salvar ID original do banco
-          direcao: voo.direcao,
+          direcao: (voo.direcao || '').toUpperCase(),
           origem: voo.origem,
           destino: voo.destino,
           dataIda: voo.data_ida || '',
@@ -1310,7 +1320,8 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
           aberturaCheckin: voo.abertura_checkin || '',
           bagagemDespachada: voo.bagagem_despachada?.toString() || '0',
           bagagemMao: voo.bagagem_mao?.toString() || '0',
-          precoOpcao: typeof voo.preco_opcao !== 'undefined' && voo.preco_opcao !== null ? Number(voo.preco_opcao) : undefined
+          precoOpcao: typeof voo.preco_opcao !== 'undefined' && voo.preco_opcao !== null ? Number(voo.preco_opcao) : undefined,
+          dados_voo: voo.dados_voo
         }))
         setVoosSalvos(voosFormatados)
       }
@@ -1599,6 +1610,18 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
             )}
           </div>
         </div>
+        {(statusNormalizado === 'OP_GERADA' || statusNormalizado === 'EM_EMISSAO') && (
+            <button 
+                onClick={(e) => {
+                    e.stopPropagation();
+                    onEdit(cotacao, 'OP');
+                }}
+                className="absolute bottom-2 right-2 bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-1 rounded flex items-center gap-1 border border-blue-200 hover:bg-blue-200 transition-colors z-10"
+            >
+                <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
+                {statusNormalizado === 'OP_GERADA' ? 'OP GERADA' : 'EM EMISSÃO'}
+            </button>
+        )}
         {statusNormalizado === 'EMITIDO' && (
           <CheckCircle className="absolute bottom-2 right-2 text-green-600 w-4 h-4" />
         )}
@@ -1709,16 +1732,6 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         return `${dia}/${mes}/${ano}`;
       };
 
-      const formatarNomeCompleto = (nome: string, sobrenome?: string): string => {
-        if (!sobrenome) return nome;
-        const sobrenomes = sobrenome.trim().split(' ').filter(Boolean);
-        if (sobrenomes.length > 0) {
-          const ultimoSobrenome = sobrenomes[sobrenomes.length - 1];
-          return `${nome} ${ultimoSobrenome}`;
-        }
-        return nome;
-      };
-
       const formatarHorario = (horario: string): string => {
         if (!horario) return '-';
         if (horario.length === 8 && horario.includes(':')) {
@@ -1813,7 +1826,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                 <div class="reservado-por-titulo">
                   <div class="reservado-por-left">
                     <span class="reservado-label">Reservado por:</span>
-                    <span class="cliente-nome-principal">${clienteInfo ? formatarNomeCompleto(clienteInfo.nome, clienteInfo.sobrenome) : 'Cliente não informado'}</span>
+                    <span class="cliente-nome-principal">${clienteInfo ? clienteInfo.nome : 'Cliente não informado'}</span>
                   </div>
                   <div class="codigo-agencia-right">
                     <span class="codigo-value">${cotacao?.codigo || cotacao?.id}</span>
@@ -2439,7 +2452,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
               </button>
               <div>
                 <h2 className="text-2xl font-bold text-gray-900">Nova Cotação</h2>
-                <p className="text-gray-600">Cliente: {clienteSelecionado ? `${clienteSelecionado.nome}${clienteSelecionado.sobrenome ? ' ' + clienteSelecionado.sobrenome : ''}` : ''}</p>
+                <p className="text-gray-600">Cliente: {clienteSelecionado ? `${clienteSelecionado.nome}` : ''}</p>
               </div>
             </div>
           </div>
@@ -2454,8 +2467,9 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                   { id: 'SERVICOS', label: 'Serviços', icon: Route },
                   { id: 'PASSAGEIROS', label: 'Passageiros', icon: Users },
                   { id: 'COTACAO', label: 'Cotação', icon: DollarSign },
-                  ...(formData.status === 'EMITIDO' || formData.status === 'APROVADO' ? [{ id: 'VENDA', label: 'VENDA', icon: CheckCircle }] : [])
-                ].map((aba) => (
+  ...(formData.status === 'EMITIDO' || formData.status === 'APROVADO' ? [{ id: 'VENDA', label: 'VENDA', icon: CheckCircle }] : []),
+  ...(formData.status === 'OP_GERADA' || formData.status === 'PAGAMENTO_CONFIRMADO' || formData.status === 'EM_EMISSAO' || formData.status === 'EMITIDO' || formData.status === 'EMITIDO7C' ? [{ id: 'OP', label: 'OP', icon: FileText }] : [])
+].map((aba) => (
                   <button
                     key={aba.id}
                     onClick={() => setAbaAtiva(aba.id as any)}
@@ -2475,6 +2489,222 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
 
           {/* Conteúdo das abas */}
           <div className="min-h-96">
+            {abaAtiva === 'OP' && (
+              <div className="space-y-6 p-4">
+                  <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                    <FileText className="h-6 w-6 text-blue-600" />
+                    Status da Ordem de Pagamento (OP)
+                  </h3>
+                  
+                  <div className="relative border-l-2 border-gray-200 ml-3 space-y-8 py-2">
+                    {/* 1. OP Gerada */}
+                    <div className="relative pl-8">
+                      <div className={`absolute -left-[9px] top-0 w-4 h-4 rounded-full border-2 ${['OP_GERADA', 'PAGAMENTO_CONFIRMADO', 'EM_EMISSAO', 'EMITIDO', 'EMITIDO7C'].includes(formData.status) ? 'bg-green-500 border-green-500' : 'bg-white border-gray-300'}`}></div>
+                      <div className="flex flex-col">
+                        <span className={`font-bold ${['OP_GERADA', 'PAGAMENTO_CONFIRMADO', 'EM_EMISSAO', 'EMITIDO', 'EMITIDO7C'].includes(formData.status) ? 'text-green-700' : 'text-gray-500'}`}>OP Gerada com sucesso</span>
+                        <span className="text-xs text-gray-500">A solicitação de emissão foi criada pelo sistema.</span>
+                      </div>
+                    </div>
+
+                    {/* 2. Pagamento Confirmado */}
+                    <div className="relative pl-8">
+                      <div className={`absolute -left-[9px] top-0 w-4 h-4 rounded-full border-2 ${['PAGAMENTO_CONFIRMADO', 'EM_EMISSAO', 'EMITIDO', 'EMITIDO7C'].includes(formData.status) ? 'bg-green-500 border-green-500' : 'bg-white border-gray-300'}`}></div>
+                      <div className="flex flex-col">
+                        <span className={`font-bold ${['PAGAMENTO_CONFIRMADO', 'EM_EMISSAO', 'EMITIDO', 'EMITIDO7C'].includes(formData.status) ? 'text-green-700' : 'text-gray-500'}`}>Pagamento Confirmado</span>
+                        <span className="text-xs text-gray-500">O pagamento foi validado pelo setor financeiro.</span>
+                      </div>
+                    </div>
+
+                    {/* 3. OP Assumida */}
+                    <div className="relative pl-8">
+                      <div className={`absolute -left-[9px] top-0 w-4 h-4 rounded-full border-2 ${['EM_EMISSAO', 'EMITIDO', 'EMITIDO7C'].includes(formData.status) ? 'bg-blue-500 border-blue-500' : 'bg-white border-gray-300'}`}></div>
+                      <div className="flex flex-col">
+                         <span className={`font-bold ${['EM_EMISSAO', 'EMITIDO', 'EMITIDO7C'].includes(formData.status) ? 'text-blue-700' : 'text-gray-500'}`}>
+                            OP Assumida
+                         </span>
+                         {formData.status === 'EM_EMISSAO' && (
+                            <span className="text-sm text-blue-600 font-medium mt-1">
+                               Emissão em andamento por: <span className="font-bold">{formData.responsavel_emissao || 'Admin (Suporte 7C)'}</span>
+                            </span>
+                         )}
+                         <span className="text-xs text-gray-500">Um atendente iniciou o processo de emissão.</span>
+                      </div>
+                    </div>
+
+                    {/* 4. Emissão Confirmada (Final) */}
+                    <div className="relative pl-8">
+                      <div className={`absolute -left-[9px] top-0 w-4 h-4 rounded-full border-2 ${['EMITIDO', 'EMITIDO7C'].includes(formData.status) ? 'bg-green-600 border-green-600' : 'bg-white border-gray-300'}`}></div>
+                      <div className="flex flex-col">
+                        <span className={`font-bold ${['EMITIDO', 'EMITIDO7C'].includes(formData.status) ? 'text-green-700' : 'text-gray-500'}`}>Emissão Confirmada</span>
+                        <span className="text-xs text-gray-500">Bilhetes emitidos e enviados.</span>
+                      </div>
+                    </div>
+
+                    {/* Se houver erro ou cancelamento (Simulado visualmente se status fosse erro) */}
+                    {/* 
+                    <div className="relative pl-8">
+                      <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full border-2 bg-red-500 border-red-500"></div>
+                      <div className="flex flex-col">
+                        <span className="font-bold text-red-700">Cancelado / Erro</span>
+                        <span className="text-xs text-red-600">Motivo: Falha no pagamento ou retarificação.</span>
+                      </div>
+                    </div> 
+                    */}
+                  </div>
+
+                  {/* Informações adicionais estáticas para contexto */}
+                  <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg mt-8">
+                    <h4 className="font-bold text-yellow-800 mb-2 flex items-center gap-2">
+                        <AlertCircle className="h-4 w-4" />
+                        Atenção
+                    </h4>
+                    <p className="text-sm text-yellow-700">
+                        Caso ocorra algum erro (como alteração de tarifa ou falha no pagamento), nossa equipe entrará em contato imediatamente via WhatsApp para solucionar.
+                    </p>
+                  </div>
+
+                  {/* Informações de Voos e Passageiros (Read-only) */}
+                  <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+                     {/* Voos Solicitados */}
+                     <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 col-span-1 md:col-span-2">
+                        <h4 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
+                            <Plane className="h-4 w-4 text-blue-600" />
+                            Voos Solicitados
+                        </h4>
+                        <div className="space-y-4">
+                            {voosSalvos.length > 0 ? (
+                                voosSalvos.map((voo, idx) => {
+                                    if (!voo.dados_voo && voo.observacoes && voo.observacoes.startsWith('Conexão ')) return null;
+                                    
+                                    const dadosVoo = voo.dados_voo || {};
+                                    const connections = dadosVoo.DetalhesConexoes || dadosVoo.conexoes || [];
+                                    const hasConnections = connections.length > 0;
+
+                                    // Helper para pegar logo
+                                    const logoUrl = dadosVoo.CompanhiaAparente 
+                                        ? `https://content.rrdns.com.br/logos/airlines/${dadosVoo.CompanhiaAparente.replace(/\s*\(.*?\)\s*/g, '').toLowerCase()}.png`
+                                        : '';
+
+                                    return (
+                                        <div key={idx} className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                                            {/* Cabeçalho do Voo */}
+                                            <div className="bg-gray-100 px-4 py-2 flex justify-between items-center border-b border-gray-200">
+                                                <div className="flex items-center gap-2">
+                                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${voo.direcao === 'IDA' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                                                        {voo.direcao}
+                                                    </span>
+                                                    <span className="text-sm font-semibold text-gray-700">
+                                                        {formatarDataSemTimezone(voo.dataIda)}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    {logoUrl && <img src={logoUrl} alt="" className="h-5 w-auto object-contain" />}
+                                                    <span className="text-xs font-medium text-gray-600">{voo.companhia}</span>
+                                                </div>
+                                            </div>
+
+                                            <div className="p-4">
+                                                <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+                                                    {/* Origem */}
+                                                    <div className="text-center md:text-left min-w-[80px]">
+                                                        <div className="text-2xl font-bold text-gray-800">{formatarHorario(voo.horarioPartida)}</div>
+                                                        <div className="text-lg font-bold text-gray-600">{voo.origem}</div>
+                                                    </div>
+
+                                                    {/* Linha do Tempo Visual */}
+                                                    <div className="flex-1 w-full px-4 flex flex-col items-center">
+                                                        <div className="text-xs text-gray-500 mb-3 font-mono text-center">
+                                                            <span className="font-bold">Voo {voo.numeroVoo}</span> • {voo.duracao}
+                                                        </div>
+                                                        <div className="relative w-full h-[2px] bg-gray-300 flex items-center justify-between mb-2">
+                                                            <div className="w-2 h-2 rounded-full bg-gray-400"></div>
+                                                            
+                                                            {/* Indicador de Conexões na Linha */}
+                                                            {hasConnections && (
+                                                                <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white px-2 z-10">
+                                                                    <span className="text-[10px] text-orange-600 font-bold px-2 py-0.5 bg-orange-50 rounded-full border border-orange-100 shadow-sm whitespace-nowrap">
+                                                                        {connections.length} Parada(s)
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                            
+                                                            <div className="w-2 h-2 rounded-full bg-gray-400"></div>
+                                                            
+                                                            {/* Avião centralizado se não houver conexões ou deslocado se houver */}
+                                                            {!hasConnections && (
+                                                               <Plane className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-4 h-4 text-blue-500 rotate-90" />
+                                                            )}
+                                                        </div>
+                                                        <div className="text-xs text-gray-400 font-medium">
+                                                            {voo.classe}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Destino */}
+                                                    <div className="text-center md:text-right min-w-[80px]">
+                                                        <div className="text-2xl font-bold text-gray-800">{formatarHorario(voo.horarioChegada)}</div>
+                                                        <div className="text-lg font-bold text-gray-600">{voo.destino}</div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Detalhes de Conexão (Expansível ou Lista) */}
+                                                {hasConnections && (
+                                                    <div className="mt-4 pt-4 border-t border-gray-100 bg-gray-50/50 rounded p-3 text-sm">
+                                                        <p className="text-xs font-bold text-gray-500 mb-2 uppercase tracking-wide">Itinerário Detalhado:</p>
+                                                        <div className="space-y-3">
+                                                            {connections.map((conn: any, cIdx: number) => (
+                                                                <div key={cIdx} className="flex flex-wrap items-center gap-2 text-xs text-gray-700">
+                                                                    <span className="font-mono font-bold text-blue-700">{conn.Embarque?.substring(0,5)}</span>
+                                                                    <span className="font-bold">{conn.Origem}</span>
+                                                                    <ArrowRight className="w-3 h-3 text-gray-400" />
+                                                                    <span className="font-bold">{conn.Destino}</span>
+                                                                    <span className="font-mono font-bold text-blue-700">{conn.Desembarque?.substring(0,5)}</span>
+                                                                    <span className="text-gray-400 mx-1">|</span>
+                                                                    <span className="text-gray-500">Voo {conn.NumeroVoo} ({conn.CompanhiaAparente})</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )
+                                })
+                            ) : (
+                                <p className="text-sm text-gray-500 italic">Nenhum voo registrado.</p>
+                            )}
+                        </div>
+                     </div>
+
+                     {/* Passageiros */}
+                     <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                        <h4 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
+                            <Users className="h-4 w-4 text-blue-600" />
+                            Passageiros para Emissão
+                        </h4>
+                        <div className="space-y-2">
+                            {formData.passageiros && formData.passageiros.length > 0 ? (
+                                formData.passageiros.map((p, idx) => (
+                                    <div key={idx} className="bg-white p-3 rounded border border-gray-200 text-sm flex justify-between items-center">
+                                        <div>
+                                            <div className="font-bold text-gray-900">{p.nome}</div>
+                                            <div className="text-xs text-gray-500">
+                                                {p.tipoDocumento === 'cpf' ? 'CPF' : 'Passaporte'}: {p.documento || 'N/A'}
+                                            </div>
+                                        </div>
+                                        <div className="text-xs bg-gray-100 px-2 py-1 rounded text-gray-600 uppercase">
+                                            {p.tipo}
+                                        </div>
+                                    </div>
+                                ))
+                            ) : (
+                                <p className="text-sm text-gray-500 italic">Nenhum passageiro registrado.</p>
+                            )}
+                        </div>
+                     </div>
+                  </div>
+              </div>
+            )}
             {abaAtiva === 'VOOS' && (
               <div>
                 <div className="mb-4">
@@ -2501,10 +2731,84 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                 </div>
                 {/* Lista de voos salvos do tipo */}
                 <div className="mb-4">
-                  {voosSalvos.filter(v => v.direcao === abaVooAtiva).length === 0 && (
+                  {voosSalvos.filter(v => v.direcao === abaVooAtiva && !(!v.dados_voo && v.observacoes && v.observacoes.startsWith('Conexão '))).length === 0 && (
                     <div className="text-center text-gray-500 py-4">Nenhum voo adicionado para este tipo</div>
                   )}
-                  {voosSalvos.filter(v => v.direcao === abaVooAtiva).map((voo, idx) => (
+                  {voosSalvos.filter(v => v.direcao === abaVooAtiva).map((voo, idx) => {
+                    // Se for um segmento de conexão (filho) e não tiver dados_voo, ocultar da lista principal
+                    // pois será exibido dentro do card do pai (que tem dados_voo)
+                    if (!voo.dados_voo && voo.observacoes && voo.observacoes.startsWith('Conexão ')) {
+                        return null;
+                    }
+
+                    // Se tiver dados_voo, renderiza card rico com conexões
+                    if (voo.dados_voo) {
+                        const d = voo.dados_voo
+                        const connections = d.DetalhesConexoes || d.conexoes || []
+                        
+                        // Helper para horário
+                        const getTime = (dateStr: any) => {
+                            if (!dateStr || typeof dateStr !== 'string') return '00:00'
+                            try {
+                                if (dateStr.includes('T')) return dateStr.split('T')[1].substring(0, 5)
+                                if (dateStr.includes(' ')) {
+                                    const parts = dateStr.split(' ')
+                                    if (parts[1] && parts[1].includes(':')) return parts[1].substring(0, 5)
+                                }
+                                return dateStr.substring(0, 5)
+                            } catch (e) { return '00:00' }
+                        }
+
+                        return (
+                            <div key={voo.id} className="bg-white border border-gray-200 rounded-lg mb-2 overflow-hidden shadow-sm">
+                                <div className="px-3 py-2 bg-gray-50 border-b border-gray-100 flex justify-between items-center">
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-bold text-gray-700">{d.CompanhiaAparente || d.cia}</span>
+                                        <span className="text-sm text-gray-500">Voo {d.id || d.numero}</span>
+                                        <span className={`ml-2 px-2 py-0.5 rounded text-[10px] font-bold uppercase ${voo.direcao === 'IDA' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                                            {voo.direcao}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <button onClick={() => editarVooSalvo(voo)} className="p-1 text-blue-600 hover:text-blue-700" title="Editar voo"><Edit className="h-4 w-4" /></button>
+                                        <button onClick={async () => await removerVooSalvo(voo.id)} className="p-1 text-red-600 hover:text-red-700" title="Remover"><Trash2 className="h-4 w-4" /></button>
+                                    </div>
+                                </div>
+                                
+                                <div className="p-4">
+                                    <div className="flex items-center justify-between">
+                                        <div className="text-center">
+                                            <div className="text-lg font-bold text-gray-800">{getTime(d.Embarque || d.partida)}</div>
+                                            <div className="text-xs text-gray-500 font-mono">{d.Origem || d.origem}</div>
+                                        </div>
+                                        
+                                        <div className="flex-1 px-4 flex flex-col items-center">
+                                            <div className="text-[10px] text-gray-400 mb-1">{d.Duracao || d.duracao}</div>
+                                            <div className="w-full h-[1px] bg-gray-300 relative">
+                                                <Plane className="w-3 h-3 text-blue-500 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 rotate-90" />
+                                            </div>
+                                            <div className="text-[10px] text-green-600 mt-1 font-medium">
+                                                {connections.length === 0 ? 'Direto' : `${connections.length} Parada(s)`}
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="text-center">
+                                            <div className="text-lg font-bold text-gray-800">{getTime(d.Desembarque || d.chegada)}</div>
+                                            <div className="text-xs text-gray-500 font-mono">{d.Destino || d.destino}</div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="mt-3 pt-3 border-t border-gray-100 flex justify-between items-center text-xs text-gray-500">
+                                        <span>{formatarDataSemTimezone(d.Data || d.partida)}</span>
+                                        {d.Tarifa && <span>Tarifa: {d.Tarifa}</span>}
+                                    </div>
+                                </div>
+                            </div>
+                        )
+                    }
+
+                    // Fallback para voos manuais (sem dados_voo)
+                    return (
                     <div key={voo.id} className="bg-white border border-gray-200 rounded-lg mb-2 overflow-hidden">
                       <div className="px-3 py-2">
                         <div className="flex items-center gap-2">
@@ -2554,7 +2858,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                         </div>
                       </div>
                     </div>
-                  ))}
+                  )})}
                 </div>
                 {/* Formulário de voo em edição */}
                 {formData.voos.length > 0 && formData.voos[0].direcao === abaVooAtiva && (
@@ -4687,7 +4991,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
           custo: cotacao.custo || 0, // 🔧 CAMPO CUSTO ADICIONADO
           dataViagem: cotacao.data_viagem || '',
           dataCriacao: cotacao.data_criacao,
-          status: cotacao.status as 'LEAD' | 'COTAR' | 'AGUARDANDO_CLIENTE' | 'APROVADO' | 'REPROVADO' | 'EMITIDO',
+          status: (cotacao.status?.toUpperCase() || 'COTAR') as 'LEAD' | 'COTAR' | 'AGUARDANDO_CLIENTE' | 'APROVADO' | 'REPROVADO' | 'EMITIDO',
           destino: cotacao.destino || '',
           observacoes: cotacao.observacoes || '',
           formapagid: cotacao.formapagid || '',
@@ -4769,7 +5073,6 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         data_nascimento: novoClienteData.data_nascimento || null,
         data_expedicao: novoClienteData.data_expedicao || null,
         data_expiracao: novoClienteData.data_expiracao || null,
-        sobrenome: novoClienteData.sobrenome || '',
       }
 
       const { data, error } = await supabase
@@ -4926,7 +5229,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         responsavel: '',
         categoria: 'vendas',
         cliente: leadSelecionado.cliente ? 
-          `${leadSelecionado.cliente.nome}${leadSelecionado.cliente.sobrenome ? ' ' + leadSelecionado.cliente.sobrenome : ''}` : 
+          `${leadSelecionado.cliente.nome}` : 
           ''
       })
       alert('Tarefa criada com sucesso!')
@@ -5019,7 +5322,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         ...prev,
         categoria: 'Comercial',
         cliente: leadSelecionado.cliente ? 
-          `${leadSelecionado.cliente.nome}${leadSelecionado.cliente.sobrenome ? ' ' + leadSelecionado.cliente.sobrenome : ''}` : 
+          `${leadSelecionado.cliente.nome}` : 
           ''
       }))
     }
@@ -5366,7 +5669,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
     if (!id) return '-'
     const cliente = clientes.find(c => String(c.id) === String(id))
     if (!cliente) return '-'
-    return `${cliente.nome}${cliente.sobrenome ? ' ' + cliente.sobrenome : ''}`
+    return `${cliente.nome}`
   }
 
   const formatarNomeParaCard = (id: string | undefined) => {
@@ -6446,7 +6749,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                           >
                             <div className="flex items-center justify-between">
                               <div>
-                                <h3 className="font-semibold text-gray-900">{cliente.nome} {cliente.sobrenome}</h3>
+                                <h3 className="font-semibold text-gray-900">{cliente.nome}</h3>
                                 <p className="text-sm text-gray-600">{cliente.email}</p>
                                 <p className="text-sm text-gray-500">{cliente.telefone}</p>
                               </div>
@@ -6480,25 +6783,15 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                 /* Modo Criação de Novo Cliente */
                 <div>
                   <div className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                    <div className="mb-6">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Nome *</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Nome Completo *</label>
                         <input
                           type="text"
                           value={novoClienteData.nome}
                           onChange={(e) => setNovoClienteData(prev => ({ ...prev, nome: e.target.value }))}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                          placeholder="Nome"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Sobrenome</label>
-                        <input
-                          type="text"
-                          value={novoClienteData.sobrenome}
-                          onChange={(e) => setNovoClienteData(prev => ({ ...prev, sobrenome: e.target.value }))}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                          placeholder="Sobrenome"
+                          placeholder="Nome Completo"
                         />
                       </div>
                     </div>
@@ -6679,27 +6972,20 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <div className="mb-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nome *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nome Completo *</label>
                   <input
                     type="text"
                     value={novoClienteData.nome}
                     onChange={(e) => setNovoClienteData(prev => ({ ...prev, nome: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                    placeholder="Nome"
+                    placeholder="Nome Completo"
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Sobrenome *</label>
-                  <input
-                    type="text"
-                    value={novoClienteData.sobrenome}
-                    onChange={(e) => setNovoClienteData(prev => ({ ...prev, sobrenome: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                    placeholder="Sobrenome"
-                  />
-                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">E-mail *</label>
                   <input 
@@ -6803,8 +7089,8 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                   className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold flex items-center gap-2" 
                   onClick={async () => {
                     // Validação
-                    if (!novoClienteData.nome || !novoClienteData.sobrenome || !novoClienteData.email || !novoClienteData.telefone) { 
-                      alert('Por favor, preencha nome, sobrenome, email e telefone'); 
+                    if (!novoClienteData.nome || !novoClienteData.email || !novoClienteData.telefone) { 
+                      alert('Por favor, preencha nome, email e telefone'); 
                       return; 
                     }
                     
@@ -6812,7 +7098,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                     const empresaId = user?.user_metadata?.empresa_id;
                     const payload = {
                       nome: novoClienteData.nome,
-                      sobrenome: novoClienteData.sobrenome,
+                      // sobrenome: removido
                       email: novoClienteData.email,
                       telefone: novoClienteData.telefone,
                       cpf: novoClienteData.cpf || null,
@@ -7116,7 +7402,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                       <div>
                         <label className="block text-sm font-medium text-gray-600 mb-1">Nome Completo</label>
                         <p className="text-lg font-semibold text-gray-900">
-                          {leadSelecionado.cliente?.nome} {leadSelecionado.cliente?.sobrenome || ''}
+                          {leadSelecionado.cliente?.nome}
                         </p>
                       </div>
                       
@@ -7627,7 +7913,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                     <select value={formVenda.cliente} onChange={e => setFormVenda(prev => ({ ...prev, cliente: e.target.value }))} className="w-full border rounded px-3 py-2">
                       <option value="">Selecione</option>
                       {clientes.map(cliente => (
-                        <option key={cliente.id} value={cliente.id}>{cliente.nome}{cliente.sobrenome ? ` ${cliente.sobrenome}` : ''}</option>
+                        <option key={cliente.id} value={cliente.id}>{cliente.nome}</option>
                       ))}
                     </select>
                   </div>

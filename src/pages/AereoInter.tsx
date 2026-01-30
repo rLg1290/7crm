@@ -1,9 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Plane, Search, Minus, Plus, Calendar, MapPin, Users, Settings, Luggage, Ban, ChevronLeft, ChevronRight } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import { Plane, Search, Minus, Plus, Calendar, MapPin, Users, Luggage, Ban, ChevronLeft, ChevronRight, Check } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
-import { MOCK_FLIGHTS } from '../data/mockFlights'
 import { Flight } from '../types/flight'
 import { useNavigate } from 'react-router-dom'
+import { useSearchCache } from '../hooks/useSearchCache'
+import SearchTimer from '../components/SearchTimer'
+import { useCotacao } from '../contexts/CotacaoContext'
+import { getAirlineLogoUrl } from '../utils/airlineLogos'
 
 interface BuscaPassagem {
   origem: string
@@ -15,6 +19,216 @@ interface BuscaPassagem {
   criancas: number
   bebes: number
   classe: string
+}
+
+const PriceTooltip = ({ breakdown, total }: { breakdown: any, total: number }) => {
+  const [open, setOpen] = useState(false)
+  const [style, setStyle] = useState<React.CSSProperties>({})
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  
+  const handleMouseEnter = () => {
+    if (buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect()
+      const newStyle: React.CSSProperties = {}
+      
+      // Vertical Positioning
+      // Check space above (prefer above if it fits, or if more space than below)
+      // We assume tooltip height approx 300px
+      const spaceAbove = rect.top
+      const spaceBelow = window.innerHeight - rect.bottom
+      
+      if (spaceAbove > 320 || spaceAbove > spaceBelow) {
+        // Place above
+        newStyle.bottom = window.innerHeight - rect.top + 10
+        newStyle.top = 'auto'
+      } else {
+        // Place below
+        newStyle.top = rect.bottom + 10
+        newStyle.bottom = 'auto'
+      }
+
+      // Horizontal Positioning
+      // Default: Align right edges (tooltip grows left) because button is usually on the right
+      const spaceLeft = rect.right
+      if (spaceLeft > 300) {
+         newStyle.right = window.innerWidth - rect.right
+         newStyle.left = 'auto'
+      } else {
+         newStyle.left = rect.left
+         newStyle.right = 'auto'
+      }
+
+      setStyle(newStyle)
+    }
+    setOpen(true)
+  }
+
+  if (!breakdown) return null
+
+  return (
+    <>
+      <div className="relative inline-block" onMouseEnter={handleMouseEnter} onMouseLeave={() => setOpen(false)}>
+        <button ref={buttonRef} className="text-teal-600 hover:text-teal-800 p-1 rounded-full hover:bg-teal-100 transition-colors cursor-help">
+          <Search className="h-4 w-4 transform rotate-90" />
+        </button>
+      </div>
+      
+      {open && createPortal(
+        <div 
+          className="fixed w-72 bg-white rounded-lg shadow-xl border border-gray-200 z-[9999] text-sm pointer-events-none"
+          style={style}
+        >
+          <div className="p-4 space-y-2 text-gray-700">
+            <div className="font-semibold border-b pb-2 mb-2 text-gray-900">Detalhamento do Preço</div>
+            
+            <div className="flex justify-between">
+              <span>Adultos ({breakdown.numAdultos}):</span>
+              <span>R$ {breakdown.adultoUnit.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+            </div>
+            
+            {breakdown.numCriancas > 0 && (
+              <div className="flex justify-between">
+                <span>Crianças ({breakdown.numCriancas}):</span>
+                <span>R$ {breakdown.criancaUnit.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+              </div>
+            )}
+            
+            {breakdown.numBebes > 0 && (
+              <div className="flex justify-between">
+                <span>Bebês ({breakdown.numBebes}):</span>
+                <span>R$ {breakdown.bebeUnit.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+              </div>
+            )}
+            
+            <div className="flex justify-between text-gray-600">
+              <span>Taxa de Embarque (por pax):</span>
+              <span>R$ {breakdown.taxaUnit.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+            </div>
+            
+            <div className="border-t my-2 border-dashed border-gray-300"></div>
+            
+            <div className="flex justify-between font-medium">
+              <span>Total Tarifa:</span>
+              <span>R$ {breakdown.totalTarifa.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+            </div>
+            
+            <div className="flex justify-between font-medium">
+              <span>Total Taxa de Embarque:</span>
+              <span>R$ {breakdown.totalTaxa.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+            </div>
+            
+            <div className="flex justify-between font-medium text-gray-500">
+              <span>DU:</span>
+              <span>R$ {breakdown.du.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+            </div>
+            
+            <div className="border-t my-2 border-gray-300"></div>
+            
+            <div className="flex justify-between font-bold text-lg text-teal-700">
+              <span>Total:</span>
+              <span>R$ {total.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
+  )
+}
+
+const AddToQuoteButton = ({ voo, isSelected, onAdd }: { voo: any, isSelected: boolean, onAdd: (sentido: 'ida'|'volta'|'interno') => void }) => {
+  const [open, setOpen] = useState(false)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const [style, setStyle] = useState<React.CSSProperties>({})
+
+  const handleMouseEnter = () => {
+    if (buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect()
+      const newStyle: React.CSSProperties = {}
+      
+      // Horizontal: Place to the left of the button, slightly overlapping
+      newStyle.right = window.innerWidth - rect.left - 10
+      newStyle.left = 'auto'
+      
+      // Vertical: Center roughly
+      newStyle.top = rect.top - 50 
+      
+      // Adjust if it goes off screen
+      if (newStyle.top < 10) newStyle.top = 10
+      
+      setStyle(newStyle)
+    }
+    setOpen(true)
+  }
+
+  return (
+    <div className="relative inline-block" onMouseEnter={handleMouseEnter} onMouseLeave={() => setOpen(false)}>
+      <button
+        ref={buttonRef}
+        disabled={isSelected}
+        className={`p-2 rounded-lg transition-colors ${isSelected ? 'bg-green-100 text-green-700' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'}`}
+        title={isSelected ? "Adicionado à cotação" : "Adicionar à cotação"}
+      >
+        {isSelected ? <Check className="h-5 w-5" /> : <Plus className="h-5 w-5" />}
+      </button>
+
+      {/* Invisible bridge to prevent mouse leave when moving to popover */}
+      {open && !isSelected && (
+        <div 
+          className="fixed z-[9998]"
+          style={{
+            top: style.top,
+            right: window.innerWidth - (buttonRef.current?.getBoundingClientRect().right || 0),
+            width: 50, // Bridge width
+            height: 140, // Height enough to cover the menu
+          }}
+          onMouseEnter={() => setOpen(true)}
+        />
+      )}
+
+      {open && !isSelected && createPortal(
+        <div 
+          className="fixed bg-white rounded-xl shadow-xl border border-gray-200 z-[9999] overflow-hidden animate-in fade-in zoom-in duration-200 w-40"
+          style={style}
+          onMouseEnter={() => setOpen(true)}
+          onMouseLeave={() => setOpen(false)}
+        >
+          <div className="p-1 flex flex-col">
+            <button 
+              onClick={() => { onAdd('ida'); setOpen(false) }}
+              className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-teal-50 hover:text-teal-700 rounded-lg transition-colors text-left"
+            >
+              <div className="p-1.5 bg-teal-100 rounded-md text-teal-600">
+                <Plane className="h-3 w-3 transform rotate-45" />
+              </div>
+              <span className="font-medium">Voo de Ida</span>
+            </button>
+            
+            <button 
+              onClick={() => { onAdd('interno'); setOpen(false) }}
+              className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 rounded-lg transition-colors text-left"
+            >
+              <div className="p-1.5 bg-blue-100 rounded-md text-blue-600">
+                <Plane className="h-3 w-3 transform rotate-90" />
+              </div>
+              <span className="font-medium">Voo Interno</span>
+            </button>
+
+            <button 
+              onClick={() => { onAdd('volta'); setOpen(false) }}
+              className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-orange-50 hover:text-orange-700 rounded-lg transition-colors text-left"
+            >
+              <div className="p-1.5 bg-orange-100 rounded-md text-orange-600">
+                <Plane className="h-3 w-3 transform -rotate-135" />
+              </div>
+              <span className="font-medium">Voo de Volta</span>
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  )
 }
 
 const AereoInter = () => {
@@ -35,7 +249,6 @@ const AereoInter = () => {
   const [searched, setSearched] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   const [showPaxDropdown, setShowPaxDropdown] = useState(false)
-  const [showClassDropdown, setShowClassDropdown] = useState(false)
   const [resultados, setResultados] = useState<any[]>([])
   const [origemSugestoes, setOrigemSugestoes] = useState<any[]>([])
   const [destinoSugestoes, setDestinoSugestoes] = useState<any[]>([])
@@ -51,7 +264,10 @@ const AereoInter = () => {
   const [currentPageVolta, setCurrentPageVolta] = useState(1)
   const [airlineLogos, setAirlineLogos] = useState<Record<string, string>>({})
   const [empresaId, setEmpresaId] = useState<string | null>(null)
+  const [defaultDuRate, setDefaultDuRate] = useState<number>(0)
   const itemsPerPage = 10
+  const { expiresAt, saveCache, loadCache, clearCache } = useSearchCache('flight_search_inter')
+  const { adicionarVoo, voosSelecionados } = useCotacao()
   const resultadosStoreRef = useRef<{domestico:any[], internacional:any[]}>({domestico:[], internacional:[]})
   const variantStoreRef = useRef<{domestico:Record<string,number>, internacional:Record<string,number>}>({domestico:{}, internacional:{}})
   const formStoreRef = useRef<{domestico:BuscaPassagem, internacional:BuscaPassagem}>({
@@ -62,46 +278,11 @@ const AereoInter = () => {
       origem: '', destino: '', dataIda: '', dataVolta: '', somenteIda: false, adultos: 1, criancas: 0, bebes: 0, classe: 'ECONÔMICA'
     }
   })
-  const processFlights = (flights: Flight[], date: string) => {
-    if (!date) return []
-    const [year, month, day] = date.split('-')
-    const newDateBr = `${day}/${month}/${year}`
-
-    return flights.map(f => {
-      const [origDate, origTime] = f.Embarque.split(' ')
-      
-      // Calculate arrival date based on duration
-      const [durH, durM] = f.Duracao.split(':').map(Number)
-      const startDate = new Date(Number(year), Number(month)-1, Number(day), ...origTime.split(':').map(Number))
-      const endDate = new Date(startDate.getTime() + (durH * 60 + durM) * 60000)
-      
-      const endDay = String(endDate.getDate()).padStart(2, '0')
-      const endMonth = String(endDate.getMonth() + 1).padStart(2, '0')
-      const endYear = endDate.getFullYear()
-      const endHour = String(endDate.getHours()).padStart(2, '0')
-      const endMin = String(endDate.getMinutes()).padStart(2, '0')
-      
-      const newEmbarque = `${newDateBr} ${origTime}`
-      const newDesembarque = `${endDay}/${endMonth}/${endYear} ${endHour}:${endMin}`
-      
-      return {
-        ...f,
-        Embarque: newEmbarque,
-        Desembarque: newDesembarque,
-        Data: `${year}-${month}-${day}T${origTime}:00`
-      }
-    })
-  }
 
   const mergeVoos = (items: any[]) => {
     const map = new Map<string, any>()
     
     items.forEach((r) => {
-      // Validate required fields
-      if (!r.Embarque || !r.Desembarque) {
-        return
-      }
-
       // Grouping key: Airline + Origin + Destination + Departure Time + Arrival Time
       const key = `${r.CompanhiaAparente}|${r.Origem}|${r.Destino}|${r.Embarque}|${r.Desembarque}`
       
@@ -113,52 +294,61 @@ const AereoInter = () => {
 
       const variante = {
         id: r.id,
-        tarifa: r.Tarifa,
+        tipotarifario: r.tipotarifario,
+        tarifa: r.Tarifa || (r.BagagemDespachada > 0 ? 'Standard' : 'Light'),
         bag_mao_qty: 1, 
         bag_23_qty: r.BagagemDespachada,
         adulto: adultoVal,
         crianca: criancaVal,
         bebe: bebeVal,
-        taxa: r.TaxaEmbarque,
-        total_unitario: adultoVal + r.TaxaEmbarque, // Just for sorting/reference
+        taxa: r.TaxaEmbarque || 0,
+        total_unitario: adultoVal + (r.TaxaEmbarque || 0), // Just for sorting/reference
         original: r
       }
       
       if (!map.has(key)) {
         // Calculate arrival ISO
         let arrivalISO = ''
-        try {
-          if (r.Desembarque && typeof r.Desembarque === 'string') {
+        if (r.Desembarque && r.Desembarque.includes('/')) {
             const parts = r.Desembarque.split('/')
             if (parts.length >= 3) {
-              const [d, m, y_time] = parts
-              const timeParts = y_time.trim().split(' ')
-              if (timeParts.length >= 2) {
-                const [y, time] = timeParts
-                arrivalISO = `${y}-${m}-${d}T${time}:00`
-              }
+                const [d, m, y_time] = parts
+                const timeParts = y_time.split(' ')
+                if (timeParts.length >= 2) {
+                    const [y, time] = timeParts
+                    arrivalISO = `${y}-${m}-${d}T${time}:00`
+                }
             }
-          }
-        } catch (e) {
-          console.error('Erro ao processar data:', r.Desembarque)
         }
-
+        
+        // Fallback if parsing failed
         if (!arrivalISO) {
-           // Fallback if parsing fails, try to use Data if available or current date
-           arrivalISO = r.Data || new Date().toISOString()
+             // Try to construct from Data + Duration if available
+             if (r.Data && r.Duracao) {
+                try {
+                    const [durH, durM] = r.Duracao.split(':').map(Number)
+                    const startDate = new Date(r.Data)
+                    const endDate = new Date(startDate.getTime() + (durH * 60 + durM) * 60000)
+                    arrivalISO = endDate.toISOString().slice(0, 19)
+                } catch (e) {
+                    arrivalISO = r.Data // Last resort
+                }
+             } else {
+                 arrivalISO = r.Data || new Date().toISOString()
+             }
         }
 
         map.set(key, {
           cia: r.CompanhiaAparente,
           // Remove first 3 chars for display ID as requested
-          numero: r.id && r.id.length > 3 ? r.id.substring(3) : r.id, 
+          numero: r.id.length > 3 ? r.id.substring(3) : r.id, 
           origem: r.Origem,
           destino: r.Destino,
           partida: r.Data, 
           chegada: arrivalISO,
           partida_fmt: r.Embarque,
           chegada_fmt: r.Desembarque,
-          duracao: r.Duracao || '00:00',
+          duracao: r.Duracao,
           escala: r.NumeroConexoes,
           detalhesConexoes: r.DetalhesConexoes,
           sentido: r.Sentido,
@@ -176,18 +366,14 @@ const AereoInter = () => {
   }
 
   const fallbackAirports = [
-    { id: 'GIG', iata_code: 'GIG', name: 'Rio de Janeiro', municipality: 'Rio de Janeiro', iso_country: 'BR' },
-    { id: 'GRU', iata_code: 'GRU', name: 'São Paulo/Guarulhos', municipality: 'Guarulhos', iso_country: 'BR' },
-    { id: 'CGH', iata_code: 'CGH', name: 'São Paulo/Congonhas', municipality: 'São Paulo', iso_country: 'BR' },
-    { id: 'SDU', iata_code: 'SDU', name: 'Rio de Janeiro/Santos Dumont', municipality: 'Rio de Janeiro', iso_country: 'BR' },
-    { id: 'BSB', iata_code: 'BSB', name: 'Brasília', municipality: 'Brasília', iso_country: 'BR' },
-    { id: 'CNF', iata_code: 'CNF', name: 'Belo Horizonte/Confins', municipality: 'Confins', iso_country: 'BR' },
-    { id: 'REC', iata_code: 'REC', name: 'Recife', municipality: 'Recife', iso_country: 'BR' },
-    { id: 'SSA', iata_code: 'SSA', name: 'Salvador', municipality: 'Salvador', iso_country: 'BR' },
-    { id: 'MIA', iata_code: 'MIA', name: 'Miami', municipality: 'Miami', iso_country: 'US' },
-    { id: 'JFK', iata_code: 'JFK', name: 'New York JFK', municipality: 'New York', iso_country: 'US' },
-    { id: 'LIS', iata_code: 'LIS', name: 'Lisbon', municipality: 'Lisbon', iso_country: 'PT' },
-    { id: 'CDG', iata_code: 'CDG', name: 'Paris Charles de Gaulle', municipality: 'Paris', iso_country: 'FR' }
+    { id: 'MIA', iata_code: 'MIA', name: 'Miami International', municipality: 'Miami', iso_country: 'US' },
+    { id: 'JFK', iata_code: 'JFK', name: 'John F. Kennedy', municipality: 'New York', iso_country: 'US' },
+    { id: 'LIS', iata_code: 'LIS', name: 'Lisbon Portela', municipality: 'Lisbon', iso_country: 'PT' },
+    { id: 'CDG', iata_code: 'CDG', name: 'Charles de Gaulle', municipality: 'Paris', iso_country: 'FR' },
+    { id: 'LHR', iata_code: 'LHR', name: 'Heathrow', municipality: 'London', iso_country: 'GB' },
+    { id: 'MAD', iata_code: 'MAD', name: 'Adolfo Suárez Madrid–Barajas', municipality: 'Madrid', iso_country: 'ES' },
+    { id: 'FCO', iata_code: 'FCO', name: 'Leonardo da Vinci–Fiumicino', municipality: 'Rome', iso_country: 'IT' },
+    { id: 'EZE', iata_code: 'EZE', name: 'Ezeiza', municipality: 'Buenos Aires', iso_country: 'AR' }
   ]
   const [origemSelecionada, setOrigemSelecionada] = useState<any | null>(null)
   const [destinoSelecionada, setDestinoSelecionada] = useState<any | null>(null)
@@ -217,19 +403,13 @@ const AereoInter = () => {
     setFormData(prev => {
       const novoValor = operacao === 'incrementar' ? prev[tipo] + 1 : Math.max(0, prev[tipo] - 1)
       
-      // Validar limite mínimo de adultos
-      if (tipo === 'adultos' && novoValor < 1) {
-        return prev
-      }
+      if (tipo === 'adultos' && novoValor < 1) return prev
       
-      // Validar limite total de passageiros
       const total = (tipo === 'adultos' ? novoValor : prev.adultos) + 
                    (tipo === 'criancas' ? novoValor : prev.criancas) + 
                    (tipo === 'bebes' ? novoValor : prev.bebes)
       
-      if (total > 9) {
-        return prev
-      }
+      if (total > 9) return prev
       
       return {
         ...prev,
@@ -246,20 +426,18 @@ const AereoInter = () => {
 
     if (!empresaId) {
       console.warn('ID da empresa não encontrado. Usando ID de fallback para teste.')
-      // Fallback or alert? For now using the user provided example ID if state is empty, or better: warn user
-      // alert('Erro: Usuário não vinculado a uma empresa.')
-      // return
     }
     
     setLoading(true)
     setSearched(true)
     setCollapsed(true)
     setResultados([])
+    setSelectedCias([])
+    clearCache()
 
     try {
       // Logic to determine 'codigo' for International
-      // Assuming INTERNACIONAL_NORMAL for now based on user pattern for domestico
-      let codigo = 'INTERNACIONAL_NORMAL'
+      let codigo = 'INTERNACIONAL_NORMAL' // Changed from DOMESTICO_NORMAL
       
       // Date Formatting (YYYY-MM-DD -> DD/MM/YYYY)
       const formatDate = (dateStr: string) => {
@@ -270,7 +448,7 @@ const AereoInter = () => {
 
       const payload = {
         codigo: codigo,
-        auth: empresaId || "8e23591e-e0af-42f8-a002-6df935bab14a", // Fallback for dev/testing if needed
+        auth: empresaId || "8e23591e-e0af-42f8-a002-6df935bab14a", 
         origem: formData.origem,
         destino: formData.destino,
         tipoViagem: formData.somenteIda ? "IDA" : "IDA_VOLTA",
@@ -282,9 +460,13 @@ const AereoInter = () => {
         bebe: formData.bebes
       }
 
-      console.log('Enviando Payload (Inter):', JSON.stringify(payload, null, 2))
+      const isDev = import.meta.env.DEV;
+      const endpoint = isDev ? '/api/7capi/search' : '/proxy.php';
 
-      const response = await fetch('/api/7capi/search', {
+      console.log('✈️ Buscando voos internacionais via:', endpoint);
+      console.log('📤 Payload enviado:', JSON.stringify(payload, null, 2));
+
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -294,25 +476,41 @@ const AereoInter = () => {
 
       if (!response.ok) {
         const errorText = await response.text()
-        console.error('Erro na API:', response.status)
+        console.error('❌ Erro na API:', response.status, errorText)
         throw new Error(`Erro na API: ${response.status}`)
       }
 
       const data = await response.json()
+      console.log('📥 Resposta da API:', JSON.stringify(data, null, 2));
       
-      // The API returns { status: "success", data: [...], meta: {...} }
-      // We need to pass data.data to mergeVoos
       if (data && Array.isArray(data.data)) {
         const merged = mergeVoos(data.data)
         resultadosStoreRef.current.internacional = merged
         setResultados(merged)
+        
+        const cleanResults = merged.map((r: any) => ({
+          ...r,
+          variantes: r.variantes ? r.variantes.map((v: any) => {
+            const { original, ...rest } = v
+            return rest
+          }) : []
+        }))
+        saveCache({ ...formData, origemSelecionada, destinoSelecionada }, cleanResults, 'internacional')
       } else if (Array.isArray(data)) {
-        // Fallback in case API returns direct array
         const merged = mergeVoos(data)
         resultadosStoreRef.current.internacional = merged
         setResultados(merged)
+
+        const cleanResults = merged.map((r: any) => ({
+          ...r,
+          variantes: r.variantes ? r.variantes.map((v: any) => {
+            const { original, ...rest } = v
+            return rest
+          }) : []
+        }))
+        saveCache({ ...formData, origemSelecionada, destinoSelecionada }, cleanResults, 'internacional')
       } else {
-        console.error('Formato de resposta inesperado:', data)
+        console.error('Formato de resposta inesperado')
         setResultados([])
       }
 
@@ -325,6 +523,20 @@ const AereoInter = () => {
   }
 
   const totalPassageiros = formData.adultos + formData.criancas + formData.bebes
+
+  useEffect(() => {
+    const fetchCache = async () => {
+      const cached = await loadCache()
+      if (cached && cached.type === 'internacional') {
+        setFormData(cached.formData)
+        setResultados(cached.results)
+        resultadosStoreRef.current.internacional = cached.results
+        setSearched(true)
+        setCollapsed(true)
+      }
+    }
+    fetchCache()
+  }, [loadCache])
 
   useEffect(() => {
     setLoading(false)
@@ -347,17 +559,18 @@ const AereoInter = () => {
           setAirlineLogos(logoMap)
         }
 
-        // Get Current User Company ID
+        // Get Current User Company ID and Default DU
         const { data: { user } } = await supabase.auth.getUser()
         if (user) {
           const { data: profile } = await supabase
             .from('profiles')
-            .select('empresa_id')
+            .select('empresa_id, default_du_rate')
             .eq('id', user.id)
             .single()
           
-          if (profile && profile.empresa_id) {
-            setEmpresaId(profile.empresa_id)
+          if (profile) {
+            if (profile.empresa_id) setEmpresaId(profile.empresa_id)
+            if (profile.default_du_rate) setDefaultDuRate(Number(profile.default_du_rate))
           }
         }
       }
@@ -393,13 +606,14 @@ const AereoInter = () => {
       let items: any[] = []
       if (isSupabaseConfigured) {
         const { data, error } = await supabase.rpc('search_airports', { term, limit_rows: 8 })
+        // Removed BR filter for International
         items = error ? [] : (data || [])
       }
       if (!items.length) {
         items = fallbackAirports.filter(a => (
-          a.iata_code.toLowerCase().includes(term.toLowerCase()) ||
+          (a.iata_code.toLowerCase().includes(term.toLowerCase()) ||
           a.name.toLowerCase().includes(term.toLowerCase()) ||
-          (a.municipality || '').toLowerCase().includes(term.toLowerCase())
+          (a.municipality || '').toLowerCase().includes(term.toLowerCase()))
         ))
       }
       setOrigemSugestoes(items)
@@ -422,13 +636,14 @@ const AereoInter = () => {
       let items: any[] = []
       if (isSupabaseConfigured) {
         const { data, error } = await supabase.rpc('search_airports', { term, limit_rows: 8 })
+        // Removed BR filter for International
         items = error ? [] : (data || [])
       }
       if (!items.length) {
         items = fallbackAirports.filter(a => (
-          a.iata_code.toLowerCase().includes(term.toLowerCase()) ||
+          (a.iata_code.toLowerCase().includes(term.toLowerCase()) ||
           a.name.toLowerCase().includes(term.toLowerCase()) ||
-          (a.municipality || '').toLowerCase().includes(term.toLowerCase())
+          (a.municipality || '').toLowerCase().includes(term.toLowerCase()))
         ))
       }
       setDestinoSugestoes(items)
@@ -463,66 +678,173 @@ const AereoInter = () => {
     return Array.from(cias).sort()
   }, [resultados])
 
-  // Initialize selectedCias with all available airlines when results change
   useEffect(() => {
     if (uniqueCias.length > 0 && selectedCias.length === 0) {
       setSelectedCias(uniqueCias)
     }
   }, [uniqueCias])
 
+  const parseConnectionDate = (dateStr: string) => {
+    if (!dateStr) return new Date()
+    
+    // Tenta extrair data e hora no formato "dd/MM/yyyy HH:mm"
+    // Isso resolve o caso onde a string vem duplicada ex: "20/03/2026 05:25 05:25"
+    const match = dateStr.match(/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}:\d{2})/)
+    if (match) {
+        const [_, day, month, year, time] = match
+        return new Date(`${year}-${month}-${day}T${time}:00`)
+    }
+    
+    // Fallback para conversão simples se não casar com regex acima
+    try {
+        const isoLike = dateStr.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$3-$2-$1')
+        const d = new Date(isoLike)
+        return isNaN(d.getTime()) ? new Date() : d
+    } catch (e) {
+        return new Date()
+    }
+  }
+
+  const [selectedIda, setSelectedIda] = useState<any | null>(null)
+  const [selectedVolta, setSelectedVolta] = useState<any | null>(null)
+
+  const handleSelectFlight = (flight: any, type: 'ida' | 'volta') => {
+    if (type === 'ida') {
+      if (selectedIda?.uniqueId === flight.uniqueId) {
+        setSelectedIda(null)
+        // If unselecting Ida, clear Volta as well to reset state
+        setSelectedVolta(null)
+      } else {
+        setSelectedIda(flight)
+        if (selectedVolta && selectedVolta.cia !== flight.cia) {
+          setSelectedVolta(null)
+        }
+      }
+    } else {
+      if (!selectedIda) {
+        alert('Por favor, selecione o voo de ida primeiro.')
+        return
+      }
+      if (selectedVolta?.uniqueId === flight.uniqueId) {
+        setSelectedVolta(null)
+      } else {
+        setSelectedVolta(flight)
+      }
+    }
+  }
+
+  const handleAddSelectedToQuote = () => {
+    if (selectedIda) {
+      adicionarVoo({
+        id: `${selectedIda.numero}-${Date.now()}-ida`,
+        cia: selectedIda.cia,
+        numero: selectedIda.numero,
+        partida: selectedIda.partida,
+        chegada: selectedIda.chegada,
+        origem: selectedIda.origem,
+        destino: selectedIda.destino,
+        duracao: selectedIda.duracao,
+        tarifa: selectedIda.tarifa,
+        hasBag: selectedIda.hasBag,
+        total: selectedIda.total,
+        sentido: 'ida',
+        conexoes: selectedIda.conexoes,
+        breakdown: selectedIda.breakdown
+      })
+    }
+    
+    if (selectedVolta) {
+      setTimeout(() => {
+        adicionarVoo({
+          id: `${selectedVolta.numero}-${Date.now()}-volta`,
+          cia: selectedVolta.cia,
+          numero: selectedVolta.numero,
+          partida: selectedVolta.partida,
+          chegada: selectedVolta.chegada,
+          origem: selectedVolta.origem,
+          destino: selectedVolta.destino,
+          duracao: selectedVolta.duracao,
+          tarifa: selectedVolta.tarifa,
+          hasBag: selectedVolta.hasBag,
+          total: selectedVolta.total,
+          sentido: 'volta',
+          conexoes: selectedVolta.conexoes,
+          breakdown: selectedVolta.breakdown
+        })
+      }, 50)
+    }
+
+    setSelectedIda(null)
+    setSelectedVolta(null)
+    alert('Voos selecionados adicionados ao orçamento!')
+  }
+
   const linhas = React.useMemo(() => {
     const list: any[] = []
     resultados.forEach((r) => {
-      // Filter by Airline (Multiple Selection)
       if (selectedCias.length > 0 && !selectedCias.includes(r.cia)) return
 
-      // Iterate over ALL variants to display them as separate rows
+      // Filter by Selected Outbound Airline (prevent mixing airlines)
+      if (selectedIda && r.cia !== selectedIda.cia) return
+
       const variantes = (r as any).variantes || []
       
-      variantes.forEach((v: any) => {
-        // Bag logic based on Tariff
-        const hasBag = v.tarifa === 'Standard'
+      variantes.forEach((v: any, vIdx: number) => {
+        const hasBag = v.bag_23_qty > 0
 
-        // Filter by Baggage (Only Bag)
         if (onlyBag && !hasBag) return
 
-        // Calculate Total based on user formula:
         const numAdultos = formData.adultos
         const numCriancas = formData.criancas
         const numBebes = formData.bebes
         const numTotal = numAdultos + numCriancas + numBebes
         
-        const totalPreco = 
+        const totalSemDu = 
           (v.adulto * numAdultos) + 
           (v.crianca * numCriancas) + 
           (v.bebe * numBebes) + 
           (v.taxa * numTotal)
+        
+        const duValue = totalSemDu * (defaultDuRate / 100)
+        const totalPreco = totalSemDu + duValue
 
-        // Check if connection details exist
         const hasConexoes = r.escala > 0 && r.detalhesConexoes && r.detalhesConexoes.length > 0
         const conexoes = hasConexoes ? r.detalhesConexoes : []
+        
+        const uniqueId = `${r.numero}-${v.tarifa}-${totalPreco.toFixed(2)}-${vIdx}`
 
         list.push({
+          uniqueId,
           cia: r.cia,
-          numero: r.numero, // Already processed in mergeVoos (id minus 3 chars)
+          numero: r.numero, 
           partida: r.partida,
           chegada: r.chegada,
           origem: r.origem,
           destino: r.destino,
           escala: r.escala,
           conexoes: conexoes,
-          // Bag column logic
           hasBag: hasBag,
           tarifa: v.tarifa,
-          classe: v.tarifa, // Using tarifa as class for now as per previous, or mapped
+          classe: v.tarifa, 
           total: totalPreco,
+          breakdown: {
+            adultoUnit: v.adulto,
+            criancaUnit: v.crianca,
+            bebeUnit: v.bebe,
+            taxaUnit: v.taxa,
+            numAdultos,
+            numCriancas,
+            numBebes,
+            totalTarifa: (v.adulto * numAdultos) + (v.crianca * numCriancas) + (v.bebe * numBebes),
+            totalTaxa: (v.taxa * numTotal),
+            du: duValue
+          },
           duracao: r.duracao,
           sentido: r.sentido
         })
       })
     })
 
-    // Sorting Logic
     return list.sort((a, b) => {
       switch (sortOrder) {
         case 'price_asc':
@@ -538,31 +860,24 @@ const AereoInter = () => {
         case 'arrival_desc':
           return new Date(b.chegada).getTime() - new Date(a.chegada).getTime()
         case 'duration_asc': {
-          if (!a.duracao || !b.duracao) return 0
-          try {
-            const [hA, mA] = a.duracao.split(':').map(Number)
-            const [hB, mB] = b.duracao.split(':').map(Number)
-            return (hA * 60 + mA) - (hB * 60 + mB)
-          } catch (e) { return 0 }
+          const [hA, mA] = a.duracao.split(':').map(Number)
+          const [hB, mB] = b.duracao.split(':').map(Number)
+          return (hA * 60 + mA) - (hB * 60 + mB)
         }
         case 'duration_desc': {
-          if (!a.duracao || !b.duracao) return 0
-          try {
-            const [hA, mA] = a.duracao.split(':').map(Number)
-            const [hB, mB] = b.duracao.split(':').map(Number)
-            return (hB * 60 + mB) - (hA * 60 + mA)
-          } catch (e) { return 0 }
+          const [hA, mA] = a.duracao.split(':').map(Number)
+          const [hB, mB] = b.duracao.split(':').map(Number)
+          return (hB * 60 + mB) - (hA * 60 + mA)
         }
         default:
           return a.total - b.total
       }
     })
-  }, [resultados, formData, selectedCias, onlyBag, sortOrder])
+  }, [resultados, formData, selectedCias, onlyBag, sortOrder, defaultDuRate, selectedIda])
 
   const linhasIda = React.useMemo(() => linhas.filter(l => !l.sentido || l.sentido === 'ida'), [linhas])
   const linhasVolta = React.useMemo(() => linhas.filter(l => l.sentido === 'volta'), [linhas])
 
-  // Pagination Logic
   const totalPagesIda = Math.ceil(linhasIda.length / itemsPerPage)
   const totalPagesVolta = Math.ceil(linhasVolta.length / itemsPerPage)
   
@@ -576,7 +891,6 @@ const AereoInter = () => {
     return linhasVolta.slice(start, start + itemsPerPage)
   }, [currentPageVolta, linhasVolta])
 
-  // Reset page when results change or filter changes
   useEffect(() => {
     setCurrentPageIda(1)
   }, [linhasIda.length])
@@ -586,20 +900,16 @@ const AereoInter = () => {
   }, [linhasVolta.length])
 
   const getAirlineLogo = (cia: string) => {
-    // Try to find exact match or partial match in loaded logos
     const upperCia = cia.trim().toUpperCase()
     
-    // Direct match check from Supabase data
     for (const [key, url] of Object.entries(airlineLogos)) {
       if (upperCia.includes(key)) return url
     }
 
-    // Fallback to static URLs if not found in DB
-    if (upperCia.includes('GOL')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b3/Gol_Transportes_A%C3%A9reos_-_Logo.svg/2560px-Gol_Transportes_A%C3%A9reos_-_Logo.svg.png'
-    if (upperCia.includes('AZUL')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/1e/Azul_Linhas_Aereas_Brasileiras_logo.svg/2560px-Azul_Linhas_Aereas_Brasileiras_logo.svg.png'
-    if (upperCia.includes('LATAM')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/fe/Latam-logo_-v_%28Indigo%29.svg/2560px-Latam-logo_-v_%28Indigo%29.svg.png'
-    if (upperCia.includes('AVIANCA')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/6/64/Avianca_logo.svg/2560px-Avianca_logo.svg.png'
-    if (upperCia.includes('COPA')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/82/Copa_Airlines_Logo.svg/2560px-Copa_Airlines_Logo.svg.png'
+    const staticUrl = getAirlineLogoUrl(upperCia)
+    if (staticUrl) return staticUrl
+
+    if (upperCia.includes('GOL')) return 'https://pics.avs.io/200/200/G3.png'
     
     return null
   }
@@ -607,7 +917,6 @@ const AereoInter = () => {
   return (
     <div className="p-4 sm:p-6 lg:p-8 w-full max-w-[1920px] mx-auto bg-gray-50 min-h-screen">
       <div className="w-full">
-        {/* Cabeçalho + Barra compacta (pill) */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
@@ -618,7 +927,7 @@ const AereoInter = () => {
                 <div className="flex items-center gap-2">
                   <h1 className="text-2xl font-bold text-gray-900">Aéreo • Internacional</h1>
                 </div>
-                <p className="text-sm text-gray-500">Busque e compare passagens aéreas</p>
+                <p className="text-sm text-gray-500">Busque e compare passagens aéreas internacionais</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -817,15 +1126,9 @@ const AereoInter = () => {
                     </div>
                     <div className="border-t border-gray-200 pt-3">
                       <div className="relative">
-                        <button type="button" onClick={() => setShowClassDropdown(v => !v)} className="w-full text-left px-3 py-2 border border-gray-300 rounded-md text-sm">
-                          {formData.classe === 'EXECUTIVA' ? 'Classe: Executiva' : 'Classe: Econômica'}
-                        </button>
-                        {showClassDropdown && (
-                          <div className="absolute z-10 mt-2 w-full bg-white border border-gray-200 rounded-md shadow p-2">
-                            <button type="button" onClick={() => { setFormData(prev => ({...prev, classe: 'ECONÔMICA'})); setShowClassDropdown(false)}} className="block w-full text-left px-3 py-2 rounded hover:bg-gray-100 text-sm">Econômica</button>
-                            <button type="button" onClick={() => { setFormData(prev => ({...prev, classe: 'EXECUTIVA'})); setShowClassDropdown(false)}} className="block w-full text-left px-3 py-2 rounded hover:bg-gray-100 text-sm">Executiva</button>
-                          </div>
-                        )}
+                        <div className="w-full text-left px-3 py-2 border border-gray-200 bg-gray-50 rounded-md text-sm text-gray-500 cursor-not-allowed">
+                          Classe: Econômica
+                        </div>
                       </div>
                     </div>
                     <div className="flex justify-end">
@@ -881,7 +1184,7 @@ const AereoInter = () => {
                   <div className="absolute inset-0 rounded-full border-4 border-teal-600 border-t-transparent animate-spin"></div>
                   <Plane className="absolute inset-0 m-auto h-8 w-8 text-teal-600 animate-bounce" />
                 </div>
-                <div className="mt-4 text-gray-700 font-medium">Buscando voos...</div>
+                <div className="mt-4 text-gray-700 font-medium">Buscando voos internacionais...</div>
                 <div className="mt-2 w-full max-w-md">
                   <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
                     <div className="h-2 bg-teal-600 animate-[loading_1.8s_ease_infinite]" style={{ width: '40%' }}></div>
@@ -902,12 +1205,21 @@ const AereoInter = () => {
                     )}
                   </div>
                   <div className="flex items-center gap-2">
+                    <SearchTimer 
+                      expiresAt={expiresAt} 
+                      onExpire={() => { 
+                        setSearched(false)
+                        setResultados([])
+                        setCollapsed(false)
+                        clearCache()
+                      }} 
+                    />
                     {/* Airline Filter */}
                     <div className="relative group">
                       <button className="px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white flex items-center gap-2">
                         <span>Cias Aéreas ({selectedCias.length})</span>
                       </button>
-                      <div className="absolute top-full left-0 pt-2 w-48 z-20 hidden group-hover:block">
+                      <div className="absolute top-full left-0 pt-2 w-48 z-[100] hidden group-hover:block">
                         <div className="bg-white border border-gray-200 rounded-lg shadow-xl p-2">
                           <div className="space-y-1">
                             <button
@@ -982,6 +1294,132 @@ const AereoInter = () => {
                 <div className="p-0 border border-gray-200 rounded-lg shadow-sm bg-white">
                   {/* Tabela de Resultados */}
                     <>
+                    {/* Resumo da Seleção */}
+                    {(selectedIda || selectedVolta) && (
+                      <div className="mb-8 sticky top-0 z-50 bg-white border border-gray-200 rounded-xl shadow-2xl animate-in fade-in slide-in-from-top-5 overflow-hidden">
+                        <div className="bg-gradient-to-r from-blue-600 to-blue-800 px-6 py-4 flex items-center justify-between text-white">
+                           <h3 className="text-lg font-bold flex items-center gap-2">
+                             <Check className="h-5 w-5 bg-white text-blue-600 rounded-full p-1" />
+                             Voos Selecionados
+                           </h3>
+                           <div className="text-right">
+                              <span className="text-blue-100 text-sm block">Total da Seleção</span>
+                              <span className="font-bold text-xl">R$ {((selectedIda?.total || 0) + (selectedVolta?.total || 0)).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
+                           </div>
+                        </div>
+                        
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm border-collapse">
+                             <thead className="bg-gray-50 text-gray-500 uppercase text-xs font-semibold">
+                                <tr>
+                                   <th className="py-3 px-4 text-left w-20">Tipo</th>
+                                   <th className="py-3 px-4 text-left">Companhia</th>
+                                   <th className="py-3 px-4 text-left">Voo</th>
+                                   <th className="py-3 px-4 text-left">Horários</th>
+                                   <th className="py-3 px-4 text-left">Rota</th>
+                                   <th className="py-3 px-4 text-center">Tarifa</th>
+                                   <th className="py-3 px-4 text-right">Valor</th>
+                                </tr>
+                             </thead>
+                             <tbody className="divide-y divide-gray-100">
+                                {selectedIda && (
+                                   <tr className="hover:bg-blue-50/30 transition-colors">
+                                      <td className="py-3 px-4">
+                                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                            IDA
+                                         </span>
+                                      </td>
+                                      <td className="py-3 px-4">
+                                         <div className="flex items-center gap-3">
+                                            {getAirlineLogo(selectedIda.cia) && (
+                                               <img src={getAirlineLogo(selectedIda.cia)!} alt={selectedIda.cia} className="h-6 w-auto object-contain" />
+                                            )}
+                                            <span className="font-medium text-gray-900">{selectedIda.cia}</span>
+                                         </div>
+                                      </td>
+                                      <td className="py-3 px-4 text-gray-600">{selectedIda.numero}</td>
+                                      <td className="py-3 px-4">
+                                         <div className="flex flex-col text-xs">
+                                            <span className="font-medium text-gray-900">
+                                               {new Date(selectedIda.partida).toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}
+                                            </span>
+                                            <span className="text-gray-500">
+                                               {new Date(selectedIda.partida).toLocaleDateString('pt-BR')}
+                                            </span>
+                                         </div>
+                                      </td>
+                                      <td className="py-3 px-4">
+                                         <div className="flex items-center gap-1 text-gray-700 font-medium">
+                                            {selectedIda.origem} <ChevronRight className="h-3 w-3 text-gray-400" /> {selectedIda.destino}
+                                         </div>
+                                      </td>
+                                      <td className="py-3 px-4 text-center">
+                                         <span className="text-xs uppercase bg-gray-100 px-2 py-1 rounded text-gray-600 font-medium">
+                                            {selectedIda.tarifa}
+                                         </span>
+                                      </td>
+                                      <td className="py-3 px-4 text-right font-bold text-gray-900">
+                                         R$ {selectedIda.total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}
+                                      </td>
+                                   </tr>
+                                )}
+                                {selectedVolta && (
+                                   <tr className="hover:bg-orange-50/30 transition-colors">
+                                      <td className="py-3 px-4">
+                                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                                            VOLTA
+                                         </span>
+                                      </td>
+                                      <td className="py-3 px-4">
+                                         <div className="flex items-center gap-3">
+                                            {getAirlineLogo(selectedVolta.cia) && (
+                                               <img src={getAirlineLogo(selectedVolta.cia)!} alt={selectedVolta.cia} className="h-6 w-auto object-contain" />
+                                            )}
+                                            <span className="font-medium text-gray-900">{selectedVolta.cia}</span>
+                                         </div>
+                                      </td>
+                                      <td className="py-3 px-4 text-gray-600">{selectedVolta.numero}</td>
+                                      <td className="py-3 px-4">
+                                         <div className="flex flex-col text-xs">
+                                            <span className="font-medium text-gray-900">
+                                               {new Date(selectedVolta.partida).toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}
+                                            </span>
+                                            <span className="text-gray-500">
+                                               {new Date(selectedVolta.partida).toLocaleDateString('pt-BR')}
+                                            </span>
+                                         </div>
+                                      </td>
+                                      <td className="py-3 px-4">
+                                         <div className="flex items-center gap-1 text-gray-700 font-medium">
+                                            {selectedVolta.origem} <ChevronRight className="h-3 w-3 text-gray-400" /> {selectedVolta.destino}
+                                         </div>
+                                      </td>
+                                      <td className="py-3 px-4 text-center">
+                                         <span className="text-xs uppercase bg-gray-100 px-2 py-1 rounded text-gray-600 font-medium">
+                                            {selectedVolta.tarifa}
+                                         </span>
+                                      </td>
+                                      <td className="py-3 px-4 text-right font-bold text-gray-900">
+                                         R$ {selectedVolta.total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}
+                                      </td>
+                                   </tr>
+                                )}
+                             </tbody>
+                          </table>
+                        </div>
+                        
+                        <div className="bg-gray-50 px-6 py-4 flex items-center justify-end border-t border-gray-200">
+                          <button
+                            onClick={handleEmitir}
+                            className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-6 rounded-lg shadow-md hover:shadow-lg transition-all flex items-center gap-2 transform active:scale-95"
+                          >
+                            <FileText className="h-5 w-5" />
+                            Emitir
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Tabela de Ida */}
                     {linhasIda.length > 0 && (
                       <div className="mb-12">
@@ -1007,19 +1445,26 @@ const AereoInter = () => {
                                 <th className="py-3 px-2 text-left">destino(s)</th>
                                 <th className="py-3 px-2 text-center">tarifa</th>
                                 <th className="py-3 px-2 text-center">bag.</th>
+                                <th className="py-3 px-2 text-center">ação</th>
                                 <th className="py-3 pl-2 pr-4 text-right">total</th>
                               </tr>
                             </thead>
                             <tbody className="bg-white">
                               {paginatedIda.map((l, i) => {
+                                const isSelected = voosSelecionados.some(v => 
+                                  v.numero === l.numero && 
+                                  v.tarifa === l.tarifa && 
+                                  v.partida === l.partida && 
+                                  v.sentido === 'ida'
+                                )
                                 if (l.conexoes && l.conexoes.length > 0) {
                                   return (
                                     <React.Fragment key={`${l.numero}-${l.tarifa}-${i}`}>
                                       {l.conexoes.map((c: any, cIdx: number) => {
-                                        const partC = c.EmbarqueCompleto ? new Date(c.EmbarqueCompleto.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$3-$2-$1')) : new Date()
-                                        const chegC = c.DesembarqueCompleto ? new Date(c.DesembarqueCompleto.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$3-$2-$1')) : new Date()
+                                        const partC = parseConnectionDate(c.EmbarqueCompleto || c.DataEmbarque)
+                                        const chegC = parseConnectionDate(c.DesembarqueCompleto || c.DataDesembarque)
                                         return (
-                                          <tr key={`${i}-${cIdx}`} className={`group bg-gray-50/50 ${cIdx === l.conexoes.length - 1 ? 'border-b border-gray-400' : ''}`}>
+                                          <tr key={`${i}-${cIdx}`} onClick={() => handleSelectFlight(l, 'ida')} className={`cursor-pointer group ${selectedIda?.uniqueId === l.uniqueId ? 'bg-blue-50' : 'bg-gray-50/50'} ${cIdx === l.conexoes.length - 1 ? 'border-b border-gray-400' : ''}`}>
                                             {cIdx === 0 && (
                                               <td className="py-3 pl-4 pr-2 align-middle" rowSpan={l.conexoes.length}>
                                                 {getAirlineLogo(l.cia) ? (
@@ -1040,10 +1485,34 @@ const AereoInter = () => {
                                                 <td className="py-3 px-2 text-center align-middle" rowSpan={l.conexoes.length}>
                                                   {l.hasBag ? <div className="flex items-center justify-center text-teal-600" title="Bagagem Inclusa"><Luggage className="h-5 w-5" /></div> : <div className="flex items-center justify-center text-red-400" title="Sem Bagagem"><Ban className="h-5 w-5" /></div>}
                                                 </td>
+                                                <td className="py-3 px-2 text-center align-middle" rowSpan={l.conexoes.length}>
+                                                  <AddToQuoteButton 
+                                                    voo={l}
+                                                    isSelected={isSelected}
+                                                    onAdd={(sentido) => {
+                                                      adicionarVoo({
+                                                        id: `${l.numero}-${Date.now()}`,
+                                                        cia: l.cia,
+                                                        numero: l.numero,
+                                                        partida: l.partida,
+                                                        chegada: l.chegada,
+                                                        origem: l.origem,
+                                                        destino: l.destino,
+                                                        duracao: l.duracao,
+                                                        tarifa: l.tarifa,
+                                                        hasBag: l.hasBag,
+                                                        total: l.total,
+                                                        sentido: sentido,
+                                                        conexoes: l.conexoes,
+                                                        breakdown: l.breakdown
+                                                      })
+                                                    }}
+                                                  />
+                                                </td>
                                                 <td className="py-3 pl-2 pr-4 text-right align-middle" rowSpan={l.conexoes.length}>
                                                   <div className="flex items-center justify-end gap-2">
-                                                    <span className="font-bold text-gray-900 text-base">R$ {Number(l.total).toLocaleString('pt-BR',{minimumFractionDigits:2})}</span>
-                                                    <button className="text-purple-600 hover:text-purple-800 p-1 rounded-full hover:bg-purple-100 transition-colors"><Search className="h-4 w-4 transform rotate-90" /></button>
+                                                    <span className="font-bold text-gray-900 text-base">R$ {Number(l.total).toLocaleString('pt-BR',{minimumFractionDigits:2, maximumFractionDigits: 2})}</span>
+                                                    <PriceTooltip breakdown={l.breakdown} total={l.total} />
                                                   </div>
                                                 </td>
                                               </>
@@ -1057,7 +1526,7 @@ const AereoInter = () => {
                                   const part = new Date(l.partida)
                                   const cheg = new Date(l.chegada)
                                   return (
-                                    <tr key={`${l.numero}-${l.tarifa}-${i}`} className="hover:bg-purple-50 transition-colors group border-b border-gray-400">
+                                    <tr key={`${l.numero}-${l.tarifa}-${i}`} onClick={() => handleSelectFlight(l, 'ida')} className={`cursor-pointer hover:bg-teal-50 transition-colors group border-b border-gray-400 ${selectedIda?.uniqueId === l.uniqueId ? 'bg-blue-50 ring-2 ring-blue-500' : ''}`}>
                                       <td className="py-3 pl-4 pr-2">
                                         {getAirlineLogo(l.cia) ? <img src={getAirlineLogo(l.cia)!} alt={l.cia} className="h-5 w-auto object-contain" /> : <span className="font-semibold text-gray-700">{l.cia}</span>}
                                       </td>
@@ -1068,12 +1537,36 @@ const AereoInter = () => {
                                       <td className="py-3 px-2 text-gray-600 truncate max-w-[200px]" title={l.destino}>{l.destino}</td>
                                       <td className="py-3 px-2 text-center text-gray-600 uppercase font-medium text-xs">{l.tarifa}</td>
                                       <td className="py-3 px-2 text-center">
-                                        {l.hasBag ? <div className="flex items-center justify-center text-teal-600" title="Bagagem Inclusa"><Luggage className="h-5 w-5" /></div> : <div className="flex items-center justify-center text-red-400" title="Sem Bagagem"><Ban className="h-5 w-5" /></div>}
+                                        {l.hasBag ? <div className="flex items-center justify-center text-purple-700" title="Bagagem Inclusa"><Luggage className="h-5 w-5" /></div> : <div className="flex items-center justify-center text-red-400" title="Sem Bagagem"><Ban className="h-5 w-5" /></div>}
+                                      </td>
+                                      <td className="py-3 px-2 text-center">
+                                        <AddToQuoteButton 
+                                          voo={l}
+                                          isSelected={isSelected}
+                                          onAdd={(sentido) => {
+                                            adicionarVoo({
+                                              id: `${l.numero}-${Date.now()}`,
+                                              cia: l.cia,
+                                              numero: l.numero,
+                                              partida: l.partida,
+                                              chegada: l.chegada,
+                                              origem: l.origem,
+                                              destino: l.destino,
+                                              duracao: l.duracao,
+                                              tarifa: l.tarifa,
+                                              hasBag: l.hasBag,
+                                              total: l.total,
+                                              sentido: sentido,
+                                              conexoes: [],
+                                              breakdown: l.breakdown
+                                            })
+                                          }}
+                                        />
                                       </td>
                                       <td className="py-3 pl-2 pr-4 text-right">
                                         <div className="flex items-center justify-end gap-2">
                                           <span className="font-bold text-gray-900 text-base">R$ {Number(l.total).toLocaleString('pt-BR',{minimumFractionDigits:2})}</span>
-                                          <button className="text-purple-600 hover:text-purple-800 p-1 rounded-full hover:bg-purple-100 transition-colors"><Search className="h-4 w-4 transform rotate-90" /></button>
+                                          <PriceTooltip breakdown={l.breakdown} total={l.total} />
                                         </div>
                                       </td>
                                     </tr>
@@ -1110,14 +1603,19 @@ const AereoInter = () => {
 
                     {/* Tabela de Volta */}
                     {linhasVolta.length > 0 && (
-                      <div className="mt-8 border-t-4 border-gray-100 pt-8">
-                        <div className="px-6 pb-4">
+                      <div className={`mt-8 border-t-4 border-gray-100 pt-8 ${!selectedIda ? 'opacity-50 pointer-events-none filter grayscale' : ''}`}>
+                        <div className="px-6 pb-4 flex items-center justify-between">
                           <h3 className="text-xl font-bold text-gray-900 flex items-center gap-3">
                             <div className="p-2 rounded-lg bg-orange-50">
                               <Plane className="h-6 w-6 text-orange-600 transform -rotate-135" />
                             </div>
                             Voos de Volta
                           </h3>
+                          {!selectedIda && (
+                            <span className="text-sm text-red-500 font-medium bg-red-50 px-3 py-1 rounded-full border border-red-100">
+                              Selecione a ida primeiro
+                            </span>
+                          )}
                         </div>
                         <div className="overflow-x-auto">
                           <table className="w-full text-sm border-collapse">
@@ -1136,14 +1634,20 @@ const AereoInter = () => {
                             </thead>
                             <tbody className="bg-white">
                               {paginatedVolta.map((l, i) => {
+                                const isSelected = voosSelecionados.some(v => 
+                                  v.numero === l.numero && 
+                                  v.tarifa === l.tarifa && 
+                                  v.partida === l.partida && 
+                                  v.sentido === 'volta'
+                                )
                                 if (l.conexoes && l.conexoes.length > 0) {
                                   return (
                                     <React.Fragment key={`${l.numero}-${l.tarifa}-${i}`}>
                                       {l.conexoes.map((c: any, cIdx: number) => {
-                                        const partC = c.EmbarqueCompleto ? new Date(c.EmbarqueCompleto.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$3-$2-$1')) : new Date()
-                                        const chegC = c.DesembarqueCompleto ? new Date(c.DesembarqueCompleto.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$3-$2-$1')) : new Date()
+                                        const partC = parseConnectionDate(c.EmbarqueCompleto || c.DataEmbarque)
+                                        const chegC = parseConnectionDate(c.DesembarqueCompleto || c.DataDesembarque)
                                         return (
-                                          <tr key={`${i}-${cIdx}`} className={`group bg-gray-50/50 ${cIdx === l.conexoes.length - 1 ? 'border-b border-gray-400' : ''}`}>
+                                          <tr key={`${i}-${cIdx}`} onClick={() => handleSelectFlight(l, 'volta')} className={`cursor-pointer group ${selectedVolta?.uniqueId === l.uniqueId ? 'bg-blue-50' : 'bg-gray-50/50'} ${cIdx === l.conexoes.length - 1 ? 'border-b border-gray-400' : ''}`}>
                                             {cIdx === 0 && (
                                               <td className="py-3 pl-4 pr-2 align-middle" rowSpan={l.conexoes.length}>
                                                 {getAirlineLogo(l.cia) ? (
@@ -1164,10 +1668,34 @@ const AereoInter = () => {
                                                 <td className="py-3 px-2 text-center align-middle" rowSpan={l.conexoes.length}>
                                                   {l.hasBag ? <div className="flex items-center justify-center text-purple-700" title="Bagagem Inclusa"><Luggage className="h-5 w-5" /></div> : <div className="flex items-center justify-center text-red-400" title="Sem Bagagem"><Ban className="h-5 w-5" /></div>}
                                                 </td>
+                                                <td className="py-3 px-2 text-center align-middle" rowSpan={l.conexoes.length}>
+                                                  <AddToQuoteButton 
+                                                    voo={l}
+                                                    isSelected={isSelected}
+                                                    onAdd={(sentido) => {
+                                                      adicionarVoo({
+                                                        id: `${l.numero}-${Date.now()}`,
+                                                        cia: l.cia,
+                                                        numero: l.numero,
+                                                        partida: l.partida,
+                                                        chegada: l.chegada,
+                                                        origem: l.origem,
+                                                        destino: l.destino,
+                                                        duracao: l.duracao,
+                                                        tarifa: l.tarifa,
+                                                        hasBag: l.hasBag,
+                                                        total: l.total,
+                                                        sentido: sentido,
+                                                        conexoes: l.conexoes,
+                                                        breakdown: l.breakdown
+                                                      })
+                                                    }}
+                                                  />
+                                                </td>
                                                 <td className="py-3 pl-2 pr-4 text-right align-middle" rowSpan={l.conexoes.length}>
                                                   <div className="flex items-center justify-end gap-2">
                                                     <span className="font-bold text-gray-900 text-base">R$ {Number(l.total).toLocaleString('pt-BR',{minimumFractionDigits:2})}</span>
-                                                    <button className="text-purple-600 hover:text-purple-800 p-1 rounded-full hover:bg-purple-100 transition-colors"><Search className="h-4 w-4 transform rotate-90" /></button>
+                                                    <PriceTooltip breakdown={l.breakdown} total={l.total} />
                                                   </div>
                                                 </td>
                                               </>
@@ -1181,7 +1709,7 @@ const AereoInter = () => {
                                   const part = new Date(l.partida)
                                   const cheg = new Date(l.chegada)
                                   return (
-                                    <tr key={`${l.numero}-${l.tarifa}-${i}`} className="hover:bg-purple-50 transition-colors group border-b border-gray-400">
+                                    <tr key={`${l.numero}-${l.tarifa}-${i}`} onClick={() => handleSelectFlight(l, 'volta')} className={`cursor-pointer hover:bg-purple-50 transition-colors group border-b border-gray-400 ${selectedVolta?.uniqueId === l.uniqueId ? 'bg-blue-50 ring-2 ring-blue-500' : ''}`}>
                                       <td className="py-3 pl-4 pr-2">
                                         {getAirlineLogo(l.cia) ? <img src={getAirlineLogo(l.cia)!} alt={l.cia} className="h-5 w-auto object-contain" /> : <span className="font-semibold text-gray-700">{l.cia}</span>}
                                       </td>
@@ -1194,10 +1722,34 @@ const AereoInter = () => {
                                       <td className="py-3 px-2 text-center">
                                         {l.hasBag ? <div className="flex items-center justify-center text-purple-700" title="Bagagem Inclusa"><Luggage className="h-5 w-5" /></div> : <div className="flex items-center justify-center text-red-400" title="Sem Bagagem"><Ban className="h-5 w-5" /></div>}
                                       </td>
+                                      <td className="py-3 px-2 text-center">
+                                        <AddToQuoteButton 
+                                          voo={l}
+                                          isSelected={isSelected}
+                                          onAdd={(sentido) => {
+                                            adicionarVoo({
+                                              id: `${l.numero}-${Date.now()}`,
+                                              cia: l.cia,
+                                              numero: l.numero,
+                                              partida: l.partida,
+                                              chegada: l.chegada,
+                                              origem: l.origem,
+                                              destino: l.destino,
+                                              duracao: l.duracao,
+                                              tarifa: l.tarifa,
+                                              hasBag: l.hasBag,
+                                              total: l.total,
+                                              sentido: sentido,
+                                              conexoes: [],
+                                              breakdown: l.breakdown
+                                            })
+                                          }}
+                                        />
+                                      </td>
                                       <td className="py-3 pl-2 pr-4 text-right">
                                         <div className="flex items-center justify-end gap-2">
                                           <span className="font-bold text-gray-900 text-base">R$ {Number(l.total).toLocaleString('pt-BR',{minimumFractionDigits:2})}</span>
-                                          <button className="text-purple-600 hover:text-purple-800 p-1 rounded-full hover:bg-purple-100 transition-colors"><Search className="h-4 w-4 transform rotate-90" /></button>
+                                          <PriceTooltip breakdown={l.breakdown} total={l.total} />
                                         </div>
                                       </td>
                                     </tr>

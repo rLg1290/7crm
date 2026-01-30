@@ -5,11 +5,13 @@ import LoginPage from './components/LoginPage'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
 import Cotacoes from './pages/Cotacoes'
+import NovaCotacao from './pages/NovaCotacao'
 import Clientes from './pages/Clientes'
 import Financeiro from './pages/Financeiro'
 import Calendario from './pages/Calendario'
 import AereoDomestico from './pages/AereoDomestico'
 import AereoInter from './pages/AereoInter'
+import EmissaoAereo from './pages/EmissaoAereo'
 // Removendo import da página Hotelaria (não será utilizada por enquanto)
 import QuadroVoos from './pages/QuadroVoos'
 import Perfil from './pages/Perfil'
@@ -111,12 +113,14 @@ VITE_SUPABASE_ANON_KEY=sua_chave_anonima`}</pre>
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/cotacoes" element={<Cotacoes user={user} />} />
+                <Route path="/nova-cotacao" element={<NovaCotacao />} />
                 <Route path="/clientes" element={<Clientes user={user} />} />
                 <Route path="/financeiro" element={<Financeiro />} />
                 <Route path="/calendario" element={<Calendario />} />
                 <Route path="/aereo" element={<Navigate to="/aereodomestico" replace />} />
                 <Route path="/aereodomestico" element={<AereoDomestico />} />
                 <Route path="/aereointer" element={<AereoInter />} />
+                <Route path="/emissao-aereo" element={<EmissaoAereo />} />
                 {/* Removendo rota /hotelaria do roteador */}
                 <Route path="/quadro-voos" element={<QuadroVoos />} />
                 <Route path="/educacao" element={<EducacaoHome />} />

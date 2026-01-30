@@ -8,6 +8,7 @@ as $$
   select a.id, a.name, a.iata_code, a.municipality, a.iso_country
   from public.airports a
   where a.iata_code is not null
+    and a.iso_country = 'BR' -- Filtro apenas aeroportos brasileiros
     and (
       unaccent(lower(a.name)) like '%' || unaccent(lower(term)) || '%'
       or unaccent(lower(a.municipality)) like '%' || unaccent(lower(term)) || '%'

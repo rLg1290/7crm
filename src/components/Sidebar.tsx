@@ -1,7 +1,8 @@
-import { Home, FileText, Users, DollarSign, Calendar, Tag, BookOpen, Plane, Building, User as UserIcon, Milestone } from 'lucide-react'
+import { Home, FileText, Users, DollarSign, Calendar, Tag, BookOpen, Plane, Building, User as UserIcon, Milestone, Layout, LogOut } from 'lucide-react'
 import NavItem from './NavItem'
 import SidebarSection from './SidebarSection'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
+import { supabase } from '../lib/supabase'
 
 type SidebarProps = {
   collapsed: boolean
@@ -17,13 +18,14 @@ const navSchema = [
     title: '7C Turismo',
     items: [
       { to: '/aereo', label: 'Aéreo', icon: <Plane className="h-5 w-5" /> },
+      { to: '/nova-cotacao', label: 'Cotação', icon: <FileText className="h-5 w-5" /> },
     ]
   },
   {
     title: 'CRM',
     items: [
       { to: '/dashboard', label: 'Dashboard', icon: <Home className="h-5 w-5" /> },
-      { to: '/cotacoes', label: 'Cotações', icon: <FileText className="h-5 w-5" /> },
+      { to: '/cotacoes', label: 'Kanban', icon: <Layout className="h-5 w-5" /> },
       { to: '/clientes', label: 'Clientes', icon: <Users className="h-5 w-5" /> },
       { to: '/financeiro', label: 'Financeiro', icon: <DollarSign className="h-5 w-5" /> },
       { to: '/calendario', label: 'Tarefas', icon: <Calendar className="h-5 w-5" /> },
@@ -44,6 +46,13 @@ const navSchema = [
 ]
 
 export default function Sidebar({ collapsed, onToggle, empresaLogo, userName, aereoEnabled, userRole }: SidebarProps) {
+  const navigate = useNavigate()
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    navigate('/')
+  }
+
   const filteredNavSchema = navSchema.map(section => {
     if (section.title === '7C Turismo') {
       return {
@@ -64,7 +73,7 @@ export default function Sidebar({ collapsed, onToggle, empresaLogo, userName, ae
 
   return (
     <aside
-      className={`${collapsed ? 'w-20' : 'w-64'} hidden lg:flex flex-col bg-white border-r border-gray-200 transition-all duration-200 ease-out`}
+      className={`${collapsed ? 'w-20' : 'w-64'} hidden lg:flex flex-col bg-white border-r border-gray-200 transition-all duration-200 ease-out print:hidden`}
       onMouseEnter={() => { if (collapsed) onToggle() }}
       onMouseLeave={() => { if (!collapsed) onToggle() }}
     >
@@ -98,6 +107,13 @@ export default function Sidebar({ collapsed, onToggle, empresaLogo, userName, ae
           <UserIcon className="h-5 w-5 text_gray-500" />
           {!collapsed && <span>Perfil</span>}
         </Link>
+        <button 
+          onClick={handleLogout}
+          className={`w-[calc(100%-16px)] flex items-center ${collapsed ? 'justify-center' : 'justify-start'} gap-2 mx-2 mt-2 px-3 py-2 rounded-xl text-sm text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors`}
+        >
+          <LogOut className="h-5 w-5" />
+          {!collapsed && <span>Sair</span>}
+        </button>
       </div>
     </aside>
   )

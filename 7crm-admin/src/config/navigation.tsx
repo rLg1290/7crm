@@ -8,7 +8,9 @@ import {
   BookOpen,
   ListTodo,
   Lock,
-  Calendar
+  Calendar,
+  Plane,
+  DollarSign
 } from 'lucide-react'
 
 export type NavItemConfig = {
@@ -28,6 +30,7 @@ export const navSchema: NavSectionConfig[] = [
     title: 'Gestão',
     items: [
       { to: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard className="h-5 w-5" /> },
+      { to: '/operacoes', label: 'Operações (Emissões)', icon: <Plane className="h-5 w-5" /> },
       { to: '/relatorios', label: 'Relatórios', icon: <BarChart3 className="h-5 w-5" /> },
     ]
   },
@@ -47,6 +50,12 @@ export const navSchema: NavSectionConfig[] = [
     items: [
       { to: '/comercial/kanban', label: 'Kanban Comercial', icon: <ListTodo className="h-5 w-5" /> },
       { to: '/comercial/calendario', label: 'Calendário Comercial', icon: <Calendar className="h-5 w-5" /> },
+    ]
+  },
+  {
+    title: 'Financeiro',
+    items: [
+      { to: '/financeiro', label: 'Visão Geral', icon: <DollarSign className="h-5 w-5" /> },
     ]
   },
   {

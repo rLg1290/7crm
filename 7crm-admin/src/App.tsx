@@ -14,10 +14,13 @@ import Usuarios from './pages/Usuarios'
 import Pesquisas from './pages/Pesquisas'
 import Permissoes from './pages/Permissoes'
 import Relatorios from './pages/Relatorios'
+import Financeiro from './pages/Financeiro'
 import AtualizacoesAdminPage from './pages/AtualizacoesAdmin'
 import Settings from './pages/Settings'
 import Home from './pages/Home'
 import ProtectedRoute from './components/ProtectedRoute'
+
+import Operacoes from './pages/Operacoes'
 
 // Extender o tipo User para incluir permissões
 type UserWithPermissions = User & {
@@ -145,6 +148,8 @@ VITE_SUPABASE_ANON_KEY=sua_chave_anonima`}</pre>
           <Route path="/comercial/kanban" element={<ProtectedRoute user={user} path="/comercial/kanban"><KanbanComercial /></ProtectedRoute>} />
           <Route path="/comercial/calendario" element={<ProtectedRoute user={user} path="/comercial/calendario"><CalendarioComercial /></ProtectedRoute>} />
           <Route path="/relatorios" element={<ProtectedRoute user={user} path="/relatorios"><Relatorios /></ProtectedRoute>} />
+          <Route path="/financeiro" element={<ProtectedRoute user={user} path="/financeiro"><Financeiro /></ProtectedRoute>} />
+          <Route path="/operacoes" element={<ProtectedRoute user={user} path="/operacoes"><Operacoes /></ProtectedRoute>} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

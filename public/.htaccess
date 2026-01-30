@@ -1,5 +1,11 @@
 RewriteEngine On
 
+# Configuração de Proxy Reverso para evitar CORS na API
+# Requer mod_proxy e mod_proxy_http habilitados no servidor
+<IfModule mod_proxy.c>
+    RewriteRule ^api/7capi/(.*)$ https://7capi.vercel.app/api/$1 [P,L]
+</IfModule>
+
 # Ajuste a base conforme seu path. Para raiz do domínio:
 RewriteBase /
 # Se estiver em subpasta (ex.: /g360/), troque para:
