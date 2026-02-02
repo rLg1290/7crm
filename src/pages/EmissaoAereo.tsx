@@ -23,11 +23,13 @@ import {
   X,
   Loader2,
   UserPlus,
-  Clock
+  Clock,
+  Info
 } from 'lucide-react'
 import { getAirlineLogoUrl } from '../utils/airlineLogos'
 import { supabase } from '../lib/supabase'
 import ClientModal from '../components/ClientModal'
+import TariffRulesModal from '../components/TariffRulesModal'
 
 const gerarCodigoUnico = async () => {
   const caracteres = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -128,7 +130,9 @@ const EmissaoAereo = () => {
     nome: '',
     validade: '',
     cvv: '',
-    parcelas: '1'
+    parcelas: '1',
+    email: '',
+    telefone: ''
   })
 
   const [loading, setLoading] = useState(false)
@@ -174,6 +178,11 @@ const EmissaoAereo = () => {
   const [isPassengerModalOpen, setIsPassengerModalOpen] = useState(false)
   const [passengerToEdit, setPassengerToEdit] = useState<Cliente | null>(null)
   const [activePassengerIndex, setActivePassengerIndex] = useState<number>(0)
+
+  // Tariff Rules State
+  const [showRulesModal, setShowRulesModal] = useState(false)
+  const [selectedRuleCia, setSelectedRuleCia] = useState('')
+  const [selectedRuleTariff, setSelectedRuleTariff] = useState('')
 
   // Sync state with totalPax if it changes
   useEffect(() => {
@@ -404,7 +413,19 @@ const EmissaoAereo = () => {
   }
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>, section: 'passenger' | 'payment') => {
-    const { name, value } = e.target
+    let { name, value } = e.target
+
+    if (name === 'telefone') {
+      const numbers = value.replace(/\D/g, '')
+      const truncated = numbers.substring(0, 11)
+      
+      if (truncated.length <= 10) {
+        value = truncated.replace(/^(\d{2})(\d{4})(\d{0,4}).*/, '($1) $2-$3')
+      } else {
+        value = truncated.replace(/^(\d{2})(\d{5})(\d{0,4}).*/, '($1) $2-$3')
+      }
+    }
+
     if (section === 'passenger') {
       setPassenger(prev => ({ ...prev, [name]: value }))
     } else {
@@ -1223,6 +1244,48 @@ const EmissaoAereo = () => {
                       </div>
                     </div>
 
+                    <div className="space-y-4 pt-2">
+                      <h4 className="text-sm font-medium text-gray-900 border-b border-gray-100 pb-2">Informações do Titular para o Link</h4>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Nome Completo do Titular</label>
+                        <input
+                          type="text"
+                          name="nome"
+                          value={payment.nome}
+                          onChange={(e) => handleInputChange(e, 'payment')}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
+                          placeholder="Nome completo"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">E-mail</label>
+                          <input
+                            type="email"
+                            name="email"
+                            value={payment.email}
+                            onChange={(e) => handleInputChange(e, 'payment')}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
+                            placeholder="email@exemplo.com"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Telefone / WhatsApp</label>
+                          <input
+                            type="tel"
+                            name="telefone"
+                            value={payment.telefone}
+                            onChange={(e) => handleInputChange(e, 'payment')}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
+                            placeholder="(00) 00000-0000"
+                            maxLength={15}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Parcelamento desejado</label>
                       <select
@@ -1342,7 +1405,45 @@ const EmissaoAereo = () => {
                 <FlightCard title="Ida" flight={ida} />
                 {volta && <FlightCard title="Volta" flight={volta} />}
 
-                <div className="mt-6 space-y-3 pt-6 border-t border-gray-200">
+                {/* Tariff Rules Links */}
+                <div className="mt-6 pt-6 border-t border-gray-200">
+                  <div className="flex items-center gap-2 mb-3">
+                    <AlertCircle className="h-4 w-4 text-orange-500" />
+                    <span className="text-sm font-semibold text-gray-700">Regras da Tarifa</span>
+                  </div>
+                  <div className="space-y-2">
+                    <button
+                      onClick={() => {
+                        setSelectedRuleCia(ida.cia || ida.CompanhiaAparente)
+                        setSelectedRuleTariff(ida.tarifa || ida.Tarifa)
+                        setShowRulesModal(true)
+                      }}
+                      className="w-full text-left text-sm text-blue-600 hover:text-blue-800 hover:bg-blue-50 p-2.5 rounded-lg flex items-center justify-between transition-colors border border-blue-100 group"
+                    >
+                      <span className="truncate flex-1">Regras de cancelamento e bagagem (Ida)</span>
+                      <Info className="h-4 w-4 flex-shrink-0 text-blue-400 group-hover:text-blue-600" />
+                    </button>
+
+                    {volta && (
+                      <button
+                        onClick={() => {
+                          setSelectedRuleCia(volta.cia || volta.CompanhiaAparente)
+                          setSelectedRuleTariff(volta.tarifa || volta.Tarifa)
+                          setShowRulesModal(true)
+                        }}
+                        className="w-full text-left text-sm text-blue-600 hover:text-blue-800 hover:bg-blue-50 p-2.5 rounded-lg flex items-center justify-between transition-colors border border-blue-100 group"
+                      >
+                        <span className="truncate flex-1">Regras de cancelamento e bagagem (Volta)</span>
+                        <Info className="h-4 w-4 flex-shrink-0 text-blue-400 group-hover:text-blue-600" />
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-400 mt-2 px-1">
+                    É importante ler as regras de cancelamento e alteração antes de confirmar a emissão.
+                  </p>
+                </div>
+
+                <div className="mt-4 space-y-3 pt-4 border-t border-gray-200">
                   <div className="flex justify-between text-gray-600 text-sm">
                     <span>Tarifa Aérea</span>
                     <span>R$ {(priceIda.fare + priceVolta.fare).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
@@ -1452,6 +1553,14 @@ const EmissaoAereo = () => {
           requiredFields={['nome', 'cpf', 'dataNascimento']}
         />
       )}
+
+      {/* Tariff Rules Modal */}
+      <TariffRulesModal 
+        isOpen={showRulesModal}
+        onClose={() => setShowRulesModal(false)}
+        cia={selectedRuleCia}
+        tipoTarifa={selectedRuleTariff}
+      />
     </div>
   )
 }

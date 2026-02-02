@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import DateBRPicker from '../components/DateBRPicker'
-import { FileText, Plus, User, Calendar, Eye, Edit, Trash2, MoreVertical, Clock, CheckCircle, XCircle, AlertCircle, Target, GripVertical, Plane, Building, MapPin, Route, Users, DollarSign, ChevronLeft, ChevronRight, X, Search, ArrowRight, ArrowLeft, CheckSquare, ChevronDown, Printer, Star } from 'lucide-react'
+import { FileText, Plus, User, Calendar, Eye, Edit, Trash2, MoreVertical, Clock, CheckCircle, XCircle, AlertCircle, Target, GripVertical, Plane, Building, MapPin, Route, Users, DollarSign, ChevronLeft, ChevronRight, X, Search, ArrowRight, ArrowLeft, CheckSquare, ChevronDown, Printer, Star, CreditCard } from 'lucide-react'
 import { User as SupabaseUser } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import logger from '../utils/logger'
@@ -69,12 +69,14 @@ interface Cotacao {
   custo?: number // 🔧 CAMPO CUSTO ADICIONADO
   dataViagem: string
   dataCriacao: string
-  status: 'LEAD' | 'COTAR' | 'AGUARDANDO_CLIENTE' | 'APROVADO' | 'REPROVADO' | 'EMITIDO' | 'OP_GERADA' | 'PAGAMENTO_CONFIRMADO' | 'EM_EMISSAO' | 'EMITIDO7C'
+  status: 'LEAD' | 'COTAR' | 'AGUARDANDO_CLIENTE' | 'APROVADO' | 'REPROVADO' | 'EMITIDO' | 'OP_GERADA' | 'LINK_GERADO' | 'PAGAMENTO_CONFIRMADO' | 'EM_EMISSAO' | 'EMITIDO7C'
   destino: string
   observacoes?: string
   formapagid?: string | null // <-- ajustado para aceitar null
   parcelamento?: string // 🔧 CAMPO PARCELAMENTO ADICIONADO
   responsavel_emissao?: string // 🔧 CAMPO RESPONSAVEL ADICIONADO
+  responsavel_nome?: string // 🔧 CAMPO NOME RESPONSAVEL ADICIONADO
+  link_pagamento?: string // 🔧 CAMPO LINK PAGAMENTO ADICIONADO
   // Campos opcionais utilizados apenas quando a linha representa um lead no Kanban
   isLead?: boolean
   leadData?: Lead
@@ -120,7 +122,7 @@ interface Voo {
 interface FormularioCotacao {
   titulo: string;
   cliente: string;
-  status: 'LEAD' | 'COTAR' | 'AGUARDANDO_CLIENTE' | 'APROVADO' | 'REPROVADO' | 'EMITIDO' | 'OP_GERADA' | 'PAGAMENTO_CONFIRMADO' | 'EM_EMISSAO' | 'EMITIDO7C';
+  status: 'LEAD' | 'COTAR' | 'AGUARDANDO_CLIENTE' | 'APROVADO' | 'REPROVADO' | 'EMITIDO' | 'OP_GERADA' | 'LINK_GERADO' | 'PAGAMENTO_CONFIRMADO' | 'EM_EMISSAO' | 'EMITIDO7C';
   numeroAdultos: number;
   numeroCriancas: number;
   numeroBebes: number;
@@ -148,6 +150,8 @@ interface FormularioCotacao {
   formapagid: string;
   parcelamento: string;
   responsavel_emissao?: string;
+  responsavel_nome?: string;
+  link_pagamento?: string;
 }
 
 interface PagamentoCotacao {
@@ -450,11 +454,112 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
     parcelamento: '1'
   })
 
+  const atualizarEstadoCotacao = (novaCotacao: any) => {
+    // Formatar a nova cotação
+    const cotacaoFormatada: Cotacao = {
+      id: novaCotacao.id.toString(),
+      idBanco: Number(novaCotacao.id),
+      titulo: novaCotacao.titulo,
+      cliente: novaCotacao.cliente || '', // Nome será atualizado se necessário
+      cliente_id: novaCotacao.cliente_id?.toString(),
+      codigo: novaCotacao.codigo || `COT${novaCotacao.id.toString().padStart(4, '0')}`,
+      valor: novaCotacao.valor || 0,
+      custo: novaCotacao.custo || 0,
+      dataViagem: novaCotacao.data_viagem || '',
+      dataCriacao: novaCotacao.data_criacao,
+      status: (novaCotacao.status?.toUpperCase() || 'COTAR') as any,
+      destino: novaCotacao.destino || '',
+      observacoes: novaCotacao.observacoes || '',
+      formapagid: novaCotacao.formapagid || '',
+      parcelamento: novaCotacao.parcelamento || '1',
+      responsavel_emissao: novaCotacao.responsavel_emissao,
+      link_pagamento: novaCotacao.link_pagamento
+    };
+
+    // Preservar o nome do cliente se já existir na lista atual (pois o payload realtime não traz o join com clientes)
+    setCotacoes(prev => prev.map(c => {
+      if (c.id === cotacaoFormatada.id) {
+        return { 
+          ...cotacaoFormatada, 
+          cliente: c.cliente, 
+          clientes: (c as any).clientes,
+          responsavel_nome: c.responsavel_emissao === cotacaoFormatada.responsavel_emissao ? c.responsavel_nome : undefined
+        };
+      }
+      return c;
+    }));
+
+    // Se estiver editando esta cotação, atualizar o form também
+    if (editingCotacao && editingCotacao.id === cotacaoFormatada.id) {
+        setFormData(prev => ({
+            ...prev,
+            status: cotacaoFormatada.status,
+            link_pagamento: cotacaoFormatada.link_pagamento,
+            responsavel_emissao: cotacaoFormatada.responsavel_emissao,
+            responsavel_nome: editingCotacao.responsavel_emissao === cotacaoFormatada.responsavel_emissao ? editingCotacao.responsavel_nome : undefined
+        }));
+        setEditingCotacao(prev => prev ? { 
+          ...prev, 
+          ...cotacaoFormatada,
+          responsavel_nome: prev.responsavel_emissao === cotacaoFormatada.responsavel_emissao ? prev.responsavel_nome : undefined
+        } : null);
+    }
+  };
+
   // Carregar dados iniciais
   useEffect(() => {
     carregarClientes()
     carregarCotacoes()
     carregarLeads()
+
+    // Realtime subscription para atualizações de cotações (Status, Link, etc)
+    const channel = supabase
+      .channel('cotacoes_updates_crm')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'cotacoes'
+        },
+        (payload) => {
+            console.log('Realtime update received:', payload)
+            
+            // Verifica se houve mudança de status
+            if (payload.new.status !== payload.old.status) {
+                // Toca um som de notificação
+                const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'); // Som de notificação suave
+                audio.play().catch(e => console.log('Audio play failed', e));
+
+                // Exibe toast/alerta visual
+                const statusLegivel = payload.new.status.replace(/_/g, ' ');
+                // Pode usar uma lib de toast aqui se tiver, ou um alert customizado
+                // Por enquanto vamos usar o Notification API do browser se permitido, ou console
+                if (Notification.permission === 'granted') {
+                    new Notification('Atualização de Status', {
+                        body: `A cotação #${payload.new.codigo || payload.new.id} mudou para: ${statusLegivel}`,
+                        icon: '/favicon.ico'
+                    });
+                }
+            }
+
+            // Atualizar estado local imediatamente
+            atualizarEstadoCotacao(payload.new);
+            
+            // Recarregar em background para garantir consistência (opcional, mas bom)
+            // carregarCotacoes() // Removido para evitar flicker se a atualização local já resolve
+        }
+      )
+      .subscribe()
+    
+    // Solicitar permissão de notificação
+    if (Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+        Notification.requestPermission();
+    }
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [])
 
   // Fechar dropdown quando clicar fora
@@ -1030,6 +1135,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
         cotacao.status === 'APROVADO' || 
         cotacao.status === 'EMITIDO' || 
         cotacao.status === 'OP_GERADA' || 
+        cotacao.status === 'LINK_GERADO' || 
         cotacao.status === 'PAGAMENTO_CONFIRMADO' ||
         cotacao.status === 'EM_EMISSAO' ||
         cotacao.status === 'EMITIDO7C'
@@ -1254,6 +1360,8 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
       formapagid: (cotacao as any).formapagid || '',
       parcelamento: (cotacao as any).parcelamento || '1',
       responsavel_emissao: (cotacao as any).responsavel_emissao || '',
+      responsavel_nome: (cotacao as any).responsavel_nome || '',
+      link_pagamento: (cotacao as any).link_pagamento || '',
       // Adicione outros campos do formulário conforme necessário
     }));
     
@@ -1559,7 +1667,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
             ) : (
               // Botões para cotações normais
               <>
-                {cotacao.status !== 'EMITIDO' && (
+                {cotacao.status !== 'EMITIDO' && cotacao.status !== 'EMITIDO7C' && (
                   <button 
                     onClick={(e) => { e.stopPropagation(); navigate(`/cotacao/${cotacao.codigo}`); }} 
                     className="p-1 hover:bg-blue-50 rounded"
@@ -1568,7 +1676,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                     <Eye className="w-3 h-3 text-blue-500" />
                   </button>
                 )}
-                {cotacao.status === 'EMITIDO' && (
+                {(cotacao.status === 'EMITIDO' || cotacao.status === 'EMITIDO7C') && (
                   <button 
                     onClick={(e) => { e.stopPropagation(); window.open(`/confirmacao/${cotacao.codigo}`, '_blank'); }}
                     className="p-1 hover:bg-green-50 rounded"
@@ -1584,7 +1692,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                 >
                   <Edit className="w-3 h-3 text-yellow-500" />
                 </button>
-                {cotacao.status !== 'EMITIDO' && (
+                {cotacao.status !== 'EMITIDO' && cotacao.status !== 'EMITIDO7C' && (
                   <button 
                     onClick={(e) => { 
                       e.stopPropagation(); 
@@ -1610,20 +1718,37 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
             )}
           </div>
         </div>
-        {(statusNormalizado === 'OP_GERADA' || statusNormalizado === 'EM_EMISSAO') && (
+        {(statusNormalizado === 'OP_GERADA' || statusNormalizado === 'EM_EMISSAO' || statusNormalizado === 'LINK_GERADO' || statusNormalizado === 'PAGAMENTO_CONFIRMADO') && (
             <button 
                 onClick={(e) => {
                     e.stopPropagation();
                     onEdit(cotacao, 'OP');
                 }}
-                className="absolute bottom-2 right-2 bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-1 rounded flex items-center gap-1 border border-blue-200 hover:bg-blue-200 transition-colors z-10"
+                className={`absolute bottom-2 right-2 text-[10px] font-bold px-2 py-1 rounded flex items-center gap-1 border transition-colors z-10 ${
+                    statusNormalizado === 'LINK_GERADO' 
+                        ? 'bg-purple-100 text-purple-700 border-purple-200 hover:bg-purple-200'
+                        : statusNormalizado === 'PAGAMENTO_CONFIRMADO'
+                            ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200'
+                            : 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200'
+                }`}
             >
-                <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
-                {statusNormalizado === 'OP_GERADA' ? 'OP GERADA' : 'EM EMISSÃO'}
+                <span className={`w-2 h-2 rounded-full animate-pulse ${
+                    statusNormalizado === 'LINK_GERADO' ? 'bg-purple-600' : 
+                    statusNormalizado === 'PAGAMENTO_CONFIRMADO' ? 'bg-green-600' : 'bg-blue-600'
+                }`}></span>
+                {statusNormalizado === 'OP_GERADA' ? 'OP GERADA' : 
+                 statusNormalizado === 'LINK_GERADO' ? 'AGUARDANDO PAGAMENTO' : 
+                 statusNormalizado === 'PAGAMENTO_CONFIRMADO' ? 'AGUARDANDO EMISSÃO' : 'EM EMISSÃO'}
             </button>
         )}
         {statusNormalizado === 'EMITIDO' && (
           <CheckCircle className="absolute bottom-2 right-2 text-green-600 w-4 h-4" />
+        )}
+        {statusNormalizado === 'EMITIDO7C' && (
+          <div className="absolute bottom-2 right-2 flex items-center gap-1 bg-teal-100 text-teal-800 text-[10px] font-bold px-2 py-1 rounded border border-teal-200">
+            <CheckCircle className="w-3 h-3 text-teal-600" />
+            EMITIDO 7C
+          </div>
         )}
       </div>
     )
@@ -2467,8 +2592,8 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                   { id: 'SERVICOS', label: 'Serviços', icon: Route },
                   { id: 'PASSAGEIROS', label: 'Passageiros', icon: Users },
                   { id: 'COTACAO', label: 'Cotação', icon: DollarSign },
-  ...(formData.status === 'EMITIDO' || formData.status === 'APROVADO' ? [{ id: 'VENDA', label: 'VENDA', icon: CheckCircle }] : []),
-  ...(formData.status === 'OP_GERADA' || formData.status === 'PAGAMENTO_CONFIRMADO' || formData.status === 'EM_EMISSAO' || formData.status === 'EMITIDO' || formData.status === 'EMITIDO7C' ? [{ id: 'OP', label: 'OP', icon: FileText }] : [])
+  ...(formData.status === 'EMITIDO' || formData.status === 'EMITIDO7C' || formData.status === 'APROVADO' ? [{ id: 'VENDA', label: 'VENDA', icon: CheckCircle }] : []),
+  ...(formData.status === 'OP_GERADA' || formData.status === 'LINK_GERADO' || formData.status === 'PAGAMENTO_CONFIRMADO' || formData.status === 'EM_EMISSAO' || formData.status === 'EMITIDO' || formData.status === 'EMITIDO7C' ? [{ id: 'OP', label: 'OP', icon: FileText }] : [])
 ].map((aba) => (
                   <button
                     key={aba.id}
@@ -2499,10 +2624,44 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                   <div className="relative border-l-2 border-gray-200 ml-3 space-y-8 py-2">
                     {/* 1. OP Gerada */}
                     <div className="relative pl-8">
-                      <div className={`absolute -left-[9px] top-0 w-4 h-4 rounded-full border-2 ${['OP_GERADA', 'PAGAMENTO_CONFIRMADO', 'EM_EMISSAO', 'EMITIDO', 'EMITIDO7C'].includes(formData.status) ? 'bg-green-500 border-green-500' : 'bg-white border-gray-300'}`}></div>
+                      <div className={`absolute -left-[9px] top-0 w-4 h-4 rounded-full border-2 ${['OP_GERADA', 'LINK_GERADO', 'PAGAMENTO_CONFIRMADO', 'EM_EMISSAO', 'EMITIDO', 'EMITIDO7C'].includes(formData.status) ? 'bg-green-500 border-green-500' : 'bg-white border-gray-300'}`}></div>
                       <div className="flex flex-col">
-                        <span className={`font-bold ${['OP_GERADA', 'PAGAMENTO_CONFIRMADO', 'EM_EMISSAO', 'EMITIDO', 'EMITIDO7C'].includes(formData.status) ? 'text-green-700' : 'text-gray-500'}`}>OP Gerada com sucesso</span>
+                        <span className={`font-bold ${['OP_GERADA', 'LINK_GERADO', 'PAGAMENTO_CONFIRMADO', 'EM_EMISSAO', 'EMITIDO', 'EMITIDO7C'].includes(formData.status) ? 'text-green-700' : 'text-gray-500'}`}>OP Gerada com sucesso</span>
                         <span className="text-xs text-gray-500">A solicitação de emissão foi criada pelo sistema.</span>
+                      </div>
+                    </div>
+
+                    {/* 1.5. Aguardando Pagamento (Link Gerado) */}
+                    <div className="relative pl-8">
+                      <div className={`absolute -left-[9px] top-0 w-4 h-4 rounded-full border-2 ${['LINK_GERADO', 'PAGAMENTO_CONFIRMADO', 'EM_EMISSAO', 'EMITIDO', 'EMITIDO7C'].includes(formData.status) ? 'bg-purple-500 border-purple-500' : 'bg-white border-gray-300'}`}></div>
+                      <div className="flex flex-col">
+                        <span className={`font-bold ${['LINK_GERADO', 'PAGAMENTO_CONFIRMADO', 'EM_EMISSAO', 'EMITIDO', 'EMITIDO7C'].includes(formData.status) ? 'text-purple-700' : 'text-gray-500'}`}>Aguardando Pagamento</span>
+                        <span className="text-xs text-gray-500">Link de pagamento gerado. Aguardando confirmação.</span>
+                        {formData.status === 'LINK_GERADO' && formData.link_pagamento && (
+                            <div className="mt-2 flex gap-2">
+                                <a 
+                                    href={formData.link_pagamento.startsWith('http') ? formData.link_pagamento : `https://${formData.link_pagamento}`}
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-bold shadow-sm"
+                                >
+                                    Pagar Agora
+                                    <ArrowRight className="h-4 w-4" />
+                                </a>
+                                <button
+                                    onClick={() => {
+                                        const link = formData.link_pagamento?.startsWith('http') ? formData.link_pagamento : `https://${formData.link_pagamento}`;
+                                        navigator.clipboard.writeText(link || '').then(() => alert('Link copiado!'));
+                                    }}
+                                    className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-bold shadow-sm border border-gray-300"
+                                    title="Copiar Link"
+                                >
+                                    <span className="sr-only">Copiar</span>
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>
+                                    Copiar
+                                </button>
+                            </div>
+                        )}
                       </div>
                     </div>
 
@@ -2524,7 +2683,7 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
                          </span>
                          {formData.status === 'EM_EMISSAO' && (
                             <span className="text-sm text-blue-600 font-medium mt-1">
-                               Emissão em andamento por: <span className="font-bold">{formData.responsavel_emissao || 'Admin (Suporte 7C)'}</span>
+                               Emissão em andamento por: <span className="font-bold">{formData.responsavel_nome || formData.responsavel_emissao || 'Admin (Suporte 7C)'}</span>
                             </span>
                          )}
                          <span className="text-xs text-gray-500">Um atendente iniciou o processo de emissão.</span>
@@ -4964,6 +5123,21 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
       }
       
       logger.info('✅ Cotações carregadas do Supabase com clientes', { quantidade: data?.length || 0 });
+
+      // Buscar nomes dos responsáveis
+      const emailsResponsaveis = [...new Set(data?.map(c => c.responsavel_emissao).filter(Boolean) as string[])];
+      const mapaNomes: Record<string, string> = {};
+
+      if (emailsResponsaveis.length > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('email, nome')
+          .in('email', emailsResponsaveis);
+        
+        profiles?.forEach(p => {
+          if (p.email) mapaNomes[p.email] = p.nome || p.email;
+        });
+      }
       
       // Converter dados do Supabase para o formato esperado pelo componente
       const cotacoesFormatadas = (data || []).map(cotacao => {
@@ -4995,7 +5169,10 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
           destino: cotacao.destino || '',
           observacoes: cotacao.observacoes || '',
           formapagid: cotacao.formapagid || '',
-          parcelamento: cotacao.parcelamento || '1' // 🔧 CAMPO PARCELAMENTO ADICIONADO
+          parcelamento: cotacao.parcelamento || '1', // 🔧 CAMPO PARCELAMENTO ADICIONADO
+          responsavel_emissao: cotacao.responsavel_emissao,
+          responsavel_nome: cotacao.responsavel_emissao ? (mapaNomes[cotacao.responsavel_emissao] || cotacao.responsavel_emissao) : undefined,
+          link_pagamento: cotacao.link_pagamento
         };
       }).filter(Boolean) as Cotacao[];
       
@@ -5031,6 +5208,17 @@ const Cotacoes: React.FC<CotacoesProps> = ({ user }) => {
     if (!passageiroEmEdicao || !clienteSelecionadoPassageiro) {
       alert('Por favor, selecione um cliente')
       return
+    }
+
+    // Verificar se o passageiro já foi selecionado em outro slot
+    const jaSelecionado = formData.passageiros.some(p => 
+      p.id !== passageiroEmEdicao.id && // Ignora o slot atual
+      p.cliente_id === clienteSelecionadoPassageiro.id.toString()
+    );
+
+    if (jaSelecionado) {
+      alert('Este passageiro já foi selecionado. Não é permitido selecionar o mesmo passageiro mais de uma vez.');
+      return;
     }
 
     // Preencher campos do passageiro com dados do cliente

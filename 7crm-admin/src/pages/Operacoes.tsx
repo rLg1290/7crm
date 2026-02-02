@@ -10,12 +10,14 @@ import {
   Info,
   DollarSign,
   Ban,
-  Briefcase
+  Briefcase,
+  AlertCircle // Importação adicionada
 } from 'lucide-react'
 
 // Status mapping
 const OP_STATUSES = [
   { id: 'OP_GERADA', label: 'Novas OPs', color: 'bg-blue-50 border-blue-200 text-blue-700' },
+  { id: 'LINK_GERADO', label: 'Aguardando Pagamento', color: 'bg-purple-50 border-purple-200 text-purple-700' },
   { id: 'PAGAMENTO_CONFIRMADO', label: 'Pagamento OK', color: 'bg-indigo-50 border-indigo-200 text-indigo-700' },
   { id: 'EM_EMISSAO', label: 'Em Emissão', color: 'bg-yellow-50 border-yellow-200 text-yellow-700' },
   { id: 'EMITIDO', label: 'Emitido (User)', color: 'bg-green-50 border-green-200 text-green-700' },
@@ -46,7 +48,7 @@ export default function Operacoes() {
           empresas (nome, codigo_agencia),
           formas_pagamento (nome)
         `)
-        .in('status', ['OP_GERADA', 'PAGAMENTO_CONFIRMADO', 'EM_EMISSAO', 'EMITIDO', 'EMITIDO7C', 'CANCELADO'])
+        .in('status', ['OP_GERADA', 'LINK_GERADO', 'PAGAMENTO_CONFIRMADO', 'EM_EMISSAO', 'EMITIDO', 'EMITIDO7C', 'CANCELADO'])
         .order('created_at', { ascending: false })
 
       if (error) throw error
@@ -58,9 +60,9 @@ export default function Operacoes() {
     }
   }
 
-  const handleStatusChange = async (opId: number, newStatus: string) => {
+  const handleStatusChange = async (opId: number, newStatus: string, extraData: any = {}) => {
     try {
-      let updateData: any = { status: newStatus }
+      let updateData: any = { status: newStatus, ...extraData }
 
       if (newStatus === 'EM_EMISSAO') {
         const { data: { user } } = await supabase.auth.getUser()
@@ -78,10 +80,10 @@ export default function Operacoes() {
       if (error) throw error
       
       // Update local state
-      setOps(prev => prev.map(op => op.id === opId ? { ...op, status: newStatus, ...(updateData.responsavel_emissao ? { responsavel_emissao: updateData.responsavel_emissao } : {}) } : op))
+      setOps(prev => prev.map(op => op.id === opId ? { ...op, status: newStatus, ...updateData, ...(updateData.responsavel_emissao ? { responsavel_emissao: updateData.responsavel_emissao } : {}) } : op))
       
       if (selectedOp && selectedOp.id === opId) {
-        setSelectedOp((prev: any) => ({ ...prev, status: newStatus, ...(updateData.responsavel_emissao ? { responsavel_emissao: updateData.responsavel_emissao } : {}) }))
+        setSelectedOp((prev: any) => ({ ...prev, status: newStatus, ...updateData, ...(updateData.responsavel_emissao ? { responsavel_emissao: updateData.responsavel_emissao } : {}) }))
       }
     } catch (error) {
       console.error('Erro ao atualizar status:', error)
@@ -197,9 +199,120 @@ export default function Operacoes() {
   )
 }
 
-function OpDetailsModal({ op, onClose, onStatusChange }: { op: any, onClose: () => void, onStatusChange: (id: number, status: string) => void }) {
+function OpDetailsModal({ op, onClose, onStatusChange }: { op: any, onClose: () => void, onStatusChange: (id: number, status: string, extraData?: any) => void }) {
     const [details, setDetails] = useState<{ flights: any[], passengers: any[] }>({ flights: [], passengers: [] })
     const [loading, setLoading] = useState(true)
+    const [paymentLink, setPaymentLink] = useState(op.link_pagamento || '')
+    const [isSavingLink, setIsSavingLink] = useState(false)
+    const [activeTab, setActiveTab] = useState<'DETAILS' | 'EMISSION'>('DETAILS')
+    
+    // Emission Data States
+    const [sameLoc, setSameLoc] = useState(false)
+    const [emissionData, setEmissionData] = useState<Record<string, any>>({}) // Key format: 'paxId-direction' or 'GLOBAL-direction'
+    const [financeiroData, setFinanceiroData] = useState({
+        tarifaNet: '',
+        taxaLink: '',
+        milhas: '',
+        custo: '',
+        lucro: '',
+        du: '',
+        taxaEmbarque: ''
+    })
+
+    const handleEmissionChange = (key: string, field: 'loc', value: string) => {
+        setEmissionData(prev => ({
+            ...prev,
+            [key]: {
+                ...prev[key],
+                [field]: value
+            }
+        }))
+    }
+
+    const handleFinanceiroChange = (field: keyof typeof financeiroData, value: string) => {
+        setFinanceiroData(prev => ({ ...prev, [field]: value }))
+    }
+
+    const totals = useMemo(() => {
+        if (!details.flights.length) return null;
+        
+        // Assume o tipo tarifário do primeiro voo para labels
+        const tipoTarifario = details.flights[0].dados_voo?.tipotarifario;
+
+        return details.flights.reduce((acc, flight) => {
+            const d = flight.dados_voo || {};
+            return {
+                tipotarifario: tipoTarifario,
+                Adulto: (acc.Adulto || 0) + (d.Adulto || 0),
+                Crianca: (acc.Crianca || 0) + (d.Crianca || 0),
+                Bebe: (acc.Bebe || 0) + (d.Bebe || 0),
+                
+                AdultoR: (acc.AdultoR || 0) + (d.AdultoR || 0),
+                CriancaR: (acc.CriancaR || 0) + (d.CriancaR || 0),
+                BebeR: (acc.BebeR || 0) + (d.BebeR || 0),
+
+                AdultoC: (acc.AdultoC || 0) + (d.AdultoC || 0),
+                CriancaC: (acc.CriancaC || 0) + (d.CriancaC || 0),
+                BebeC: (acc.BebeC || 0) + (d.BebeC || 0),
+
+                AdultoF: (acc.AdultoF || 0) + (d.AdultoF || 0),
+                CriancaF: (acc.CriancaF || 0) + (d.CriancaF || 0),
+                BebeF: (acc.BebeF || 0) + (d.BebeF || 0),
+                
+                TaxaEmbarque: (acc.TaxaEmbarque || 0) + (d.TaxaEmbarque || 0),
+            };
+        }, {} as any);
+    }, [details.flights]);
+
+    // Effect to pre-fill financeiro data
+    const directions = useMemo(() => {
+        if (!details.flights.length) return []
+        // Get unique directions present in flights
+        const dirs = Array.from(new Set(details.flights.map(f => f.direcao))).sort((a, b) => {
+            if (a === 'IDA') return -1
+            if (b === 'IDA') return 1
+            return 0
+        })
+        return dirs
+    }, [details.flights])
+
+    useEffect(() => {
+        if (!totals) return
+
+        const tarifaF = (totals.AdultoF || 0) + (totals.CriancaF || 0) + (totals.BebeF || 0) + (totals.TaxaEmbarque || 0)
+        // Correção: tarifaR agora é apenas a tarifa de custo (sem taxas de embarque), pois a taxa de embarque é tratada separadamente
+        const tarifaR = (totals.AdultoR || 0) + (totals.CriancaR || 0) + (totals.BebeR || 0) 
+        const milhasQtd = (totals.Adulto || 0) + (totals.Crianca || 0) + (totals.Bebe || 0)
+        
+        // Calcular Taxa Link (se houver pagamento com juros)
+        const valorComJuros = op.detalhes_pagamento?.valor_com_juros || op.valor || 0
+        const valorSemJuros = op.detalhes_pagamento?.valor_sem_juros || op.valor || 0
+        const taxaLinkCalc = valorComJuros - valorSemJuros
+        const taxaDu = op.detalhes_pagamento?.taxa_du || 0
+        
+        // Tarifa Net Agência = Total (Venda) - DU - Taxa Link
+        const tarifaNetAgencia = (op.valor || 0) - taxaDu - taxaLinkCalc
+
+        // Faturamento 7C = Tarifa NET Agência + Taxa Link + DU
+        const faturamento7C = tarifaNetAgencia + taxaLinkCalc + taxaDu
+
+        // Lucro = Faturamento - Taxa Link - Custo Real (inicialmente igual ao custo calculado) - DU - Taxa Embarque
+        const lucroEstimado = faturamento7C - taxaLinkCalc - tarifaR - taxaDu - (totals.TaxaEmbarque || 0)
+
+        const formatCurrency = (val: number) => {
+            return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)
+        }
+
+        setFinanceiroData({
+            tarifaNet: formatCurrency(tarifaNetAgencia),
+            taxaLink: formatCurrency(taxaLinkCalc > 0 ? taxaLinkCalc : 0),
+            milhas: milhasQtd.toString(),
+            custo: formatCurrency(tarifaR),
+            lucro: formatCurrency(lucroEstimado),
+            du: formatCurrency(taxaDu),
+            taxaEmbarque: formatCurrency(totals.TaxaEmbarque || 0)
+        })
+    }, [totals, op])
 
     useEffect(() => {
         const fetchDetails = async () => {
@@ -223,6 +336,53 @@ function OpDetailsModal({ op, onClose, onStatusChange }: { op: any, onClose: () 
         fetchDetails()
     }, [op.id])
 
+    const handleSaveLink = async () => {
+        if (!paymentLink) return
+        setIsSavingLink(true)
+        try {
+            await onStatusChange(op.id, 'LINK_GERADO', { link_pagamento: paymentLink })
+            onClose()
+        } catch (e) {
+            console.error(e)
+        } finally {
+            setIsSavingLink(false)
+        }
+    }
+
+    const handleConfirmarEmissao = async () => {
+        try {
+            if (!confirm('Deseja confirmar a emissão e gerar os lançamentos financeiros?')) return;
+
+            setIsSavingLink(true);
+
+            // 1. Atualizar status da cotação
+            // TODO: Implementar lógica de contas a pagar/receber (futuro)
+            
+            // Dados de emissão para salvar (exemplo de estrutura JSONB)
+            const dadosEmissao = {
+                emission_data: emissionData,
+                financeiro: {
+                    ...financeiroData,
+                    // Converter strings formatadas de volta para números se necessário
+                }
+            };
+
+            // Atualiza status e salva dados extras (precisaria de campo específico no banco ou usar um campo jsonb existente/novo)
+            // Por enquanto vamos apenas mudar o status conforme fluxo atual
+            await onStatusChange(op.id, 'EMITIDO', { 
+                // Aqui você pode passar dados adicionais se sua função onStatusChange suportar ou fazer um update separado
+                // Por exemplo, salvar o lucro real, custo real, etc.
+            });
+            
+            onClose();
+        } catch (error) {
+            console.error('Erro ao confirmar emissão:', error);
+            alert('Erro ao confirmar emissão. Consulte o console.');
+        } finally {
+            setIsSavingLink(false);
+        }
+    };
+
     return (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
@@ -232,6 +392,7 @@ function OpDetailsModal({ op, onClose, onStatusChange }: { op: any, onClose: () 
                             OP #{op.codigo || op.id}
                             <span className={`text-xs px-2 py-0.5 rounded-full ${
                                 op.status === 'OP_GERADA' ? 'bg-blue-100 text-blue-700' :
+                                op.status === 'LINK_GERADO' ? 'bg-purple-100 text-purple-700' :
                                 op.status === 'PAGAMENTO_CONFIRMADO' ? 'bg-indigo-100 text-indigo-700' :
                                 op.status === 'EM_EMISSAO' ? 'bg-yellow-100 text-yellow-700' :
                                 op.status === 'EMITIDO' ? 'bg-green-100 text-green-700' :
@@ -247,10 +408,40 @@ function OpDetailsModal({ op, onClose, onStatusChange }: { op: any, onClose: () 
                     </button>
                 </div>
 
+                {/* Abas - Visível apenas se status for EM_EMISSAO */}
+                {op.status === 'EM_EMISSAO' && (
+                    <div className="px-6 border-b border-gray-200 bg-white">
+                        <nav className="-mb-px flex space-x-8">
+                            <button
+                                onClick={() => setActiveTab('DETAILS')}
+                                className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
+                                    activeTab === 'DETAILS'
+                                        ? 'border-blue-500 text-blue-600'
+                                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                }`}
+                            >
+                                <Info className="w-4 h-4" />
+                                Detalhes da Solicitação
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('EMISSION')}
+                                className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
+                                    activeTab === 'EMISSION'
+                                        ? 'border-yellow-500 text-yellow-600'
+                                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                }`}
+                            >
+                                <Plane className="w-4 h-4" />
+                                Dados de Emissão
+                            </button>
+                        </nav>
+                    </div>
+                )}
+
                 <div className="flex-1 overflow-y-auto p-6 space-y-8">
                     {/* Ações de Status */}
                     <div className="flex gap-2 justify-end border-b border-gray-100 pb-4">
-                        {op.status === 'OP_GERADA' && (
+                         {(op.status === 'OP_GERADA' || op.status === 'LINK_GERADO') && (
                             <button 
                                 onClick={() => onStatusChange(op.id, 'PAGAMENTO_CONFIRMADO')}
                                 className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 font-medium shadow-sm flex items-center gap-2"
@@ -267,20 +458,77 @@ function OpDetailsModal({ op, onClose, onStatusChange }: { op: any, onClose: () 
                                 Assumir Emissão
                             </button>
                         )}
-                        {op.status === 'EM_EMISSAO' && (
-                            <button 
-                                onClick={() => onStatusChange(op.id, 'EMITIDO7C')}
-                                className="bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 font-medium shadow-sm"
-                            >
-                                Finalizar (Emitido)
-                            </button>
-                        )}
                     </div>
 
                     {loading ? (
                         <div className="text-center py-10"><Clock className="w-8 h-8 animate-spin mx-auto text-gray-400"/></div>
                     ) : (
                         <>
+                          {/* Conteúdo da Aba DETAILS (Fluxo Normal) */}
+                          {(op.status !== 'EM_EMISSAO' || activeTab === 'DETAILS') && (
+                            <>
+                            {/* Input de Link de Pagamento - Apenas se status for OP_GERADA ou LINK_GERADO e tiver cartão */}
+                             {(op.status === 'OP_GERADA' || op.status === 'LINK_GERADO') && (
+                                <section className="bg-purple-50 border border-purple-100 rounded-xl p-6">
+                                    <h4 className="font-bold text-purple-900 mb-4 flex items-center gap-2">
+                                        <CreditCard className="w-5 h-5 text-purple-600" />
+                                        Gerar Link de Pagamento
+                                    </h4>
+
+                                    {op.detalhes_pagamento?.card && (
+                                        <div className="mb-6 bg-white p-4 rounded-lg border border-purple-100 shadow-sm">
+                                            <h5 className="text-sm font-bold text-gray-700 mb-3 uppercase tracking-wide">Dados do Cartão (Informado pelo Cliente)</h5>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                                                <div>
+                                                    <span className="block text-gray-500 text-xs">Nome no Cartão</span>
+                                                    <span className="font-mono font-medium text-gray-900">{op.detalhes_pagamento.card.holderName}</span>
+                                                </div>
+                                                <div>
+                                                    <span className="block text-gray-500 text-xs">CPF do Titular</span>
+                                                    <span className="font-mono font-medium text-gray-900">{op.detalhes_pagamento.card.holderCPF}</span>
+                                                </div>
+                                                <div>
+                                                    <span className="block text-gray-500 text-xs">Número do Cartão</span>
+                                                    <span className="font-mono font-medium text-gray-900">{op.detalhes_pagamento.card.number}</span>
+                                                </div>
+                                                <div className="flex gap-4">
+                                                    <div>
+                                                        <span className="block text-gray-500 text-xs">Validade</span>
+                                                        <span className="font-mono font-medium text-gray-900">{op.detalhes_pagamento.card.expiry}</span>
+                                                    </div>
+                                                    <div>
+                                                        <span className="block text-gray-500 text-xs">CVV</span>
+                                                        <span className="font-mono font-medium text-gray-900">{op.detalhes_pagamento.card.cvc}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="flex items-end gap-3">
+                                        <div className="flex-1">
+                                            <label className="block text-sm font-medium text-purple-900 mb-1">Link de Pagamento</label>
+                                            <input 
+                                                type="text" 
+                                                value={paymentLink}
+                                                onChange={(e) => setPaymentLink(e.target.value)}
+                                                placeholder="Cole o link de pagamento aqui..."
+                                                className="w-full px-4 py-2 border border-purple-200 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none"
+                                            />
+                                        </div>
+                                        <button 
+                                            onClick={handleSaveLink}
+                                            disabled={!paymentLink || isSavingLink}
+                                            className="px-6 py-2 bg-purple-600 text-white font-medium rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                        >
+                                            {isSavingLink ? 'Salvando...' : 'Salvar e Enviar'}
+                                        </button>
+                                    </div>
+                                    <p className="text-xs text-purple-700 mt-2">
+                                        Ao salvar, o status mudará para "Aguardando Pagamento" e o cliente será notificado.
+                                    </p>
+                                </section>
+                            )}
                             {/* Voos */}
                             <section>
                                 <h4 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
@@ -411,6 +659,14 @@ function OpDetailsModal({ op, onClose, onStatusChange }: { op: any, onClose: () 
                                                                 {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(flight.dados_voo.TaxaEmbarque || 0)}
                                                             </span>
                                                         </div>
+                                                        {flight.dados_voo.tipotarifario !== 'C' && (
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-blue-800 font-semibold text-sm">Milhas:</span>
+                                                                <span className="text-blue-700 font-bold text-sm">
+                                                                    {flight.dados_voo.Adulto}
+                                                                </span>
+                                                            </div>
+                                                        )}
                                                     </div>
 
                                                     <div className="mt-2 pt-2 border-t border-blue-200/60">
@@ -488,7 +744,7 @@ function OpDetailsModal({ op, onClose, onStatusChange }: { op: any, onClose: () 
                                         </div>
                                     </div>
 
-                                    {/* Detalhamento de Custos e Tarifas (Ex-Info Voo) */}
+                                    {/* Detalhamento de Tarifas e Custos (Ex-Info Voo) */}
                                     <div className="mt-6 pt-6 border-t border-green-200">
                                         <h5 className="text-sm font-bold text-green-800 mb-4 flex items-center gap-2">
                                             <Info className="w-4 h-4" />
@@ -496,25 +752,25 @@ function OpDetailsModal({ op, onClose, onStatusChange }: { op: any, onClose: () 
                                         </h5>
                                         
                                         {/* Agrega dados de todos os voos se houver mais de um, ou pega do primeiro */}
-                                        {details.flights.length > 0 && details.flights[0].dados_voo && (
+                                        {totals && (
                                             <div className="space-y-6">
                                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
                                                     {/* Milhas ou Custo Base (dependendo do tipo tarifário) */}
-                                                    {details.flights[0].dados_voo.tipotarifario !== 'C' ? (
+                                                    {totals.tipotarifario !== 'C' ? (
                                                         <div>
                                                             <div className="text-green-700 font-bold mb-2 text-xs uppercase tracking-wide">Milhas (Qtd)</div>
                                                             <div className="space-y-1 text-sm">
                                                                 <div className="flex justify-between">
                                                                     <span className="text-green-800/70">Adulto:</span>
-                                                                    <span className="font-bold text-green-900">{details.flights[0].dados_voo.Adulto || 0}</span>
+                                                                    <span className="font-bold text-green-900">{totals.Adulto || 0}</span>
                                                                 </div>
                                                                 <div className="flex justify-between">
                                                                     <span className="text-green-800/70">Criança:</span>
-                                                                    <span className="font-bold text-green-900">{details.flights[0].dados_voo.Crianca || 0}</span>
+                                                                    <span className="font-bold text-green-900">{totals.Crianca || 0}</span>
                                                                 </div>
                                                                 <div className="flex justify-between">
                                                                     <span className="text-green-800/70">Bebê:</span>
-                                                                    <span className="font-bold text-green-900">{details.flights[0].dados_voo.Bebe || 0}</span>
+                                                                    <span className="font-bold text-green-900">{totals.Bebe || 0}</span>
                                                                 </div>
                                                             </div>
                                                         </div>
@@ -524,36 +780,36 @@ function OpDetailsModal({ op, onClose, onStatusChange }: { op: any, onClose: () 
                                                             <div className="space-y-1 text-sm">
                                                                 <div className="flex justify-between">
                                                                     <span className="text-green-800/70">Adulto:</span>
-                                                                    <span className="font-bold text-green-900">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(details.flights[0].dados_voo.Adulto || 0)}</span>
+                                                                    <span className="font-bold text-green-900">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totals.Adulto || 0)}</span>
                                                                 </div>
                                                                 <div className="flex justify-between">
                                                                     <span className="text-green-800/70">Criança:</span>
-                                                                    <span className="font-bold text-green-900">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(details.flights[0].dados_voo.Crianca || 0)}</span>
+                                                                    <span className="font-bold text-green-900">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totals.Crianca || 0)}</span>
                                                                 </div>
                                                                 <div className="flex justify-between">
                                                                     <span className="text-green-800/70">Bebê:</span>
-                                                                    <span className="font-bold text-green-900">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(details.flights[0].dados_voo.Bebe || 0)}</span>
+                                                                    <span className="font-bold text-green-900">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totals.Bebe || 0)}</span>
                                                                 </div>
                                                             </div>
                                                         </div>
                                                     )}
 
                                                     {/* Custo Milhas (Oculto se for tipo C, ou mantido como custo secundário?) */}
-                                                    {details.flights[0].dados_voo.tipotarifario !== 'C' && (
+                                                    {totals.tipotarifario !== 'C' && (
                                                         <div>
                                                             <div className="text-green-700 font-bold mb-2 text-xs uppercase tracking-wide">Custo Milhas + Taxas</div>
                                                             <div className="space-y-1 text-sm">
                                                                 <div className="flex justify-between">
                                                                     <span className="text-green-800/70">Adulto:</span>
-                                                                    <span className="font-bold text-green-900">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((details.flights[0].dados_voo.AdultoR || 0) > 0 ? (details.flights[0].dados_voo.AdultoR + (details.flights[0].dados_voo.TaxaEmbarque || 0)) : 0)}</span>
+                                                                    <span className="font-bold text-green-900">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((totals.AdultoR || 0) > 0 ? (totals.AdultoR + (totals.TaxaEmbarque || 0)) : 0)}</span>
                                                                 </div>
                                                                 <div className="flex justify-between">
                                                                     <span className="text-green-800/70">Criança:</span>
-                                                                    <span className="font-bold text-green-900">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((details.flights[0].dados_voo.CriancaR || 0) > 0 ? (details.flights[0].dados_voo.CriancaR + (details.flights[0].dados_voo.TaxaEmbarque || 0)) : 0)}</span>
+                                                                    <span className="font-bold text-green-900">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((totals.CriancaR || 0) > 0 ? (totals.CriancaR + (totals.TaxaEmbarque || 0)) : 0)}</span>
                                                                 </div>
                                                                 <div className="flex justify-between">
                                                                     <span className="text-green-800/70">Bebê:</span>
-                                                                    <span className="font-bold text-green-900">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((details.flights[0].dados_voo.BebeR || 0) > 0 ? (details.flights[0].dados_voo.BebeR + (details.flights[0].dados_voo.TaxaEmbarque || 0)) : 0)}</span>
+                                                                    <span className="font-bold text-green-900">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((totals.BebeR || 0) > 0 ? (totals.BebeR + (totals.TaxaEmbarque || 0)) : 0)}</span>
                                                                 </div>
                                                             </div>
                                                         </div>
@@ -565,15 +821,15 @@ function OpDetailsModal({ op, onClose, onStatusChange }: { op: any, onClose: () 
                                                         <div className="space-y-1 text-sm">
                                                             <div className="flex justify-between">
                                                                 <span className="text-green-800/70">Adulto:</span>
-                                                                <span className="font-bold text-green-900">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((details.flights[0].dados_voo.AdultoC || 0) > 0 ? (details.flights[0].dados_voo.AdultoC + (details.flights[0].dados_voo.TaxaEmbarque || 0)) : 0)}</span>
+                                                                <span className="font-bold text-green-900">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((totals.AdultoC || 0) > 0 ? (totals.AdultoC + (totals.TaxaEmbarque || 0)) : 0)}</span>
                                                             </div>
                                                             <div className="flex justify-between">
                                                                 <span className="text-green-800/70">Criança:</span>
-                                                                <span className="font-bold text-green-900">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((details.flights[0].dados_voo.CriancaC || 0) > 0 ? (details.flights[0].dados_voo.CriancaC + (details.flights[0].dados_voo.TaxaEmbarque || 0)) : 0)}</span>
+                                                                <span className="font-bold text-green-900">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((totals.CriancaC || 0) > 0 ? (totals.CriancaC + (totals.TaxaEmbarque || 0)) : 0)}</span>
                                                             </div>
                                                             <div className="flex justify-between">
                                                                 <span className="text-green-800/70">Bebê:</span>
-                                                                <span className="font-bold text-green-900">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((details.flights[0].dados_voo.BebeC || 0) > 0 ? (details.flights[0].dados_voo.BebeC + (details.flights[0].dados_voo.TaxaEmbarque || 0)) : 0)}</span>
+                                                                <span className="font-bold text-green-900">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((totals.BebeC || 0) > 0 ? (totals.BebeC + (totals.TaxaEmbarque || 0)) : 0)}</span>
                                                             </div>
                                                         </div>
                                                     </div>
@@ -584,15 +840,15 @@ function OpDetailsModal({ op, onClose, onStatusChange }: { op: any, onClose: () 
                                                         <div className="space-y-1 text-sm">
                                                             <div className="flex justify-between">
                                                                 <span className="text-green-800/70">Adulto:</span>
-                                                                <span className="font-bold text-green-900">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((details.flights[0].dados_voo.AdultoF || 0) > 0 ? (details.flights[0].dados_voo.AdultoF + (details.flights[0].dados_voo.TaxaEmbarque || 0)) : 0)}</span>
+                                                                <span className="font-bold text-green-900">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((totals.AdultoF || 0) > 0 ? (totals.AdultoF + (totals.TaxaEmbarque || 0)) : 0)}</span>
                                                             </div>
                                                             <div className="flex justify-between">
                                                                 <span className="text-green-800/70">Criança:</span>
-                                                                <span className="font-bold text-green-900">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((details.flights[0].dados_voo.CriancaF || 0) > 0 ? (details.flights[0].dados_voo.CriancaF + (details.flights[0].dados_voo.TaxaEmbarque || 0)) : 0)}</span>
+                                                                <span className="font-bold text-green-900">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((totals.CriancaF || 0) > 0 ? (totals.CriancaF + (totals.TaxaEmbarque || 0)) : 0)}</span>
                                                             </div>
                                                             <div className="flex justify-between">
                                                                 <span className="text-green-800/70">Bebê:</span>
-                                                                <span className="font-bold text-green-900">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((details.flights[0].dados_voo.BebeF || 0) > 0 ? (details.flights[0].dados_voo.BebeF + (details.flights[0].dados_voo.TaxaEmbarque || 0)) : 0)}</span>
+                                                                <span className="font-bold text-green-900">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((totals.BebeF || 0) > 0 ? (totals.BebeF + (totals.TaxaEmbarque || 0)) : 0)}</span>
                                                             </div>
                                                         </div>
                                                     </div>
@@ -603,9 +859,9 @@ function OpDetailsModal({ op, onClose, onStatusChange }: { op: any, onClose: () 
                                                         <div className="text-green-700 font-bold mb-1 text-xs uppercase">Lucro Estimado</div>
                                                         <div className="text-lg font-bold text-green-800">
                                                             {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
-                                                                details.flights[0].dados_voo.tipotarifario === 'C'
-                                                                    ? ((details.flights[0].dados_voo.AdultoF || 0) - (details.flights[0].dados_voo.AdultoC || 0))
-                                                                    : ((details.flights[0].dados_voo.AdultoF || 0) - (details.flights[0].dados_voo.AdultoR || 0))
+                                                                totals.tipotarifario === 'C'
+                                                                    ? ((totals.AdultoF || 0) - (totals.AdultoC || 0))
+                                                                    : ((totals.AdultoF || 0) - (totals.AdultoR || 0))
                                                             )}
                                                         </div>
                                                     </div>
@@ -613,7 +869,7 @@ function OpDetailsModal({ op, onClose, onStatusChange }: { op: any, onClose: () 
                                                         <div className="text-green-700 font-bold mb-1 text-xs uppercase">Economia Gerada</div>
                                                         <div className="text-lg font-bold text-green-800">
                                                             {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
-                                                                ((details.flights[0].dados_voo.AdultoC || 0) - (details.flights[0].dados_voo.AdultoF || 0))
+                                                                ((totals.AdultoC || 0) - (totals.AdultoF || 0))
                                                             )}
                                                         </div>
                                                     </div>
@@ -649,6 +905,234 @@ function OpDetailsModal({ op, onClose, onStatusChange }: { op: any, onClose: () 
                                     )}
                                 </div>
                             </section>
+                            </>
+                          )}
+
+                          {/* Conteúdo da Aba EMISSION (Apenas EM_EMISSAO) */}
+                          {op.status === 'EM_EMISSAO' && activeTab === 'EMISSION' && (
+                              <div className="space-y-8">
+                                  {/* Dados de Emissão */}
+                                  <section className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                                      <div className="flex items-center justify-between mb-6">
+                                          <h4 className="font-bold text-gray-800 flex items-center gap-2 text-lg">
+                                              <Plane className="w-5 h-5 text-blue-600" />
+                                              Dados de Emissão
+                                          </h4>
+                                          
+                                          <label className="flex items-center gap-2 cursor-pointer bg-blue-50 px-3 py-2 rounded-lg border border-blue-100 hover:bg-blue-100 transition-colors">
+                                              <input 
+                                                  type="checkbox" 
+                                                  checked={sameLoc} 
+                                                  onChange={(e) => setSameLoc(e.target.checked)}
+                                                  className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                                              />
+                                              <span className="text-sm font-medium text-blue-800">Mesmo LOC/NCOMPRA para todos</span>
+                                          </label>
+                                      </div>
+
+                                      {sameLoc ? (
+                                          <div className="space-y-6">
+                                              <div className="bg-blue-50/50 p-4 rounded-lg border border-blue-100 text-sm text-blue-800 mb-4">
+                                                  <strong>Passageiros:</strong> {details.passengers.map(p => p.clientes?.nome).join(', ')}
+                                              </div>
+                                              
+                                              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                  {directions.map(dir => (
+                                                      <div key={dir} className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                                                          <h5 className="font-bold text-gray-700 mb-3 border-b border-gray-200 pb-2">{dir}</h5>
+                                                          <div className="space-y-3">
+                                                              <div>
+                                                                  <label className="block text-xs font-bold text-gray-700 mb-1">Localizador / Nº Compra</label>
+                                                                  <input 
+                                                                      type="text"
+                                                                      value={emissionData[`GLOBAL-${dir}`]?.loc || ''}
+                                                                      onChange={(e) => handleEmissionChange(`GLOBAL-${dir}`, 'loc', e.target.value)}
+                                                                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 uppercase text-gray-900 bg-white"
+                                                                      placeholder="Ex: ABC1234 ou 123456789"
+                                                                  />
+                                                              </div>
+                                                          </div>
+                                                      </div>
+                                                  ))}
+                                              </div>
+                                          </div>
+                                      ) : (
+                                          <div className="space-y-6">
+                                              {details.passengers.map((p, idx) => (
+                                                  <div key={idx} className="border border-gray-200 rounded-lg overflow-hidden">
+                                                      <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 flex items-center gap-3">
+                                                          <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold text-sm">
+                                                              {p.clientes?.nome?.charAt(0) || 'P'}
+                                                          </div>
+                                                          <span className="font-bold text-gray-800">{p.clientes?.nome}</span>
+                                                      </div>
+                                                      <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                          {directions.map(dir => (
+                                                              <div key={dir} className="bg-white p-3 rounded border border-gray-100 shadow-sm">
+                                                                  <h5 className="font-bold text-xs text-gray-500 uppercase mb-3 flex items-center gap-2">
+                                                                      <Plane className="w-3 h-3" /> {dir}
+                                                                  </h5>
+                                                                  <div>
+                                                                      <label className="block text-[10px] font-bold text-gray-700 mb-1">LOC / Nº COMPRA</label>
+                                                                      <input 
+                                                                          type="text"
+                                                                          value={emissionData[`${p.id}-${dir}`]?.loc || ''}
+                                                                          onChange={(e) => handleEmissionChange(`${p.id}-${dir}`, 'loc', e.target.value)}
+                                                                          className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500 uppercase text-gray-900 bg-white"
+                                                                      />
+                                                                  </div>
+                                                              </div>
+                                                          ))}
+                                                      </div>
+                                                  </div>
+                                              ))}
+                                          </div>
+                                      )}
+                                  </section>
+
+                                  {/* Financeiro */}
+                                  <section className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                                      <h4 className="font-bold text-gray-800 mb-4 flex items-center gap-2 text-lg">
+                                          <DollarSign className="w-5 h-5 text-green-600" />
+                                          Financeiro
+                                      </h4>
+                                      
+                                      <div className="bg-yellow-50 border border-yellow-100 rounded-lg p-4 mb-6 text-sm text-yellow-800 flex items-start gap-2">
+                                        <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0" />
+                                        <p>Estes valores gerarão automaticamente as contas a pagar e receber no sistema financeiro.</p>
+                                      </div>
+
+                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                          {/* Coluna Agência */}
+                                          <div className="bg-blue-50/50 p-4 rounded-lg border border-blue-100 h-full">
+                                              <h5 className="font-bold text-blue-800 mb-4 border-b border-blue-200 pb-2 flex items-center gap-2">
+                                                  <User className="w-4 h-4" /> Agência
+                                              </h5>
+                                              <div className="space-y-4">
+                                                  <div>
+                                                      <label className="block text-xs font-bold text-blue-900 mb-1">Tarifa NET Agência</label>
+                                                      <input 
+                                                          type="text" 
+                                                          className="w-full px-3 py-2 bg-white border border-blue-300 rounded-md text-gray-900 font-medium" 
+                                                          value={financeiroData.tarifaNet}
+                                                          onChange={(e) => handleFinanceiroChange('tarifaNet', e.target.value)}
+                                                      />
+                                                      <p className="text-[10px] text-blue-700 mt-1">*Total - DU - Taxa Link</p>
+                                                  </div>
+                                                  <div>
+                                                      <label className="block text-xs font-bold text-blue-900 mb-1">DU</label>
+                                                      <input 
+                                                          type="text" 
+                                                          className="w-full px-3 py-2 bg-white border border-blue-300 rounded-md text-gray-900 font-medium" 
+                                                          value={financeiroData.du}
+                                                          onChange={(e) => handleFinanceiroChange('du', e.target.value)}
+                                                      />
+                                                  </div>
+                                                  <div>
+                                                      <label className="block text-xs font-bold text-blue-900 mb-1">Taxa Link (Juros)</label>
+                                                      <input 
+                                                          type="text" 
+                                                          className="w-full px-3 py-2 bg-white border border-blue-300 rounded-md text-gray-900 font-medium" 
+                                                          value={financeiroData.taxaLink}
+                                                          onChange={(e) => handleFinanceiroChange('taxaLink', e.target.value)}
+                                                      />
+                                                  </div>
+                                              </div>
+                                          </div>
+
+                                          {/* Coluna 7C */}
+                                          <div className="bg-green-50/50 p-4 rounded-lg border border-green-100 h-full">
+                                              <h5 className="font-bold text-green-800 mb-4 border-b border-green-200 pb-2 flex items-center gap-2">
+                                                  <Building className="w-4 h-4" /> 7C
+                                              </h5>
+                                              <div className="space-y-4">
+                                                  <div>
+                                                      <label className="block text-xs font-bold text-green-900 mb-1">Faturamento</label>
+                                                      <input 
+                                                          type="text" 
+                                                          className="w-full px-3 py-2 bg-white border border-green-300 rounded-md text-gray-900 font-medium" 
+                                                          value={new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(op.valor || 0)}
+                                                          readOnly
+                                                      />
+                                                      <p className="text-[10px] text-green-700 mt-1">*Tarifa NET + Taxa Link + DU</p>
+                                                  </div>
+                                                  <div>
+                                                      <label className="block text-xs font-bold text-green-900 mb-1">Milhas (Total)</label>
+                                                      <input 
+                                                          type="text" 
+                                                          className="w-full px-3 py-2 bg-white border border-green-300 rounded-md text-gray-900 font-medium" 
+                                                          value={financeiroData.milhas}
+                                                          onChange={(e) => handleFinanceiroChange('milhas', e.target.value)}
+                                                      />
+                                                  </div>
+                                                  <div className="grid grid-cols-2 gap-2">
+                                                      <div>
+                                                          <label className="block text-xs font-bold text-green-900 mb-1">Custo Calc.</label>
+                                                          <input 
+                                                              type="text" 
+                                                              className="w-full px-3 py-2 bg-gray-50 border border-green-200 rounded-md text-gray-500 font-medium text-xs" 
+                                                              value={financeiroData.custo}
+                                                              readOnly
+                                                          />
+                                                      </div>
+                                                      <div>
+                                                          <label className="block text-xs font-bold text-green-900 mb-1">Custo Real</label>
+                                                          <input 
+                                                              type="text" 
+                                                              className="w-full px-3 py-2 bg-white border border-green-300 rounded-md text-gray-900 font-medium" 
+                                                              defaultValue={financeiroData.custo}
+                                                              // Em um cenário real, deveria ter um state separado para custoReal, 
+                                                              // mas aqui vamos usar o defaultValue por enquanto ou o próprio custo editável
+                                                              onChange={(e) => handleFinanceiroChange('custo', e.target.value)}
+                                                          />
+                                                      </div>
+                                                  </div>
+                                                  <div>
+                                                      <label className="block text-xs font-bold text-green-900 mb-1">Taxa de Embarque</label>
+                                                      <input 
+                                                          type="text" 
+                                                          className="w-full px-3 py-2 bg-white border border-green-300 rounded-md text-gray-900 font-medium" 
+                                                          value={financeiroData.taxaEmbarque}
+                                                          readOnly
+                                                      />
+                                                  </div>
+                                                  <div>
+                                                      <label className="block text-xs font-bold text-green-900 mb-1">Taxa Link</label>
+                                                      <input 
+                                                          type="text" 
+                                                          className="w-full px-3 py-2 bg-white border border-green-300 rounded-md text-gray-900 font-medium" 
+                                                          value={financeiroData.taxaLink}
+                                                          readOnly
+                                                      />
+                                                  </div>
+                                                  <div>
+                                                      <label className="block text-xs font-bold text-green-900 mb-1">Lucro</label>
+                                                      <div className="relative">
+                                                          <input 
+                                                              type="text" 
+                                                              className="w-full px-3 py-2 bg-green-100 border border-green-300 rounded-md font-bold text-green-900 text-lg" 
+                                                              value={financeiroData.lucro}
+                                                              onChange={(e) => handleFinanceiroChange('lucro', e.target.value)}
+                                                          />
+                                                      </div>
+                                                      <p className="text-[10px] text-green-700 mt-1">*Faturamento - Taxa Link - Custo Real - Taxa Embarque - DU</p>
+                                                  </div>
+                                              </div>
+                                          </div>
+                                      </div>
+                                  </section>
+                                  
+                                  <div className="flex justify-end pt-4">
+                                      <button 
+                                          className="bg-blue-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-700 shadow-md transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                          onClick={handleConfirmarEmissao}
+                                          disabled={isSavingLink}
+                                      >
+                                          {isSavingLink ? 'Processando...' : 'Confirmar Emissão e Gerar Lançamentos'}
+                                      </button>
+                                  </div>
+                              </div>
+                          )}
                         </>
                     )}
                 </div>
