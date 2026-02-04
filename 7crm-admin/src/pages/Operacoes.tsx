@@ -38,15 +38,22 @@ export default function Operacoes() {
 
   useEffect(() => {
     fetchOps()
+    
+    // Configurar refresh automático a cada 1 minuto
+    const intervalId = setInterval(() => {
+        fetchOps()
+    }, 60000)
+
+    // Solicitar permissão para notificações
+    if (Notification.permission === 'default') {
+        Notification.requestPermission()
+    }
+
+    return () => clearInterval(intervalId)
   }, [])
 
   const fetchOps = async () => {
     try {
-      // Fetch cotacoes with specific statuses
-      // We also need to fetch related data like flights and passengers
-      // Since supabase-js doesn't do deep nested joins easily for everything, we might need multiple queries or a view.
-      // For now, let's fetch the cotacoes and then fetch details when opening the modal.
-      
       const { data, error } = await supabase
         .from('cotacoes')
         .select(`
@@ -58,6 +65,33 @@ export default function Operacoes() {
         .order('created_at', { ascending: false })
 
       if (error) throw error
+
+      // Verificar novas OPs para notificação
+      if (data && ops.length > 0) {
+        const currentIds = new Set(ops.map(o => o.id))
+        const newOps = data.filter(o => !currentIds.has(o.id))
+        
+        if (newOps.length > 0) {
+            // Tocar som
+            try {
+                const audio = new Audio('/notification.mp3') // Certifique-se de ter este arquivo na pasta public
+                audio.play().catch(e => console.log('Audio play failed', e))
+            } catch (e) {
+                console.log('Audio error', e)
+            }
+
+            // Mostrar notificação desktop
+            if (Notification.permission === 'granted') {
+                newOps.forEach(op => {
+                    new Notification('Nova OP Recebida', {
+                        body: `OP #${op.codigo || op.id} - ${op.empresas?.nome || 'Agência'}`,
+                        icon: '/vite.svg'
+                    })
+                })
+            }
+        }
+      }
+
       setOps(data || [])
     } catch (error) {
       console.error('Erro ao buscar OPs:', error)
