@@ -1500,7 +1500,7 @@ function OpDetailsModal({ op, onClose, onStatusChange }: { op: any, onClose: () 
                     op={op}
                     passengers={details.passengers}
                     onClose={() => setShowFinalizeModal(false)}
-                    onConfirm={async (finalData) => {
+                    onConfirm={async (finalData: any) => {
                         // finalData contém locators e custos
                         // Aqui orquestramos o salvamento e mudança de status
                         try {
