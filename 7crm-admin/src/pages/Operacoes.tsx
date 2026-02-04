@@ -36,6 +36,34 @@ export default function Operacoes() {
   const [selectedOp, setSelectedOp] = useState<any | null>(null)
   const [showModal, setShowModal] = useState(false)
 
+  // Função para tocar som de notificação (Beep sintético)
+  const playNotificationSound = () => {
+    try {
+        const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+        if (!AudioContext) return;
+        
+        const ctx = new AudioContext();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        // Configuração do som (ding agradável)
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(523.25, ctx.currentTime); // C5
+        osc.frequency.exponentialRampToValueAtTime(1046.5, ctx.currentTime + 0.1); // C6
+
+        gain.gain.setValueAtTime(0.1, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+
+        osc.start();
+        osc.stop(ctx.currentTime + 0.5);
+    } catch (e) {
+        console.error('Erro ao tocar som:', e);
+    }
+  }
+
   useEffect(() => {
     fetchOps()
     
@@ -72,13 +100,8 @@ export default function Operacoes() {
         const newOps = data.filter(o => !currentIds.has(o.id))
         
         if (newOps.length > 0) {
-            // Tocar som
-            try {
-                const audio = new Audio('/notification.mp3') // Certifique-se de ter este arquivo na pasta public
-                audio.play().catch(e => console.log('Audio play failed', e))
-            } catch (e) {
-                console.log('Audio error', e)
-            }
+            // Tocar som sintético
+            playNotificationSound()
 
             // Mostrar notificação desktop
             if (Notification.permission === 'granted') {
