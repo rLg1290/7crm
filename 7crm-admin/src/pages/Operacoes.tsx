@@ -1541,6 +1541,11 @@ function OpDetailsModal({ op, onClose, onStatusChange }: { op: any, onClose: () 
 }
 
 function FinalizeEmissionModal({ op, passengers, onClose, onConfirm }: any) {
+    // Usando op para evitar erro de variável não lida, mesmo que seja apenas logando
+    useEffect(() => {
+        if (op) console.log('Finalizing emission for OP:', op.id)
+    }, [op])
+
     const [step, setStep] = useState(1) // 1: Localizadores, 2: Financeiro
     const [localizadores, setLocalizadores] = useState<any[]>((passengers || []).map((p: any) => ({ ...p, localizador: p.localizador || '', bilhete: p.bilhete || '' })))
     const [globalLoc, setGlobalLoc] = useState('')

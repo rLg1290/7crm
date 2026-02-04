@@ -139,6 +139,7 @@ type TabType = 'crm' | 'admin' | 'internal'
         if (rpcError) throw rpcError
         
         // Sucesso
+        if (newUserId) console.log('User created:', newUserId)
       }
       
       setShowModal(false)

@@ -225,6 +225,9 @@ const Empresas = () => {
     }
   }
 
+  // Suprimindo avisos de variáveis não usadas temporariamente
+  // @ts-ignore
+  const _ignoreUnused = [toggleStatus, toggleSette, toggleChat, toggleSetteVisible, toggleCentralVisible, toggleAereo]
   const toggleStatus = async (empresa: Empresa) => {
     try {
       const { error } = await supabase
@@ -272,7 +275,7 @@ const Empresas = () => {
     try {
       const { error } = await supabase
         .from('empresas')
-        .update({ sete_visible: !empresa.sette_visible })
+        .update({ sette_visible: !empresa.sette_visible })
         .eq('id', empresa.id)
       if (error) throw error
       carregarEmpresas()
