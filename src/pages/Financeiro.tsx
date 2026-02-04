@@ -24,7 +24,8 @@ import {
   Plus,
   Search,
   ArrowLeft,
-  Trash2
+  Trash2,
+  Lock
 } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart as RechartsPieChart, Pie, Cell, Legend } from 'recharts'
 import NotificationCenter from '../components/NotificationCenter'
@@ -54,6 +55,7 @@ interface ContasReceber {
   id: string
   empresa_id?: string
   cliente_id?: string
+  cliente_nome?: string
   fornecedor_id?: number
   categoria_id?: number
   descricao: string
@@ -135,7 +137,6 @@ const Financeiro = () => {
   const [contaSelecionada, setContaSelecionada] = useState<ContasPagar | null>(null)
   const [modalConfirmarPagamento, setModalConfirmarPagamento] = useState(false)
   const [dataPagamento, setDataPagamento] = useState('')
-  const [horaPagamento, setHoraPagamento] = useState('')
   const [salvandoPagamento, setSalvandoPagamento] = useState(false)
   
   // Estados para contas a receber
@@ -143,7 +144,6 @@ const Financeiro = () => {
   const [contaReceberSelecionada, setContaReceberSelecionada] = useState<ContasReceber | null>(null)
   const [modalConfirmarRecebimento, setModalConfirmarRecebimento] = useState(false)
   const [dataRecebimento, setDataRecebimento] = useState('')
-  const [horaRecebimento, setHoraRecebimento] = useState('')
   const [salvandoRecebimento, setSalvandoRecebimento] = useState(false)
   
   // Estados para exclusão
@@ -227,7 +227,28 @@ const Financeiro = () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
         setUser(user)
-        await carregarContasPagar(user.id)
+        
+        // Buscar empresa_id do usuário
+        const { data: userEmpresaRows } = await supabase
+          .from('usuarios_empresas')
+          .select('empresa_id')
+          .eq('usuario_id', user.id)
+          .limit(1)
+        const empresaId = Array.isArray(userEmpresaRows) && userEmpresaRows.length ? (userEmpresaRows[0] as any).empresa_id : null
+        
+        // Carregar contas a pagar (agora aceita empresaId)
+        await carregarContasPagar(empresaId || user.id)
+
+        // Carregar contas a receber com fallback robusto - AGORA ANTES DE TUDO O RESTO PARA PRIORIZAR VISUALIZAÇÃO
+        if (empresaId) {
+          await carregarClientes(empresaId)
+          await carregarContasReceber(empresaId, false)
+        } else {
+             // Se não tiver empresa vinculada, tenta carregar pelo usuário mesmo assim
+             // Passamos user.id e a flag true para indicar que é apenas busca por usuário
+             await carregarContasReceber(user.id, true)
+        }
+
         await Promise.all([
           carregarCategoriasCusto(user.id),
           carregarCategoriasVenda(user.id),
@@ -236,28 +257,7 @@ const Financeiro = () => {
         ])
         await carregarFormasPagamento(user.id)
         await carregarFornecedores(user.id)
-        // Buscar empresa_id do usuário
-        const { data: userEmpresaRows } = await supabase
-          .from('usuarios_empresas')
-          .select('empresa_id')
-          .eq('usuario_id', user.id)
-          .limit(1)
-        const empresaId = Array.isArray(userEmpresaRows) && userEmpresaRows.length ? (userEmpresaRows[0] as any).empresa_id : null
-        if (empresaId) {
-          await carregarClientes(empresaId)
-          await carregarContasReceber(empresaId)
-        }
       }
-      
-      // Dados mockados para outras funcionalidades (serão atualizados com dados reais)
-      setResumoFinanceiro({
-        saldoAtual: 85420.75,
-        receitasMes: 125340.50,
-        despesasMes: 96590.25,
-        lucroMes: 28750.25,
-        contasPagarTotal: 0, // Será atualizado após carregar contas a pagar
-        contasReceberTotal: 0 // Será atualizado após carregar contas a receber
-      })
       
       setTransacoes([])
       
@@ -378,26 +378,48 @@ const Financeiro = () => {
     }
   }
 
-  const carregarContasPagar = async (userId: string) => {
+  const carregarContasPagar = async (empresaId: string) => {
     try {
-      const contas = await financeiroService.getContasPagar(userId)
-      setContasPagar(contas)
+      logger.debug('Carregando contas a pagar para empresa', { empresaId });
+      // Pass user.id if available
+      const contas = await financeiroService.getContasPagar(user?.id || empresaId, undefined);
+      logger.debug('Contas a pagar carregadas', { count: Array.isArray(contas) ? contas.length : null });
+      
+      console.log('🔍 [PAGE] Contas Pagar carregadas (RAW):', contas)
+
+      setContasPagar(contas);
       // Atualizar resumo com dados reais
+      const totalContasPagar = contas.reduce((total, conta) => total + (conta.valor || 0), 0);
       setResumoFinanceiro(prev => ({
         ...prev,
-        contasPagarTotal: contas.length
-      }))
+        contasPagarTotal: totalContasPagar
+      }));
     } catch (error) {
-      logger.error('Erro ao carregar contas a pagar:', error)
+      console.error('Erro ao carregar contas a pagar:', error);
+      // toast.error('Erro ao carregar contas a pagar');
     }
-  }
+  };
 
-  const carregarContasReceber = async (empresaId: string) => {
+  const carregarContasReceber = async (idPrincipal: string, isUserOnly: boolean = false) => {
     try {
-      logger.debug('Carregando contas a receber para empresa', { empresaId });
-      const contas = await financeiroService.getContasReceber(empresaId);
+      logger.debug('Carregando contas a receber', { idPrincipal, isUserOnly });
+      
+      let contas;
+      // Se estamos no modo "sem empresa", o idPrincipal é o user.id
+      // Devemos passar para o service: empresaId = null, userId = idPrincipal
+      if (isUserOnly) {
+          // Passamos null no primeiro argumento para evitar buscar por empresa_id incorreto
+          contas = await financeiroService.getContasReceber(null as any, undefined, idPrincipal);
+      } else {
+          // Modo normal: tem empresa. Passamos empresaId e userId para tentar ambos (OR)
+          contas = await financeiroService.getContasReceber(idPrincipal, undefined, user?.id);
+      }
+
       logger.debug('Contas a receber carregadas', { count: Array.isArray(contas) ? contas.length : null });
-      logger.debug('Detalhes das contas resumidos', { ids: contas.map(c => c.id), empresaId });
+      logger.debug('Detalhes das contas resumidos', { ids: contas.map(c => c.id), idPrincipal });
+
+      console.log('🔍 [PAGE] Contas Receber carregadas (RAW):', contas)
+
       setContasReceber(contas);
       
       // Atualizar resumo com dados reais
@@ -433,18 +455,19 @@ const Financeiro = () => {
   }
 
   const getStatusColor = (status: string, tipo: 'conta' | 'transacao' = 'conta') => {
+    const statusUpper = status?.toUpperCase() || ''
     if (tipo === 'transacao') {
-      switch (status) {
-        case 'pago': return 'text-green-600 bg-green-50 border-green-200'
-        case 'pendente': return 'text-yellow-600 bg-yellow-50 border-yellow-200'
-        case 'vencido': return 'text-red-600 bg-red-50 border-red-200'
+      switch (statusUpper) {
+        case 'PAGO': return 'text-green-600 bg-green-50 border-green-200'
+        case 'PENDENTE': return 'text-yellow-600 bg-yellow-50 border-yellow-200'
+        case 'VENCIDO': return 'text-red-600 bg-red-50 border-red-200'
         default: return 'text-gray-600 bg-gray-50 border-gray-200'
       }
     } else {
-      switch (status) {
-        case 'PAGA': case 'PAGO': case 'recebida': return 'text-green-600 bg-green-50 border-green-200'
-        case 'PENDENTE': case 'pendente': return 'text-yellow-600 bg-yellow-50 border-yellow-200'
-        case 'VENCIDA': case 'vencida': return 'text-red-600 bg-red-50 border-red-200'
+      switch (statusUpper) {
+        case 'PAGA': case 'PAGO': case 'RECEBIDA': return 'text-green-600 bg-green-50 border-green-200'
+        case 'PENDENTE': return 'text-yellow-600 bg-yellow-50 border-yellow-200'
+        case 'VENCIDA': return 'text-red-600 bg-red-50 border-red-200'
         default: return 'text-gray-600 bg-gray-50 border-gray-200'
       }
     }
@@ -666,21 +689,26 @@ const Financeiro = () => {
 
   // [3] Função para abrir modal de confirmação de pagamento
   const handleConfirmarPagamento = (conta: ContasPagar) => {
+    // Regra: Se o fornecedor for 7C (ID 3), a agência não pode confirmar o pagamento.
+    if (conta.fornecedor_id === 3) {
+      alert('Contas da 7C só podem ser confirmadas pela própria 7C.');
+      return;
+    }
+
     setContaSelecionada(conta);
     setDataPagamento('');
-    setHoraPagamento('');
     setModalConfirmarPagamento(true);
   };
 
   // [4] Função para salvar confirmação de pagamento
   const salvarPagamentoConta = async () => {
-    if (!contaSelecionada || !dataPagamento || !horaPagamento) {
-      alert('Preencha data e hora do pagamento!');
+    if (!contaSelecionada || !dataPagamento) {
+      alert('Preencha a data do pagamento!');
       return;
     }
     setSalvandoPagamento(true);
     try {
-      const pago_em = `${dataPagamento}T${horaPagamento}:00`;
+      const pago_em = dataPagamento;
       await supabase
         .from('contas_pagar')
         .update({ status: 'PAGO', pago_em })
@@ -699,7 +727,7 @@ const Financeiro = () => {
   // Após carregar contasPagar e antes do return:
   const contasPagarOrdenadas = [
     ...contasPagar
-      .filter(c => c.status === 'VENCIDA')
+      .filter(c => c.status?.toUpperCase() === 'VENCIDA')
       .sort((a, b) => {
         const [anoA, mesA, diaA] = a.vencimento.split('-');
         const [anoB, mesB, diaB] = b.vencimento.split('-');
@@ -708,7 +736,7 @@ const Financeiro = () => {
         return dataA.getTime() - dataB.getTime();
       }),
     ...contasPagar
-      .filter(c => c.status === 'PENDENTE')
+      .filter(c => c.status?.toUpperCase() === 'PENDENTE')
       .sort((a, b) => {
         const [anoA, mesA, diaA] = a.vencimento.split('-');
         const [anoB, mesB, diaB] = b.vencimento.split('-');
@@ -717,7 +745,7 @@ const Financeiro = () => {
         return dataA.getTime() - dataB.getTime();
       }),
     ...contasPagar
-      .filter(c => c.status === 'PAGO')
+      .filter(c => c.status?.toUpperCase() === 'PAGO')
   ];
 
   // Função utilitária para verificar se a data está no mês atual
@@ -862,18 +890,17 @@ const Financeiro = () => {
   const handleConfirmarRecebimento = (conta: ContasReceber) => {
     setContaReceberSelecionada(conta);
     setDataRecebimento('');
-    setHoraRecebimento('');
     setModalConfirmarRecebimento(true);
   };
 
   const salvarRecebimentoConta = async () => {
-    if (!contaReceberSelecionada || !dataRecebimento || !horaRecebimento) {
-      alert('Preencha data e hora do recebimento!');
+    if (!contaReceberSelecionada || !dataRecebimento) {
+      alert('Preencha a data do recebimento!');
       return;
     }
     setSalvandoRecebimento(true);
     try {
-      const recebido_em = `${dataRecebimento}T${horaRecebimento}:00`;
+      const recebido_em = dataRecebimento;
       await supabase
         .from('contas_receber')
         .update({ status: 'recebida', recebido_em })
@@ -918,7 +945,7 @@ const Financeiro = () => {
   // Após carregar contasReceber e antes do return:
   const contasReceberOrdenadas = [
     ...contasReceber
-      .filter(c => c.status?.toLowerCase() === 'vencida')
+      .filter(c => c.status?.toUpperCase() === 'VENCIDA')
       .sort((a, b) => {
         const [anoA, mesA, diaA] = a.vencimento.split('-');
         const [anoB, mesB, diaB] = b.vencimento.split('-');
@@ -927,7 +954,7 @@ const Financeiro = () => {
         return dataA.getTime() - dataB.getTime();
       }),
     ...contasReceber
-      .filter(c => c.status?.toLowerCase() === 'pendente')
+      .filter(c => c.status?.toUpperCase() === 'PENDENTE')
       .sort((a, b) => {
         const [anoA, mesA, diaA] = a.vencimento.split('-');
         const [anoB, mesB, diaB] = b.vencimento.split('-');
@@ -936,7 +963,7 @@ const Financeiro = () => {
         return dataA.getTime() - dataB.getTime();
       }),
     ...contasReceber
-      .filter(c => c.status?.toLowerCase() === 'recebida')
+      .filter(c => c.status?.toUpperCase() === 'RECEBIDA')
   ];
 
   // Funções de exclusão
@@ -1887,44 +1914,54 @@ const Financeiro = () => {
                             </td>
                             <td className="py-3 px-4">
                               <div className="flex space-x-2">
-                                {conta.status === 'PAGO' ? (
-                                  <button className="p-1 text-yellow-600 hover:text-yellow-800 rounded" onClick={async () => {
-                                    if (window.confirm('Tem certeza que deseja desfazer o pagamento desta conta?')) {
-                                      try {
-                                        logger.info('Desfazendo pagamento da conta', { id: conta.id });
-                                        const { error } = await supabase
-                                          .from('contas_pagar')
-                                          .update({ status: 'PENDENTE', pago_em: null })
-                                          .eq('id', conta.id);
-                                        
-                                        if (error) {
-                                          logger.error('Erro ao desfazer pagamento:', error);
-                                          alert('Erro ao desfazer pagamento: ' + error.message);
-                                          return;
+                                {is7CTurismo ? (
+                                  <div className="p-1 text-gray-400" title="Gerenciado pelo Admin">
+                                    <Lock className="h-4 w-4" />
+                                  </div>
+                                ) : (
+                                  <>
+                                    {conta.status === 'PAGO' ? (
+                                      <button className="p-1 text-yellow-600 hover:text-yellow-800 rounded" onClick={async () => {
+                                        if (window.confirm('Tem certeza que deseja desfazer o pagamento desta conta?')) {
+                                          try {
+                                            logger.info('Desfazendo pagamento da conta', { id: conta.id });
+                                            const { error } = await supabase
+                                              .from('contas_pagar')
+                                              .update({ status: 'PENDENTE', pago_em: null })
+                                              .eq('id', conta.id);
+                                            
+                                            if (error) {
+                                              logger.error('Erro ao desfazer pagamento:', error);
+                                              alert('Erro ao desfazer pagamento: ' + error.message);
+                                              return;
+                                            }
+                                            
+                                            logger.info('Pagamento desfeito com sucesso, recarregando dados...');
+                                            if (user) await carregarContasPagar(user.id);
+                                            alert('Pagamento desfeito com sucesso!');
+                                          } catch (err) {
+                                            logger.error('Erro inesperado ao desfazer pagamento:', err);
+                                            alert('Erro inesperado ao desfazer pagamento.');
+                                          }
                                         }
-                                        
-                                        logger.info('Pagamento desfeito com sucesso, recarregando dados...');
-                                        if (user) await carregarContasPagar(user.id);
-                                        alert('Pagamento desfeito com sucesso!');
-                                      } catch (err) {
-                                        logger.error('Erro inesperado ao desfazer pagamento:', err);
-                                        alert('Erro inesperado ao desfazer pagamento.');
-                                      }
-                                    }
-                                  }} title="Desfazer pagamento">
-                                    <ArrowLeft className="h-4 w-4" />
-                                  </button>
-                                ) : conta.status !== 'PAGA' && (
-                                  <button className="p-1 text-green-600 hover:text-green-800 rounded" onClick={() => handleConfirmarPagamento(conta)}>
-                                    <CheckCircle className="h-4 w-4" />
-                                  </button>
+                                      }} title="Desfazer pagamento">
+                                        <ArrowLeft className="h-4 w-4" />
+                                      </button>
+                                    ) : conta.status !== 'PAGA' && (
+                                      <button className="p-1 text-green-600 hover:text-green-800 rounded" onClick={() => handleConfirmarPagamento(conta)}>
+                                        <CheckCircle className="h-4 w-4" />
+                                      </button>
+                                    )}
+                                  </>
                                 )}
                                 <button className="p-1 text-gray-400 hover:text-gray-600 rounded" onClick={() => handleVisualizarConta(conta)} title="Visualizar detalhes">
                                   <Eye className="h-4 w-4" />
                                 </button>
-                                <button className="p-1 text-red-600 hover:text-red-800 rounded" onClick={() => handleExcluirContaPagar(conta)} title="Excluir conta">
-                                  <Trash2 className="h-4 w-4" />
-                                </button>
+                                {!is7CTurismo && (
+                                  <button className="p-1 text-red-600 hover:text-red-800 rounded" onClick={() => handleExcluirContaPagar(conta)} title="Excluir conta">
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -2030,15 +2067,28 @@ const Financeiro = () => {
                     </thead>
                     <tbody>
                       {filtrarPorPeriodo(contasReceberOrdenadas).map((conta) => {
-                        // Buscar nome da entidade baseado nos campos cliente_id ou fornecedor_id
+                        // Buscar nome da entidade
                         let nomeEntidade = 'Entidade não encontrada'
                         
-                        if (conta.cliente_id) {
-                          const cliente = clientes.find(c => c.id === parseInt(conta.cliente_id || '0'))
-                          nomeEntidade = cliente ? `${cliente.nome}` : `Cliente ID: ${conta.cliente_id}`
-                        } else if (conta.fornecedor_id) {
+                        // REGRA: Se tiver fornecedor_id, mostra o nome do fornecedor (Ex: 7C Turismo)
+                        if (conta.fornecedor_id) {
                           const fornecedor = fornecedores.find(f => f.id === conta.fornecedor_id)
                           nomeEntidade = fornecedor ? fornecedor.nome : `Fornecedor ID: ${conta.fornecedor_id}`
+                        } 
+                        // REGRA: Se tiver cliente (nome ou id), mostra sempre o CÓDIGO da cotação se disponível na descrição
+                        else {
+                             // Tenta extrair código da cotação da descrição
+                             // Ex: "Venda Aérea (Tarifa) - QX1234" -> Mostra "Cotação QX1234"
+                             // Ex: "Comissão Aérea (DU) - QX1234" -> Mostra "Cotação QX1234"
+                             const matchCotacao = conta.descricao?.match(/- ([A-Z0-9]+)$/)
+                             if (matchCotacao) {
+                                nomeEntidade = `Cotação ${matchCotacao[1]}`
+                             } else if (conta.cliente_nome) {
+                                nomeEntidade = conta.cliente_nome
+                             } else if (conta.cliente_id) {
+                                const cliente = clientes.find(c => c.id === parseInt(conta.cliente_id || '0'))
+                                nomeEntidade = cliente ? cliente.nome : `Cliente ID: ${conta.cliente_id}`
+                             }
                         }
                         
                         // Buscar nome da categoria
@@ -2088,21 +2138,31 @@ const Financeiro = () => {
                             </td>
                             <td className="py-3 px-4">
                               <div className="flex space-x-2">
-                                {conta.status === 'recebida' ? (
-                                  <button className="p-1 text-yellow-600 hover:text-yellow-800 rounded" onClick={() => handleDesfazerRecebimento(conta)} title="Desfazer recebimento">
-                                    <ArrowLeft className="h-4 w-4" />
-                                  </button>
+                                {is7CTurismo ? (
+                                  <div className="p-1 text-gray-400" title="Gerenciado pelo Admin">
+                                    <Lock className="h-4 w-4" />
+                                  </div>
                                 ) : (
-                                  <button className="p-1 text-green-600 hover:text-green-800 rounded" onClick={() => handleConfirmarRecebimento(conta)} title="Confirmar recebimento">
-                                    <CheckCircle className="h-4 w-4" />
-                                  </button>
+                                  <>
+                                    {conta.status === 'recebida' ? (
+                                      <button className="p-1 text-yellow-600 hover:text-yellow-800 rounded" onClick={() => handleDesfazerRecebimento(conta)} title="Desfazer recebimento">
+                                        <ArrowLeft className="h-4 w-4" />
+                                      </button>
+                                    ) : (
+                                      <button className="p-1 text-green-600 hover:text-green-800 rounded" onClick={() => handleConfirmarRecebimento(conta)} title="Confirmar recebimento">
+                                        <CheckCircle className="h-4 w-4" />
+                                      </button>
+                                    )}
+                                  </>
                                 )}
                                 <button className="p-1 text-gray-400 hover:text-gray-600 rounded" onClick={() => handleVisualizarContaReceber(conta)} title="Visualizar detalhes">
                                   <Eye className="h-4 w-4" />
                                 </button>
-                                <button className="p-1 text-red-600 hover:text-red-800 rounded" onClick={() => handleExcluirContaReceber(conta)} title="Excluir conta">
-                                  <Trash2 className="h-4 w-4" />
-                                </button>
+                                {!is7CTurismo && (
+                                  <button className="p-1 text-red-600 hover:text-red-800 rounded" onClick={() => handleExcluirContaReceber(conta)} title="Excluir conta">
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -2994,10 +3054,9 @@ const Financeiro = () => {
           <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-md">
               <h3 className="text-lg font-bold mb-4">Confirmar Pagamento</h3>
-              <div className="mb-4">Informe a data e hora do pagamento realizado:</div>
+              <div className="mb-4">Informe a data do pagamento realizado:</div>
               <div className="flex gap-2 mb-4">
-                <input type="date" value={dataPagamento} onChange={e => setDataPagamento(e.target.value)} className="border rounded px-3 py-2 w-1/2" />
-                <input type="time" value={horaPagamento} onChange={e => setHoraPagamento(e.target.value)} className="border rounded px-3 py-2 w-1/2" />
+                <input type="date" value={dataPagamento} onChange={e => setDataPagamento(e.target.value)} className="border rounded px-3 py-2 w-full" />
               </div>
               <div className="flex justify-end gap-2">
                 <button onClick={() => setModalConfirmarPagamento(false)} className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">Cancelar</button>
@@ -3035,10 +3094,9 @@ const Financeiro = () => {
           <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-md">
               <h3 className="text-lg font-bold mb-4">Confirmar Recebimento</h3>
-              <div className="mb-4">Informe a data e hora do recebimento realizado:</div>
+              <div className="mb-4">Informe a data do recebimento realizado:</div>
               <div className="flex gap-2 mb-4">
-                <input type="date" value={dataRecebimento} onChange={e => setDataRecebimento(e.target.value)} className="border rounded px-3 py-2 w-1/2" />
-                <input type="time" value={horaRecebimento} onChange={e => setHoraRecebimento(e.target.value)} className="border rounded px-3 py-2 w-1/2" />
+                <input type="date" value={dataRecebimento} onChange={e => setDataRecebimento(e.target.value)} className="border rounded px-3 py-2 w-full" />
               </div>
               <div className="flex justify-end gap-2">
                 <button onClick={() => setModalConfirmarRecebimento(false)} className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">Cancelar</button>

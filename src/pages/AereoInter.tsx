@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Plane, Search, Minus, Plus, Calendar as CalendarIcon, MapPin, Users, Luggage, Ban, ChevronLeft, ChevronRight, Check, ChevronDown, Info } from 'lucide-react'
+import { Plane, Search, Minus, Plus, Calendar as CalendarIcon, MapPin, Users, Luggage, Ban, ChevronLeft, ChevronRight, Check, FileText, Info } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { Flight } from '../types/flight'
 import { useNavigate } from 'react-router-dom'
@@ -8,13 +8,10 @@ import { useSearchCache } from '../hooks/useSearchCache'
 import SearchTimer from '../components/SearchTimer'
 import { useCotacao } from '../contexts/CotacaoContext'
 import { getAirlineLogoUrl } from '../utils/airlineLogos'
-import FlightConfirmationModal from '../components/FlightConfirmationModal'
-import TariffRulesModal from '../components/TariffRulesModal'
 import { Calendar } from '../components/ui/calendar'
-import { ptBR } from 'date-fns/locale'
 import { format } from 'date-fns'
-import { DateRange } from 'react-day-picker'
-import { cn } from '../lib/utils'
+import { ptBR } from 'date-fns/locale'
+import TariffRulesModal from '../components/TariffRulesModal'
 
 interface BuscaPassagem {
   origem: string
@@ -286,59 +283,6 @@ const AereoInter = () => {
     }
   })
 
-  const [showRulesModal, setShowRulesModal] = useState(false)
-  const [selectedRuleCia, setSelectedRuleCia] = useState('')
-  const [selectedRuleTariff, setSelectedRuleTariff] = useState('')
-  const [showCalendar, setShowCalendar] = useState(false)
-  const calendarRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (calendarRef.current && !calendarRef.current.contains(event.target as Node)) {
-        setShowCalendar(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
-
-  const parseDate = (str: string) => {
-    if (!str) return undefined
-    const [y, m, d] = str.split('-').map(Number)
-    return new Date(y, m - 1, d)
-  }
-
-  const selectedDate = React.useMemo(() => {
-    if (formData.somenteIda) {
-        return parseDate(formData.dataIda)
-    } else {
-        return {
-            from: parseDate(formData.dataIda),
-            to: parseDate(formData.dataVolta)
-        } as DateRange
-    }
-  }, [formData.dataIda, formData.dataVolta, formData.somenteIda])
-
-  const onDateSelect = (val: any) => {
-    if (formData.somenteIda) {
-        const date = val as Date | undefined
-        setFormData(prev => ({
-            ...prev,
-            dataIda: date ? format(date, 'yyyy-MM-dd') : '',
-            dataVolta: ''
-        }))
-        // Mantém aberto para confirmação manual
-    } else {
-        const range = val as DateRange | undefined
-        setFormData(prev => ({
-            ...prev,
-            dataIda: range?.from ? format(range.from, 'yyyy-MM-dd') : '',
-            dataVolta: range?.to ? format(range.to, 'yyyy-MM-dd') : ''
-        }))
-        // Não fecha automaticamente mais
-    }
-  }
-
   const mergeVoos = (items: any[]) => {
     const map = new Map<string, any>()
     
@@ -439,6 +383,21 @@ const AereoInter = () => {
   const [destinoSelecionada, setDestinoSelecionada] = useState<any | null>(null)
   const origemInputRef = useRef<HTMLInputElement>(null)
   const destinoInputRef = useRef<HTMLInputElement>(null)
+  
+  const [showCalendar, setShowCalendar] = useState(false)
+  const calendarRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (calendarRef.current && !calendarRef.current.contains(event.target as Node)) {
+        setShowCalendar(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside)
+    }
+  }, [])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target
@@ -768,6 +727,21 @@ const AereoInter = () => {
   const [selectedIda, setSelectedIda] = useState<any | null>(null)
   const [selectedVolta, setSelectedVolta] = useState<any | null>(null)
 
+  const [modalRules, setModalRules] = useState<{isOpen: boolean, cia: string, tipoTarifa: string}>({
+    isOpen: false,
+    cia: '',
+    tipoTarifa: ''
+  })
+
+  const openRules = (cia: string, tipoTarifa: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setModalRules({
+        isOpen: true,
+        cia,
+        tipoTarifa
+    })
+  }
+
   const handleSelectFlight = (flight: any, type: 'ida' | 'volta') => {
     if (type === 'ida') {
       if (selectedIda?.uniqueId === flight.uniqueId) {
@@ -837,6 +811,16 @@ const AereoInter = () => {
     setSelectedIda(null)
     setSelectedVolta(null)
     alert('Voos selecionados adicionados ao orçamento!')
+  }
+
+  const handleEmitir = () => {
+    navigate('/emissao-aereo', { 
+        state: { 
+            ida: selectedIda, 
+            volta: selectedVolta,
+            searchParams: formData
+        } 
+    })
   }
 
   const linhas = React.useMemo(() => {
@@ -997,56 +981,23 @@ const AereoInter = () => {
               </div>
             </div>
           </div>
-          <div className="bg-white border-0 rounded-xl shadow-sm p-4">
-             {/* Trip Type Dropdown */}
-             <div className="flex items-center gap-6 mb-4 border-b border-gray-100 pb-4 relative">
-                <button
-                  type="button"
-                  onClick={() => setShowTripTypeDropdown(!showTripTypeDropdown)}
-                  className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg shadow-sm hover:bg-gray-50 transition-colors"
-                >
-                  <div className={`w-2 h-2 rounded-full ${formData.somenteIda ? 'bg-teal-600' : 'bg-blue-600'}`} />
-                  <span className="text-sm font-medium text-gray-700">
-                    {formData.somenteIda ? 'Somente Ida' : 'Ida e Volta'}
-                  </span>
-                  <ChevronDown className="h-4 w-4 text-gray-400" />
-                </button>
-                
-                {showTripTypeDropdown && (
-                  <div className="absolute top-12 left-0 w-48 bg-white border border-gray-200 rounded-xl shadow-xl z-50 p-1">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setFormData(p => ({...p, somenteIda: true, dataVolta: ''}))
-                        setShowTripTypeDropdown(false)
-                      }}
-                      className="flex items-center gap-3 w-full px-3 py-2 hover:bg-gray-50 rounded-lg transition-colors text-left"
-                    >
-                      <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${formData.somenteIda ? 'border-teal-600' : 'border-gray-300'}`}>
-                        {formData.somenteIda && <div className="w-2 h-2 rounded-full bg-teal-600" />}
-                      </div>
-                      <span className="text-sm font-medium text-gray-700">Somente Ida</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setFormData(p => ({...p, somenteIda: false}))
-                        setShowTripTypeDropdown(false)
-                      }}
-                      className="flex items-center gap-3 w-full px-3 py-2 hover:bg-gray-50 rounded-lg transition-colors text-left"
-                    >
-                      <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${!formData.somenteIda ? 'border-blue-600' : 'border-gray-300'}`}>
-                        {!formData.somenteIda && <div className="w-2 h-2 rounded-full bg-blue-600" />}
-                      </div>
-                      <span className="text-sm font-medium text-gray-700">Ida e Volta</span>
-                    </button>
-                  </div>
-                )}
-             </div>
-
-             <div className="flex items-center gap-4">
+          <div className="flex gap-2 mb-4">
+            <button 
+                onClick={() => setFormData(prev => ({ ...prev, somenteIda: false }))}
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${!formData.somenteIda ? 'bg-teal-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'}`}
+            >
+                Ida e Volta
+            </button>
+            <button 
+                onClick={() => setFormData(prev => ({ ...prev, somenteIda: true, dataVolta: '' }))}
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${formData.somenteIda ? 'bg-teal-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'}`}
+            >
+                Somente Ida
+            </button>
+          </div>
+          <div className="bg-white border-0 rounded-xl shadow-sm px-4 py-3 flex items-center gap-4">
             {/* Origem */}
-            <div className="relative flex items-center gap-2 flex-1 bg-gray-100 rounded-lg px-3 py-2 h-[52px]">
+            <div className="relative flex items-center gap-2 flex-1 bg-gray-100 rounded-lg px-3 py-2">
               <MapPin className="h-4 w-4 text-gray-400" />
               {origemSelecionada ? (
                 <button
@@ -1098,7 +1049,7 @@ const AereoInter = () => {
               )}
             </div>
             {/* Destino */}
-            <div className="relative flex items-center gap-2 flex-1 bg-gray-100 rounded-lg px-3 py-2 h-[52px]">
+            <div className="relative flex items-center gap-2 flex-1 bg-gray-100 rounded-lg px-3 py-2">
               <MapPin className="h-4 w-4 text-gray-400" />
               {destinoSelecionada ? (
                 <button
@@ -1149,71 +1100,78 @@ const AereoInter = () => {
                 </div>
               )}
             </div>
-            
-            {/* Calendar Trigger */}
+            {/* Datas */}
             <div className="relative" ref={calendarRef}>
-             <button 
-                type="button"
-                onClick={() => setShowCalendar(!showCalendar)}
-                className={cn(
-                  "flex items-center gap-2 bg-gray-100 rounded-lg px-3 py-2 w-[280px] text-left transition-colors hover:bg-gray-200 h-[52px]",
-                  showCalendar && "ring-2 ring-teal-500 bg-white"
+                <button
+                    type="button"
+                    onClick={() => setShowCalendar(!showCalendar)}
+                    className="flex items-center gap-2 bg-gray-100 rounded-lg px-3 py-2 min-w-[240px] h-full hover:bg-gray-200 transition-colors"
+                >
+                    <CalendarIcon className="h-5 w-5 text-gray-500" />
+                    <div className="flex flex-col items-start text-left">
+                        <span className="text-[10px] text-gray-500 font-bold uppercase leading-tight tracking-wide">
+                            {formData.somenteIda ? 'Data da Viagem' : 'Ida e Volta'}
+                        </span>
+                        <span className="text-sm text-gray-900 font-semibold leading-tight mt-0.5">
+                            {formData.dataIda ? format(new Date(formData.dataIda + 'T12:00:00'), 'dd/MM/yyyy', { locale: ptBR }) : 'Selecione a data'}
+                            {!formData.somenteIda && (
+                                <>
+                                    {' - '}
+                                    {formData.dataVolta ? format(new Date(formData.dataVolta + 'T12:00:00'), 'dd/MM/yyyy', { locale: ptBR }) : 'Volta'}
+                                </>
+                            )}
+                        </span>
+                    </div>
+                </button>
+
+                {showCalendar && (
+                    <div className="absolute top-full left-0 mt-2 bg-white border border-gray-200 rounded-xl shadow-2xl z-50 p-4 animate-in fade-in zoom-in duration-200">
+                         <Calendar
+                            {...{
+                                mode: formData.somenteIda ? "single" : "range",
+                                selected: formData.somenteIda 
+                                ? (formData.dataIda ? new Date(formData.dataIda + 'T12:00:00') : undefined)
+                                : {
+                                    from: formData.dataIda ? new Date(formData.dataIda + 'T12:00:00') : undefined,
+                                    to: formData.dataVolta ? new Date(formData.dataVolta + 'T12:00:00') : undefined
+                                },
+                                onSelect: (val: any) => {
+                                    if (formData.somenteIda) {
+                                        const date = val as Date | undefined;
+                                        setFormData(prev => ({ 
+                                            ...prev, 
+                                            dataIda: date ? format(date, 'yyyy-MM-dd') : '',
+                                            dataVolta: ''
+                                        }));
+                                        setShowCalendar(false);
+                                    } else {
+                                         const range = val as { from: Date; to?: Date } | undefined;
+                                         setFormData(prev => ({
+                                             ...prev,
+                                             dataIda: range?.from ? format(range.from, 'yyyy-MM-dd') : '',
+                                             dataVolta: range?.to ? format(range.to, 'yyyy-MM-dd') : ''
+                                         }));
+                                    }
+                                },
+                                disabled: { before: new Date() },
+                                numberOfMonths: 2,
+                                locale: ptBR,
+                                pagedNavigation: true
+                            } as any}
+                         />
+                    </div>
                 )}
-             >
-                <CalendarIcon className="h-4 w-4 text-gray-500" />
-                <div className="flex flex-col flex-1">
-                   <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Data da Viagem</span>
-                   <span className="text-sm text-gray-900 font-semibold truncate">
-                      {formData.dataIda ? (
-                        <>
-                           {format(parseDate(formData.dataIda)!, 'dd/MM/yyyy')}
-                           {!formData.somenteIda && formData.dataVolta ? ` - ${format(parseDate(formData.dataVolta)!, 'dd/MM/yyyy')}` : (!formData.somenteIda ? ' - Volta' : '')}
-                        </>
-                      ) : (
-                        "Selecionar datas"
-                      )}
-                   </span>
-                </div>
-             </button>
-
-             {showCalendar && (
-                <div className="absolute top-full left-0 mt-2 p-3 bg-white rounded-xl shadow-2xl border border-gray-200 z-50">
-                   <Calendar
-                      mode={formData.somenteIda ? "single" : "range"}
-                      selected={selectedDate}
-                      onSelect={onDateSelect}
-                      disabled={{ before: new Date() }}
-                      defaultMonth={selectedDate instanceof Date ? selectedDate : (selectedDate as DateRange)?.from || new Date()}
-                      numberOfMonths={2}
-                      locale={ptBR}
-                      className="rounded-md border-0"
-                      classNames={{
-                         head_cell: "text-gray-500 font-normal text-[0.8rem]",
-                         day_selected: "!bg-teal-600 !text-white hover:!bg-teal-700 focus:!bg-teal-700",
-                         day_today: "bg-gray-100 text-gray-900 font-bold",
-                         outside: "text-gray-300 opacity-40 hover:bg-transparent pointer-events-none",
-                         range_middle: "!bg-teal-100 !text-teal-900 rounded-none",
-                         range_start: "!bg-teal-600 !text-white rounded-l-md rounded-r-none",
-                         range_end: "!bg-teal-600 !text-white rounded-r-md rounded-l-none",
-                      }}
-                   />
-                </div>
-             )}
             </div>
-
             {/* Passageiros • Classe */}
             <div className="relative">
               <button
                 type="button"
                 onClick={() => setShowPaxDropdown(v => !v)}
-                className="px-3 py-2 rounded-lg text-sm focus:outline-none flex items-center gap-2 hover:bg-gray-200 bg-gray-100 text-gray-700 h-[52px]"
+                className="px-3 py-2 rounded-lg text-sm focus:outline-none flex items-center gap-2 hover:bg-gray-200 bg-gray-100 text-gray-700"
                 title="Selecionar passageiros e classe"
               >
                 <Users className="h-4 w-4 text-gray-500" />
-                <div className="flex flex-col items-start">
-                    <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Passageiros</span>
-                    <span className="font-semibold text-gray-900">{`${totalPassageiros} pax • ${formData.classe === 'EXECUTIVA' ? 'Exec.' : 'Eco.'}`}</span>
-                </div>
+                <span>{`${totalPassageiros} pax • ${formData.classe === 'EXECUTIVA' ? 'Executiva' : 'Econômica'}`}</span>
               </button>
               {showPaxDropdown && (
                 <div className="absolute z-10 mt-2 w-80 bg-white border border-gray-200 rounded-xl shadow-xl p-3 right-0">
@@ -1269,11 +1227,10 @@ const AereoInter = () => {
               )}
             </div>
             {/* Botão Pesquisar */}
-            <button onClick={handlePesquisar} className="bg-teal-600 hover:bg-teal-700 text-white font-semibold py-2 px-6 rounded-full text-sm flex items-center shadow transition-colors h-[52px]">
+            <button onClick={handlePesquisar} className="bg-teal-600 hover:bg-teal-700 text-white font-semibold py-2 px-6 rounded-full text-sm flex items-center shadow transition-colors">
               <Search className="h-4 w-4 mr-2" />
               Buscar
             </button>
-          </div>
           </div>
         </div>
 
@@ -1345,19 +1302,6 @@ const AereoInter = () => {
                         clearCache()
                       }} 
                     />
-                    <button
-                      onClick={() => {
-                        setSearched(false)
-                        setResultados([])
-                        setCollapsed(false)
-                        setSelectedCias([])
-                        clearCache()
-                      }}
-                      className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                      title="Nova Busca"
-                    >
-                      <Trash2 className="h-5 w-5" />
-                    </button>
                     {/* Airline Filter */}
                     <div className="relative group">
                       <button className="px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white flex items-center gap-2">
@@ -1468,9 +1412,9 @@ const AereoInter = () => {
                              <tbody className="divide-y divide-gray-100">
                                 {selectedIda && (
                                    <tr 
-                                      className="hover:bg-red-50 transition-colors cursor-pointer" 
-                                      onClick={() => handleSelectFlight(selectedIda, 'ida')}
-                                      title="Clique para remover este voo"
+                                     className="hover:bg-blue-50/30 transition-colors cursor-pointer"
+                                     onClick={() => setSelectedIda(null)}
+                                     title="Clique para remover este voo"
                                    >
                                       <td className="py-3 px-4">
                                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
@@ -1513,9 +1457,9 @@ const AereoInter = () => {
                                 )}
                                 {selectedVolta && (
                                    <tr 
-                                      className="hover:bg-red-50 transition-colors cursor-pointer" 
-                                      onClick={() => handleSelectFlight(selectedVolta, 'volta')}
-                                      title="Clique para remover este voo"
+                                     className="hover:bg-orange-50/30 transition-colors cursor-pointer"
+                                     onClick={() => setSelectedVolta(null)}
+                                     title="Clique para remover este voo"
                                    >
                                       <td className="py-3 px-4">
                                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
@@ -1560,14 +1504,7 @@ const AereoInter = () => {
                           </table>
                         </div>
                         
-                        <div className="bg-gray-50 px-6 py-4 flex items-center justify-end border-t border-gray-200 gap-3">
-                          <button
-                            onClick={() => setShowConfirmationModal(true)}
-                            className="bg-teal-600 hover:bg-teal-700 text-white font-bold py-2.5 px-6 rounded-lg shadow-md hover:shadow-lg transition-all flex items-center gap-2 transform active:scale-95"
-                          >
-                            <Plus className="h-5 w-5" />
-                            Adicionar à Cotação
-                          </button>
+                        <div className="bg-gray-50 px-6 py-4 flex items-center justify-end border-t border-gray-200">
                           <button
                             onClick={handleEmitir}
                             className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-6 rounded-lg shadow-md hover:shadow-lg transition-all flex items-center gap-2 transform active:scale-95"
@@ -1578,15 +1515,6 @@ const AereoInter = () => {
                         </div>
                       </div>
                     )}
-                    
-                    <FlightConfirmationModal
-                      isOpen={showConfirmationModal}
-                      onClose={() => setShowConfirmationModal(false)}
-                      onConfirm={handleAddSelectedToQuote}
-                      ida={selectedIda}
-                      volta={selectedVolta}
-                      getLogo={getAirlineLogo}
-                    />
 
                     {/* Tabela de Ida */}
                     {linhasIda.length > 0 && (
@@ -1649,22 +1577,15 @@ const AereoInter = () => {
                                             <td className="py-3 px-2 text-gray-600 truncate max-w-[200px]" title={c.Destino}>{c.Destino}</td>
                                             {cIdx === 0 && (
                                               <>
-                                                <td className="py-3 px-2 text-center text-gray-600 uppercase font-medium text-xs align-middle" rowSpan={l.conexoes.length}>
-                                                  <div className="flex items-center justify-center gap-1">
+                                                <td className="py-3 px-2 text-center align-middle" rowSpan={l.conexoes.length}>
+                                                  <button
+                                                    onClick={(e) => openRules(l.cia, l.tarifa, e)}
+                                                    className="inline-flex items-center px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 hover:text-blue-700 transition-colors gap-1 text-xs uppercase font-medium"
+                                                    title="Ver regras da tarifa"
+                                                  >
                                                     {l.tarifa}
-                                                    <button 
-                                                      onClick={(e) => {
-                                                        e.stopPropagation()
-                                                        setSelectedRuleCia(l.cia)
-                                                        setSelectedRuleTariff(l.tarifa)
-                                                        setShowRulesModal(true)
-                                                      }}
-                                                      className="text-blue-500 hover:text-blue-700 transition-colors"
-                                                      title="Ver regras da tarifa"
-                                                    >
-                                                      <Info className="h-4 w-4" />
-                                                    </button>
-                                                  </div>
+                                                    <Info className="h-3 w-3" />
+                                                  </button>
                                                 </td>
                                                 <td className="py-3 px-2 text-center align-middle" rowSpan={l.conexoes.length}>
                                                   {l.hasBag ? <div className="flex items-center justify-center text-teal-600" title="Bagagem Inclusa"><Luggage className="h-5 w-5" /></div> : <div className="flex items-center justify-center text-red-400" title="Sem Bagagem"><Ban className="h-5 w-5" /></div>}
@@ -1719,23 +1640,16 @@ const AereoInter = () => {
                                       <td className="py-3 px-2 text-gray-900 whitespace-nowrap">{cheg.toLocaleDateString('pt-BR')} - {cheg.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</td>
                                       <td className="py-3 px-2 text-gray-600 truncate max-w-[150px]" title={l.origem}>{l.origem}</td>
                                       <td className="py-3 px-2 text-gray-600 truncate max-w-[200px]" title={l.destino}>{l.destino}</td>
-                                          <td className="py-3 px-2 text-center text-gray-600 uppercase font-medium text-xs">
-                                            <div className="flex items-center justify-center gap-1">
-                                              {l.tarifa}
-                                              <button 
-                                                onClick={(e) => {
-                                                  e.stopPropagation()
-                                                  setSelectedRuleCia(l.cia)
-                                                  setSelectedRuleTariff(l.tarifa)
-                                                  setShowRulesModal(true)
-                                                }}
-                                                className="text-blue-500 hover:text-blue-700 transition-colors"
-                                                title="Ver regras da tarifa"
-                                              >
-                                                <Info className="h-4 w-4" />
-                                              </button>
-                                            </div>
-                                          </td>
+                                      <td className="py-3 px-2 text-center">
+                                        <button
+                                          onClick={(e) => openRules(l.cia, l.tarifa, e)}
+                                          className="inline-flex items-center px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 hover:text-blue-700 transition-colors gap-1 text-xs uppercase font-medium"
+                                          title="Ver regras da tarifa"
+                                        >
+                                          {l.tarifa}
+                                          <Info className="h-3 w-3" />
+                                        </button>
+                                      </td>
                                       <td className="py-3 px-2 text-center">
                                         {l.hasBag ? <div className="flex items-center justify-center text-purple-700" title="Bagagem Inclusa"><Luggage className="h-5 w-5" /></div> : <div className="flex items-center justify-center text-red-400" title="Sem Bagagem"><Ban className="h-5 w-5" /></div>}
                                       </td>
@@ -1840,6 +1754,11 @@ const AereoInter = () => {
                                   v.partida === l.partida && 
                                   v.sentido === 'volta'
                                 )
+                                const isInQuote = isSelected // Reuse the logic or check specifically against context if needed
+                                // Correction: isSelected above is actually checking "isInQuote" logic (against voosSelecionados context)
+                                // But the table row selection state (blue border) is based on local state `selectedVolta`
+                                const isRowSelected = selectedVolta?.uniqueId === l.uniqueId
+
                                 if (l.conexoes && l.conexoes.length > 0) {
                                   return (
                                     <React.Fragment key={`${l.numero}-${l.tarifa}-${i}`}>
@@ -1847,7 +1766,7 @@ const AereoInter = () => {
                                         const partC = parseConnectionDate(c.EmbarqueCompleto || c.DataEmbarque)
                                         const chegC = parseConnectionDate(c.DesembarqueCompleto || c.DataDesembarque)
                                         return (
-                                          <tr key={`${i}-${cIdx}`} onClick={() => handleSelectFlight(l, 'volta')} className={`cursor-pointer group ${selectedVolta?.uniqueId === l.uniqueId ? 'bg-blue-50' : 'bg-gray-50/50'} ${cIdx === l.conexoes.length - 1 ? 'border-b border-gray-400' : ''}`}>
+                                          <tr key={`${i}-${cIdx}`} onClick={() => handleSelectFlight(l, 'volta')} className={`cursor-pointer group ${isRowSelected ? 'bg-blue-50' : 'bg-gray-50/50'} ${cIdx === l.conexoes.length - 1 ? 'border-b border-gray-400' : ''}`}>
                                             {cIdx === 0 && (
                                               <td className="py-3 pl-4 pr-2 align-middle" rowSpan={l.conexoes.length}>
                                                 {getAirlineLogo(l.cia) ? (
@@ -1864,23 +1783,7 @@ const AereoInter = () => {
                                             <td className="py-3 px-2 text-gray-600 truncate max-w-[200px]" title={c.Destino}>{c.Destino}</td>
                                             {cIdx === 0 && (
                                               <>
-                                                <td className="py-3 px-2 text-center text-gray-600 uppercase font-medium text-xs align-middle" rowSpan={l.conexoes.length}>
-                                                  <div className="flex items-center justify-center gap-1">
-                                                    {l.tarifa}
-                                                    <button 
-                                                      onClick={(e) => {
-                                                        e.stopPropagation()
-                                                        setSelectedRuleCia(l.cia)
-                                                        setSelectedRuleTariff(l.tarifa)
-                                                        setShowRulesModal(true)
-                                                      }}
-                                                      className="text-blue-500 hover:text-blue-700 transition-colors"
-                                                      title="Ver regras da tarifa"
-                                                    >
-                                                      <Info className="h-4 w-4" />
-                                                    </button>
-                                                  </div>
-                                                </td>
+                                                <td className="py-3 px-2 text-center text-gray-600 uppercase font-medium text-xs align-middle" rowSpan={l.conexoes.length}>{l.tarifa}</td>
                                                 <td className="py-3 px-2 text-center align-middle" rowSpan={l.conexoes.length}>
                                                   {l.hasBag ? <div className="flex items-center justify-center text-purple-700" title="Bagagem Inclusa"><Luggage className="h-5 w-5" /></div> : <div className="flex items-center justify-center text-red-400" title="Sem Bagagem"><Ban className="h-5 w-5" /></div>}
                                                 </td>
@@ -1925,7 +1828,7 @@ const AereoInter = () => {
                                   const part = new Date(l.partida)
                                   const cheg = new Date(l.chegada)
                                   return (
-                                    <tr key={`${l.numero}-${l.tarifa}-${i}`} onClick={() => handleSelectFlight(l, 'volta')} className={`cursor-pointer hover:bg-purple-50 transition-colors group border-b border-gray-400 ${selectedVolta?.uniqueId === l.uniqueId ? 'bg-blue-50 ring-2 ring-blue-500' : ''}`}>
+                                    <tr key={`${l.numero}-${l.tarifa}-${i}`} onClick={() => handleSelectFlight(l, 'volta')} className={`cursor-pointer hover:bg-purple-50 transition-colors group border-b border-gray-400 ${isRowSelected ? 'bg-blue-50 ring-2 ring-blue-500' : ''}`}>
                                       <td className="py-3 pl-4 pr-2">
                                         {getAirlineLogo(l.cia) ? <img src={getAirlineLogo(l.cia)!} alt={l.cia} className="h-5 w-auto object-contain" /> : <span className="font-semibold text-gray-700">{l.cia}</span>}
                                       </td>
@@ -1934,23 +1837,16 @@ const AereoInter = () => {
                                       <td className="py-3 px-2 text-gray-900 whitespace-nowrap">{cheg.toLocaleDateString('pt-BR')} - {cheg.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</td>
                                       <td className="py-3 px-2 text-gray-600 truncate max-w-[150px]" title={l.origem}>{l.origem}</td>
                                       <td className="py-3 px-2 text-gray-600 truncate max-w-[200px]" title={l.destino}>{l.destino}</td>
-                                          <td className="py-3 px-2 text-center text-gray-600 uppercase font-medium text-xs">
-                                            <div className="flex items-center justify-center gap-1">
-                                              {l.tarifa}
-                                              <button 
-                                                onClick={(e) => {
-                                                  e.stopPropagation()
-                                                  setSelectedRuleCia(l.cia)
-                                                  setSelectedRuleTariff(l.tarifa)
-                                                  setShowRulesModal(true)
-                                                }}
-                                                className="text-blue-500 hover:text-blue-700 transition-colors"
-                                                title="Ver regras da tarifa"
-                                              >
-                                                <Info className="h-4 w-4" />
-                                              </button>
-                                            </div>
-                                          </td>
+                                      <td className="py-3 px-2 text-center">
+                                        <button
+                                          onClick={(e) => openRules(l.cia, l.tarifa, e)}
+                                          className="inline-flex items-center px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 hover:text-blue-700 transition-colors gap-1 text-xs uppercase font-medium"
+                                          title="Ver regras da tarifa"
+                                        >
+                                          {l.tarifa}
+                                          <Info className="h-3 w-3" />
+                                        </button>
+                                      </td>
                                       <td className="py-3 px-2 text-center">
                                         {l.hasBag ? <div className="flex items-center justify-center text-purple-700" title="Bagagem Inclusa"><Luggage className="h-5 w-5" /></div> : <div className="flex items-center justify-center text-red-400" title="Sem Bagagem"><Ban className="h-5 w-5" /></div>}
                                       </td>
@@ -2021,14 +1917,13 @@ const AereoInter = () => {
             )}
           </div>
         )}
-
-      <TariffRulesModal 
-        isOpen={showRulesModal}
-        onClose={() => setShowRulesModal(false)}
-        cia={selectedRuleCia}
-        tipoTarifa={selectedRuleTariff}
+      </div>
+      <TariffRulesModal
+        isOpen={modalRules.isOpen}
+        onClose={() => setModalRules(prev => ({ ...prev, isOpen: false }))}
+        cia={modalRules.cia}
+        tipoTarifa={modalRules.tipoTarifa}
       />
-    </div>
     </div>
   )
 }

@@ -688,7 +688,7 @@ const Perfil: React.FC<PerfilProps> = ({ user }) => {
                     type="text"
                     id="empresa"
                     name="empresa"
-                    value={formData.empresa}
+                    value={empresaInfo?.nome || formData.empresa}
                     className="pl-10 w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed"
                     placeholder="Nome da sua empresa"
                     disabled

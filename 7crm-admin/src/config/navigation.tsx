@@ -10,7 +10,7 @@ import {
   Lock,
   Calendar,
   Plane,
-  DollarSign
+  Banknote
 } from 'lucide-react'
 
 export type NavItemConfig = {
@@ -55,7 +55,7 @@ export const navSchema: NavSectionConfig[] = [
   {
     title: 'Financeiro',
     items: [
-      { to: '/financeiro', label: 'Visão Geral', icon: <DollarSign className="h-5 w-5" /> },
+      { to: '/financeiro', label: 'Visão Geral', icon: <Banknote className="h-5 w-5" /> },
     ]
   },
   {

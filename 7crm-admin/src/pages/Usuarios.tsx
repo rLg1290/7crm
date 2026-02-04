@@ -126,69 +126,19 @@ type TabType = 'crm' | 'admin' | 'internal'
         
         if (error) throw error
       } else {
-        // Criação de novo usuário
-        if (formData.autoConfirm) {
-          // FLUXO VIA API (Server-side Admin Create) - Auto Confirmação
-          // Requer que a API esteja rodando (vercel dev ou produção)
-          const apiBase = (import.meta as any).env.VITE_ADMIN_API_BASE_URL || ''
-          const url = apiBase ? `${apiBase.replace(/\/$/, '')}/api/create-user` : '/api/create-user'
-          
-          const resp = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              email: formData.email,
-              password: formData.password,
-              nome: formData.nome,
-              role: formData.role,
-              empresa_id: formData.empresa_id || null,
-              autoConfirm: true
-            })
-          })
+        // Criação de novo usuário via RPC (Database Function)
+        // Isso permite criar usuário sem deslogar o admin e com confirmação automática
+        const { data: newUserId, error: rpcError } = await supabase.rpc('admin_create_user', {
+          p_email: formData.email,
+          p_password: formData.password,
+          p_nome: formData.nome,
+          p_role: formData.role,
+          p_empresa_id: formData.empresa_id || null
+        })
 
-          const ct = resp.headers.get('content-type') || ''
-          let payload: any = null
-          try {
-            if (ct.includes('application/json')) payload = await resp.json()
-            else {
-              const text = await resp.text()
-              try { payload = JSON.parse(text) } catch { payload = { raw: text } }
-            }
-          } catch { payload = null }
-
-          if (!resp.ok) {
-            throw new Error((payload && payload.error) || `Falha ao criar usuário via API (HTTP ${resp.status})`)
-          }
-        } else {
-          // FLUXO PADRÃO (Client-side SignUp) - Envia Email de Confirmação
-          const { data: authData, error: authError } = await supabase.auth.signUp({
-            email: formData.email,
-            password: formData.password,
-            options: {
-              data: {
-                full_name: formData.nome,
-                nome: formData.nome,
-                role: formData.role,
-                empresa_id: formData.empresa_id || null
-              }
-            }
-          })
-          
-          if (authError) throw authError
-          
-          // Se o signUp for bem sucedido, atualizamos o profile para garantir
-          if (authData.user) {
-            const { error: profileError } = await supabase
-              .from('profiles')
-              .update({
-                nome: formData.nome,
-                role: formData.role,
-                empresa_id: formData.empresa_id || null
-              })
-              .eq('id', authData.user.id)
-            if (profileError) throw profileError
-          }
-        }
+        if (rpcError) throw rpcError
+        
+        // Sucesso
       }
       
       setShowModal(false)
@@ -695,19 +645,12 @@ type TabType = 'crm' | 'admin' | 'internal'
 
                         {!editingUsuario && (
                           <div className="flex items-center space-x-2 p-3 bg-blue-50 rounded-lg border border-blue-100">
-                            <input
-                              type="checkbox"
-                              id="autoConfirm"
-                              checked={formData.autoConfirm}
-                              onChange={(e) => setFormData(prev => ({ ...prev, autoConfirm: e.target.checked }))}
-                              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                            />
-                            <div className="flex flex-col">
-                              <label htmlFor="autoConfirm" className="text-sm font-medium text-blue-900 cursor-pointer">
-                                Confirmar e-mail automaticamente
-                              </label>
+                             <div className="flex flex-col">
+                              <span className="text-sm font-medium text-blue-900">
+                                Criação Automática
+                              </span>
                               <span className="text-xs text-blue-700">
-                                O usuário não precisará clicar no link do e-mail.
+                                O usuário será criado ativo e confirmado imediatamente.
                               </span>
                             </div>
                           </div>

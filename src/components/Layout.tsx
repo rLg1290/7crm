@@ -41,6 +41,7 @@ const Layout: React.FC<LayoutProps> = ({ user, children }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [showEducacaoHint, setShowEducacaoHint] = useState(false)
   const [empresaLogo, setEmpresaLogo] = useState<string | null>(null)
+  const [empresaNome, setEmpresaNome] = useState<string>('Agência')
   const [chatEnabled, setChatEnabled] = useState<boolean>(true)
   const [showChat, setShowChat] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
@@ -64,12 +65,13 @@ const Layout: React.FC<LayoutProps> = ({ user, children }) => {
         try {
           const { data, error } = await supabase
             .from('empresas')
-            .select('logotipo, chat_enabled, sette_visible, central_visible, aereo_enabled')
+            .select('logotipo, nome, chat_enabled, sette_visible, central_visible, aereo_enabled')
             .eq('id', empresaId)
             .single()
 
           if (data && !error) {
             if (data.logotipo) setEmpresaLogo(data.logotipo)
+            if (data.nome) setEmpresaNome(data.nome)
             if (typeof data.chat_enabled === 'boolean') setChatEnabled(Boolean(data.chat_enabled))
             if (typeof data.sette_visible === 'boolean') setSetteVisible(Boolean(data.sette_visible))
             if (typeof data.central_visible === 'boolean') setCentralVisible(Boolean(data.central_visible))
@@ -237,7 +239,7 @@ const Layout: React.FC<LayoutProps> = ({ user, children }) => {
           const v = !sidebarCollapsed
           setSidebarCollapsed(v)
           localStorage.setItem(`sidebar_collapsed_${user.id}`, v ? '1' : '0')
-        }} empresaLogo={empresaLogo} userName={user.user_metadata?.empresa || 'Agência'} aereoEnabled={aereoEnabled} userRole={userRole} />
+        }} empresaLogo={empresaLogo} userName={empresaNome} aereoEnabled={aereoEnabled} userRole={userRole} />
         <main className="flex-1">
           {children}
         </main>

@@ -24,10 +24,13 @@ import {
   Loader2,
   UserPlus,
   Clock,
-  Info
+  Info,
+  Copy
 } from 'lucide-react'
 import { getAirlineLogoUrl } from '../utils/airlineLogos'
+import { QRCodeSVG } from 'qrcode.react'
 import { supabase } from '../lib/supabase'
+import { gerarPayloadPix } from '../utils/pix'
 import ClientModal from '../components/ClientModal'
 import TariffRulesModal from '../components/TariffRulesModal'
 
@@ -43,21 +46,18 @@ const gerarCodigoUnico = async () => {
     }
     
     // Verificar se o código já existe no banco
-    const { error } = await supabase
+    const { data } = await supabase
       .from('cotacoes')
       .select('id')
       .eq('codigo', codigo)
-      .single();
+      .limit(1);
     
-    if (error && error.code === 'PGRST116') {
+    if (data && data.length === 0) {
       // Código não existe, pode usar
       return codigo;
-    } else if (error) {
-      console.error('Erro ao verificar código', error);
-      return codigo; // Em caso de erro, retorna o código gerado
     }
     
-    // Código existe, tentar novamente
+    // Código existe (ou erro), tentar novamente
     tentativas++;
   }
   
@@ -183,6 +183,13 @@ const EmissaoAereo = () => {
   const [showRulesModal, setShowRulesModal] = useState(false)
   const [selectedRuleCia, setSelectedRuleCia] = useState('')
   const [selectedRuleTariff, setSelectedRuleTariff] = useState('')
+
+  const [showPixModal, setShowPixModal] = useState(false)
+  const [pixCode, setPixCode] = useState('')
+  const [showPixDecisionModal, setShowPixDecisionModal] = useState(false)
+  const [pixValorDisplay, setPixValorDisplay] = useState(0)
+  const currentCodigoRef = React.useRef('')
+  const currentCotacaoIdRef = React.useRef<number | null>(null)
 
   // Sync state with totalPax if it changes
   useEffect(() => {
@@ -412,7 +419,7 @@ const EmissaoAereo = () => {
     setIsEditingDu(false)
   }
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>, section: 'passenger' | 'payment') => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>, section?: 'passenger' | 'payment') => {
     let { name, value } = e.target
 
     if (name === 'telefone') {
@@ -453,6 +460,19 @@ const EmissaoAereo = () => {
             tipo_pagamento: selectedPaymentMethod
         }
 
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user?.user_metadata?.empresa_id) throw new Error('Empresa não identificada')
+
+        // --- GERAÇÃO AUTOMÁTICA DE CONTAS (FINANCEIRO) ---
+        // Movido para ANTES da criação/atualização da cotação para garantir execução
+        // Mas precisamos do cotacaoId e codigo... 
+        
+        // Vamos refatorar para garantir que o usuário está autenticado e temos os dados necessários
+        // O código anterior já obtinha o usuário dentro do bloco 'create', mas precisamos dele fora também
+        // A chamada acima já garante isso.
+
+        let currentCodigo = ''
+
         // Create new quotation if needed
         if (kanbanMode === 'create') {
             const clientName = selectedClient ? selectedClient.nome : clientSearchTerm
@@ -463,10 +483,11 @@ const EmissaoAereo = () => {
                 return
             }
 
-            const { data: { user } } = await supabase.auth.getUser()
-            if (!user?.user_metadata?.empresa_id) throw new Error('Empresa não identificada')
+            // const { data: { user } } = await supabase.auth.getUser() // REMOVIDO POIS JÁ OBTEMOS ACIMA
+            // if (!user?.user_metadata?.empresa_id) throw new Error('Empresa não identificada') // JÁ VERIFICADO ACIMA
 
             const codigo = await gerarCodigoUnico()
+            currentCodigo = codigo
             
             const { data: newCotacao, error: createError } = await supabase
               .from('cotacoes')
@@ -490,6 +511,20 @@ const EmissaoAereo = () => {
 
             if (createError) throw createError
             cotacaoId = newCotacao.id
+            currentCotacaoIdRef.current = cotacaoId; // Save to ref
+        } else if (kanbanMode === 'select' && selectedCotacaoId) {
+            // Se for cotação existente, buscar o código dela
+            const { data: cotacaoExistente } = await supabase
+              .from('cotacoes')
+              .select('codigo')
+              .eq('id', selectedCotacaoId)
+              .single()
+            
+            if (cotacaoExistente) {
+              currentCodigo = cotacaoExistente.codigo
+            }
+            cotacaoId = selectedCotacaoId;
+            currentCotacaoIdRef.current = cotacaoId; // Save to ref
         }
 
         if (!cotacaoId) {
@@ -553,37 +588,244 @@ const EmissaoAereo = () => {
         if (flightsError) throw flightsError
 
         // Save Passengers
+        const passengersSnapshot = [];
         for (const passenger of selectedPassengers) {
             if (passenger) {
+                // Add to snapshot array
+                passengersSnapshot.push({
+                    id: passenger.id,
+                    nome: passenger.nome,
+                    cpf: passenger.cpf,
+                    data_nascimento: passenger.data_nascimento,
+                    email: passenger.email,
+                    telefone: passenger.telefone
+                });
+
                 const { error: passError } = await supabase
                     .from('cotacao_passageiros')
                     .insert({
                         cotacao_id: cotacaoId,
                         cliente_id: passenger.id,
-                        tipo: 'adulto'
+                        tipo: 'adulto',
+                        // Snapshot fields
+                        nome: passenger.nome,
+                        cpf: passenger.cpf,
+                        data_nascimento: passenger.data_nascimento,
+                        email: passenger.email
                     })
 
                 if (passError) console.error('Erro ao vincular passageiro:', passError)
             }
         }
 
-        // Update Quotation Status if selecting existing
+        // Update Quotation with Passenger Snapshot (for Admin viewing)
+        // Also update status if selecting existing
+        const updateData: any = {
+            dados_passageiros: passengersSnapshot // Save the snapshot!
+        };
+
         if (kanbanMode === 'select' && cotacaoId) {
-            await supabase
-                .from('cotacoes')
-                .update({ 
-                    status: 'OP_GERADA',
-                    valor: valorComJuros,
-                    forma_pagamento: selectedPaymentMethod,
-                    detalhes_pagamento: paymentDetails,
-                    parcelamento: selectedPaymentMethod === 'cartao' ? parseInt(payment.parcelas) : 1
-                })
-                .eq('id', cotacaoId)
+            updateData.status = 'OP_GERADA';
+            updateData.valor = valorComJuros;
+            updateData.forma_pagamento = selectedPaymentMethod;
+            updateData.detalhes_pagamento = paymentDetails;
+            updateData.parcelamento = selectedPaymentMethod === 'cartao' ? parseInt(payment.parcelas) : 1;
+        } else if (kanbanMode === 'create') {
+             // If created new, we also want to update the snapshot
+             // (Although we could have inserted it initially, updating is safer to not break the insert logic above)
         }
 
-        // Simulação de processamento da emissão (pode ser removido se for instantâneo)
-        await new Promise(resolve => setTimeout(resolve, 1000))
-        
+        // Apply update
+        await supabase
+            .from('cotacoes')
+            .update(updateData)
+            .eq('id', cotacaoId);
+
+        // --- GERAÇÃO AUTOMÁTICA DE CONTAS (FINANCEIRO) ---
+        // Só gera contas se cotacaoId existir
+        // SE FOR PIX, NÃO GERA AGORA! ESPERA A DECISÃO DO USUÁRIO NO MODAL.
+        // SE FOR CARTÃO OU OUTROS, GERA AGORA.
+        console.log('🔍 [EMISSAO] Verificando condições para gerar financeiro...', { 
+            cotacaoId, 
+            method: selectedPaymentMethod 
+        });
+
+        if (cotacaoId && (selectedPaymentMethod as string) !== 'pix') {
+          console.log('🔍 [EMISSAO] Condições aceitas. Iniciando bloco financeiro.');
+          try {
+            // 1. Buscar ou criar Categorias Financeiras
+          // Venda de Passagem (Receita/Venda)
+          let catVendaId = 1; // ID FIXO SOLICITADO
+          /*
+          const { data: catVenda } = await supabase
+              .from('categorias')
+              .select('id')
+              .eq('empresa_id', user.user_metadata.empresa_id)
+              .eq('nome', 'Venda de Passagem')
+              .eq('tipo', 'VENDA')
+              .maybeSingle();
+          
+          if (catVenda) {
+              catVendaId = catVenda.id;
+          } else {
+              // ...
+          }
+          */
+
+            // Tarifa NET (Despesa/Custo)
+            let catCustoId = 5; // ID FIXO SOLICITADO
+
+            // 1. Conta Pagar (Agência -> Consolidadora)
+            // Valor = Tarifa + Taxas (Custo real da emissão)
+            // Valor a pagar é o TOTAL da emissão MENOS o DU (Lucro), ou seja, o custo real.
+            const valorPagarConsolidadora = priceIda.fare + priceIda.tax + priceVolta.fare + priceVolta.tax;
+
+            // Fornecedor FIXO: 3 (7C)
+            let fornecedorId = 3; 
+
+            // Forma de Pagamento ID
+            // 1 - Pix
+            // 8 - Cartão de Crédito
+            let formaPagamentoId = null;
+            if ((selectedPaymentMethod as string) === 'pix') formaPagamentoId = 1;
+            else if ((selectedPaymentMethod as string) === 'cartao') formaPagamentoId = 8;
+            else if ((selectedPaymentMethod as string) === 'boleto') formaPagamentoId = 1; 
+
+            const { error: contaPagarError } = await supabase
+                 .from('contas_pagar')
+                 .insert({
+                     empresa_id: user.user_metadata.empresa_id,
+                     user_id: user.id,
+                     fornecedor_id: fornecedorId,
+                     categoria_id: catCustoId,
+                     descricao: `Emissão Aérea - ${newQuoteTitle || currentCodigo || 'Sem Título'}`,
+                     valor: valorPagarConsolidadora,
+                     vencimento: new Date().toISOString().split('T')[0], // Vence hoje (pré-pago/imediato)
+                     status: 'pendente',
+                     origem: 'COTACAO',
+                     origem_id: String(cotacaoId), // Ensure string
+                     forma_pagamento_id: formaPagamentoId, 
+                     parcelas: selectedPaymentMethod === 'cartao' ? parseInt(payment.parcelas) : 1
+                 });
+
+             if (contaPagarError) console.error('Erro ao gerar conta a pagar:', contaPagarError);
+
+             // 3. Contas a Receber
+             // LANÇAMENTO 1: Reembolso/Custo da Passagem (Valor = Tarifa NET)
+             const nomeCliente = selectedClient ? selectedClient.nome : clientSearchTerm;
+
+             console.log('🔍 [EMISSAO] Iniciando criação de Contas a Receber', { 
+                selectedClient, 
+                nomeCliente, 
+                catVendaId, 
+                valorPagarConsolidadora 
+             });
+
+             if (selectedClient || nomeCliente) {
+               
+               // Valor Tarifa NET (Igual a conta a pagar)
+               const valorReceberNet = valorPagarConsolidadora;
+
+               const dadosReceberNet = {
+                       empresa_id: user.user_metadata.empresa_id,
+                       user_id: user.id,
+                       cliente_id: selectedClient?.id ? selectedClient.id : null, // Fix type mismatch: ensure null if undefined/0
+                       nome_cliente: nomeCliente,
+                       categoria_id: catVendaId, // ID 1 - Venda de Passagem
+                       descricao: `Venda Aérea (Tarifa) - ${newQuoteTitle || currentCodigo || 'Sem Título'}`,
+                       valor: valorReceberNet,
+                       vencimento: new Date().toISOString().split('T')[0], // Imediato
+                       status: 'pendente',
+                       origem: 'COTACAO',
+                       origem_id: String(cotacaoId),
+                       forma_recebimento_id: formaPagamentoId // Pix (1) ou Cartão (8)
+                   };
+
+               console.log('🔍 [EMISSAO] Dados Conta Receber (NET):', dadosReceberNet);
+
+               const { data: dataReceberNet, error: contaReceberNetError } = await supabase
+                   .from('contas_receber')
+                   .insert(dadosReceberNet)
+                   .select(); // Adicionado select para confirmar inserção
+
+               if (contaReceberNetError) {
+                   console.error('❌ [EMISSAO] Erro ao gerar conta receber (NET):', contaReceberNetError);
+               } else {
+                   console.log('✅ [EMISSAO] Conta Receber (NET) criada:', dataReceberNet);
+               }
+
+               // LANÇAMENTO 2: Comissão (Valor = DU)
+               // Se houver DU (Lucro) > 0
+               if (duValue > 0) {
+                   // Calcular Vencimento
+                   const dataAtual = new Date();
+                   let dataVencimentoComissao = new Date();
+
+                   if ((selectedPaymentMethod as string) === 'pix') {
+                       // Próximo dia útil
+                       dataVencimentoComissao.setDate(dataAtual.getDate() + 1);
+                       // Se cair Sábado (6), soma +2 -> Segunda
+                       // Se cair Domingo (0), soma +1 -> Segunda
+                       if (dataVencimentoComissao.getDay() === 6) {
+                           dataVencimentoComissao.setDate(dataVencimentoComissao.getDate() + 2);
+                       } else if (dataVencimentoComissao.getDay() === 0) {
+                           dataVencimentoComissao.setDate(dataVencimentoComissao.getDate() + 1);
+                       }
+                   } else if (selectedPaymentMethod === 'cartao') {
+                       // 7 dias corridos
+                       dataVencimentoComissao.setDate(dataAtual.getDate() + 7);
+                   } else {
+                       // Default (imediato ou mesma regra do pix)
+                       dataVencimentoComissao.setDate(dataAtual.getDate() + 1);
+                   }
+
+                   const dadosComissao = {
+                           empresa_id: user.user_metadata.empresa_id,
+                           user_id: user.id,
+                           cliente_id: null, // GARANTE NULL EXPLÍCITO
+                           categoria_id: 9, // ID 9 - Comissão de Vendas
+                           fornecedor_id: 3, // Fornecedor 7C (Pagador da comissão)
+                           descricao: `Comissão Aérea (DU) - ${newQuoteTitle || currentCodigo || 'Sem Título'}`,
+                           valor: duValue,
+                           vencimento: dataVencimentoComissao.toISOString().split('T')[0],
+                           status: 'pendente',
+                           origem: 'COTACAO',
+                           origem_id: String(cotacaoId),
+                           forma_recebimento_id: 1 // Sempre Pix (1)
+                       };
+
+                   console.log('🔍 [EMISSAO] Dados Conta Comissão:', dadosComissao);
+
+                   const { data: dataComissao, error: contaComissaoError } = await supabase
+                       .from('contas_receber')
+                       .insert(dadosComissao)
+                       .select();
+
+                   if (contaComissaoError) {
+                       console.error('❌ [EMISSAO] Erro ao gerar conta comissão:', contaComissaoError);
+                   } else {
+                       console.log('✅ [EMISSAO] Conta Comissão criada:', dataComissao);
+                   }
+               }
+             } else {
+                 console.warn('⚠️ [EMISSAO] Cliente não identificado. Contas a receber NÃO foram geradas.');
+             }
+          } catch (finError) {
+            console.error('Erro no processamento financeiro:', finError);
+          }
+        }
+        // -----------------------------------------------------
+
+        // Tratamento especial para PIX
+        if ((selectedPaymentMethod as string) === 'pix') {
+           currentCodigoRef.current = currentCodigo || 'EMISSAO';
+           
+           // Abre modal de decisão
+           setShowPixDecisionModal(true);
+           setLoading(false);
+           return;
+        }
+
         alert('OP Gerada! Confira no Kanban')
         navigate('/cotacoes')
 
@@ -593,6 +835,200 @@ const EmissaoAereo = () => {
     } finally {
         setLoading(false)
     }
+  }
+
+  // --- Funções Auxiliares para o Fluxo PIX ---
+
+  const processarPixTotal = async () => {
+      // Gera QR Code do TOTAL
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user?.user_metadata?.empresa_id) return;
+
+      const valorPix = totalPrice; 
+      
+      const pixPayload = gerarPayloadPix({
+         chave: '54581543000179', 
+         nome: '7C TURISMO E CONSULTORIA',
+         cidade: 'BRASILIA',
+         txid: currentCodigoRef.current || 'EMISSAO', 
+         valor: valorPix
+      });
+       
+      setPixCode(pixPayload);
+      setPixValorDisplay(valorPix);
+      setShowPixDecisionModal(false);
+      setShowPixModal(true);
+
+      // --- GERAR FINANCEIRO PARA PIX TOTAL ---
+      // Lógica Solicitada:
+      // 1. Conta Pagar (Total com DU) -> Para 7C
+      // 2. Conta Receber 1 (Net) -> Do Cliente
+      // 3. Conta Receber 2 (DU) -> Da 7C (Comissão)
+      
+      try {
+            // Valor Total
+            const valorTotal = totalPrice; 
+            
+            // Valores individuais
+            const valorCustoNet = priceIda.fare + priceIda.tax + priceVolta.fare + priceVolta.tax;
+            // Ou calcular Net = Total - DU (mais seguro para bater centavos)
+            const valorNetCalculado = valorTotal - duValue;
+            
+            // IDs
+            let catVendaId = 1;
+            let catCustoId = 5;
+            let fornecedorId = 3; // 7C
+            let formaPagamentoId = 1; // Pix
+
+            // 1. Conta Pagar (Custo Net) -> Para Fornecedor 7C
+            console.log('🔍 [PIX TOTAL] Criando conta a pagar (Custo Net)...');
+
+            const { error: errorPagar } = await supabase.from('contas_pagar').insert({
+                 empresa_id: user.user_metadata.empresa_id,
+                 user_id: user.id,
+                 fornecedor_id: fornecedorId,
+                 categoria_id: catCustoId,
+                 descricao: `Emissão Aérea (Custo Net) - ${newQuoteTitle || currentCodigoRef.current}`,
+                 valor: valorNetCalculado, // Paga apenas o NET
+                 vencimento: new Date().toISOString().split('T')[0],
+                 status: 'pendente',
+                 origem: 'COTACAO',
+                 origem_id: currentCotacaoIdRef.current ? String(currentCotacaoIdRef.current) : null,
+                 forma_pagamento_id: formaPagamentoId, 
+                 parcelas: 1
+            });
+
+            if (errorPagar) {
+                console.error('❌ [PIX TOTAL] Erro ao criar conta pagar:', errorPagar);
+                alert('Erro ao gerar conta a pagar: ' + errorPagar.message);
+            }
+
+            // 2. Conta Receber 1 (NET) -> Do Cliente
+             const { error: errorReceberCliente } = await supabase.from('contas_receber').insert({
+                   empresa_id: user.user_metadata.empresa_id,
+                   user_id: user.id,
+                   cliente_id: selectedClient?.id || null,
+                   nome_cliente: selectedClient?.nome || clientSearchTerm,
+                   categoria_id: catVendaId,
+                   descricao: `Venda Aérea (Net) - ${newQuoteTitle || currentCodigoRef.current}`,
+                   valor: valorNetCalculado, // Recebe o NET
+                   vencimento: new Date().toISOString().split('T')[0],
+                   status: 'pendente',
+                   origem: 'COTACAO',
+                   origem_id: currentCotacaoIdRef.current ? String(currentCotacaoIdRef.current) : null,
+                   forma_recebimento_id: formaPagamentoId
+             });
+
+             if (errorReceberCliente) {
+                 console.error('❌ [PIX TOTAL] Erro ao criar conta receber (Cliente):', errorReceberCliente);
+                 alert('Erro ao gerar conta a receber (Cliente): ' + errorReceberCliente.message);
+             }
+
+             // 3. Conta Receber 2 (DU) -> Da 7C
+             // Calcular vencimento (Pix = 1 dia útil)
+             const dataAtual = new Date();
+             let dataVencimentoComissao = new Date();
+             dataVencimentoComissao.setDate(dataAtual.getDate() + 1);
+             // Ajuste fim de semana
+             if (dataVencimentoComissao.getDay() === 6) { // Sábado -> Segunda
+                 dataVencimentoComissao.setDate(dataVencimentoComissao.getDate() + 2);
+             } else if (dataVencimentoComissao.getDay() === 0) { // Domingo -> Segunda
+                 dataVencimentoComissao.setDate(dataVencimentoComissao.getDate() + 1);
+             }
+
+             if (duValue > 0) {
+                 const { error: errorReceberComissao } = await supabase.from('contas_receber').insert({
+                       empresa_id: user.user_metadata.empresa_id,
+                       user_id: user.id,
+                       cliente_id: null, // Devedor não é o cliente
+                       fornecedor_id: 3, // Devedor é a 7C
+                       nome_cliente: '7C TURISMO (COMISSÃO)',
+                       categoria_id: 9, // Comissão
+                       descricao: `Comissão Aérea (DU) - ${newQuoteTitle || currentCodigoRef.current}`,
+                       valor: duValue,
+                       vencimento: dataVencimentoComissao.toISOString().split('T')[0],
+                       status: 'pendente',
+                       origem: 'COTACAO',
+                       origem_id: currentCotacaoIdRef.current ? String(currentCotacaoIdRef.current) : null,
+                       forma_recebimento_id: 1 // Pix
+                 });
+
+                 if (errorReceberComissao) {
+                     console.error('❌ [PIX TOTAL] Erro ao criar conta receber (Comissão):', errorReceberComissao);
+                 }
+             }
+
+      } catch (e) { console.error(e) }
+  }
+
+  const processarPixNet = async () => {
+       // Gera QR Code apenas da Tarifa NET
+       // Cliente paga DU por fora.
+       
+       const { data: { user } } = await supabase.auth.getUser();
+       if (!user?.user_metadata?.empresa_id) return;
+
+       const valorPix = totalPrice - duValue;
+       
+       const pixPayload = gerarPayloadPix({
+          chave: '54581543000179', 
+          nome: '7C TURISMO E CONSULTORIA',
+          cidade: 'BRASILIA',
+          txid: currentCodigoRef.current || 'EMISSAO',
+          valor: valorPix
+       });
+        
+       setPixCode(pixPayload);
+       setPixValorDisplay(valorPix);
+       setShowPixDecisionModal(false);
+       setShowPixModal(true);
+       
+       // --- GERAR FINANCEIRO PARA PIX NET (Sem DU) ---
+       // Lógica Solicitada:
+       // 1. Conta Pagar (Valor Sem DU/Net) -> Para 7C
+       // 2. Conta Receber (Total com DU) -> Do Cliente
+       
+       try {
+            let catVendaId = 1;
+            let catCustoId = 5;
+            // Valor Net
+            const valorNet = totalPrice - duValue;
+            let fornecedorId = 3; 
+            let formaPagamentoId = 1; // Pix
+
+            // 1. Conta Pagar (Net) -> 7C
+            await supabase.from('contas_pagar').insert({
+                 empresa_id: user.user_metadata.empresa_id,
+                 user_id: user.id,
+                 fornecedor_id: fornecedorId,
+                 categoria_id: catCustoId,
+                 descricao: `Emissão Aérea (Pix NET) - ${newQuoteTitle || currentCodigoRef.current}`,
+                 valor: valorNet,
+                 vencimento: new Date().toISOString().split('T')[0],
+                 status: 'pendente',
+                 origem: 'COTACAO',
+                 origem_id: currentCotacaoIdRef.current ? String(currentCotacaoIdRef.current) : null,
+                 forma_pagamento_id: formaPagamentoId, 
+                 parcelas: 1
+            });
+
+            // 2. Conta Receber (Total) -> Cliente
+             await supabase.from('contas_receber').insert({
+                   empresa_id: user.user_metadata.empresa_id,
+                   user_id: user.id,
+                   cliente_id: selectedClient?.id || null,
+                   nome_cliente: selectedClient?.nome || clientSearchTerm,
+                   categoria_id: catVendaId,
+                   descricao: `Venda Aérea (Total) - ${newQuoteTitle || currentCodigoRef.current}`,
+                   valor: totalPrice, // Recebe o TOTAL
+                   vencimento: new Date().toISOString().split('T')[0],
+                   status: 'pendente',
+                   origem: 'COTACAO',
+                   origem_id: currentCotacaoIdRef.current ? String(currentCotacaoIdRef.current) : null,
+                   forma_recebimento_id: formaPagamentoId
+             });
+
+       } catch (e) { console.error(e) }
   }
 
   const FlightCard = ({ title, flight }: { title: string, flight: any }) => {
@@ -740,7 +1176,7 @@ const EmissaoAereo = () => {
                             
                             <div className="text-xs text-gray-500 mb-2 flex items-center gap-1">
                                 <img 
-                                    src={getAirlineLogoUrl(segment.CompanhiaAparente || flight.CompanhiaAparente)} 
+                                    src={getAirlineLogoUrl(segment.CompanhiaAparente || flight.CompanhiaAparente || '') || ''} 
                                     className="w-4 h-4 object-contain" 
                                     alt="" 
                                 />
@@ -799,7 +1235,7 @@ const EmissaoAereo = () => {
         <span className="text-xs font-bold uppercase text-gray-500 tracking-wider">{title}</span>
         <div className="flex items-center space-x-2">
           <img 
-            src={getAirlineLogoUrl(flight.CompanhiaAparente)} 
+            src={getAirlineLogoUrl(flight.CompanhiaAparente || '') || ''} 
             alt={flight.CompanhiaAparente || 'CIA'} 
             className="h-5 w-auto object-contain"
             onError={(e) => {
@@ -1561,6 +1997,121 @@ const EmissaoAereo = () => {
         cia={selectedRuleCia}
         tipoTarifa={selectedRuleTariff}
       />
+
+      {/* Pix Decision Modal */}
+      {showPixDecisionModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden animate-in fade-in zoom-in duration-300 relative">
+             <div className="p-6">
+                <h3 className="text-xl font-bold text-gray-900 mb-4 text-center">Como deseja gerar o Pix?</h3>
+                <p className="text-gray-600 mb-6 text-center text-sm">
+                   Escolha se o QR Code deve cobrar o valor TOTAL da venda ou apenas a Tarifa NET (descontando sua comissão).
+                </p>
+
+                <div className="space-y-3">
+                   <button
+                      onClick={processarPixTotal}
+                      className="w-full flex items-center justify-between p-4 border rounded-lg hover:bg-blue-50 hover:border-blue-300 transition-all group"
+                   >
+                      <div className="text-left">
+                         <div className="font-bold text-gray-900 group-hover:text-blue-700">Valor TOTAL</div>
+                         <div className="text-xs text-gray-500">Inclui Tarifa + Taxas + Sua Comissão (DU)</div>
+                      </div>
+                      <div className="font-bold text-blue-600">
+                         R$ {totalPrice.toLocaleString('pt-BR', {minimumFractionDigits: 2})}
+                      </div>
+                   </button>
+
+                   <button
+                      onClick={processarPixNet}
+                      className="w-full flex items-center justify-between p-4 border rounded-lg hover:bg-green-50 hover:border-green-300 transition-all group"
+                   >
+                      <div className="text-left">
+                         <div className="font-bold text-gray-900 group-hover:text-green-700">Apenas Tarifa NET</div>
+                         <div className="text-xs text-gray-500">Apenas Custo (Cliente paga DU por fora)</div>
+                      </div>
+                      <div className="font-bold text-green-600">
+                         R$ {(totalPrice - duValue).toLocaleString('pt-BR', {minimumFractionDigits: 2})}
+                      </div>
+                   </button>
+                </div>
+                
+                <button
+                   onClick={() => setShowPixDecisionModal(false)}
+                   className="mt-6 w-full py-2 text-gray-500 hover:text-gray-700 text-sm font-medium"
+                >
+                   Cancelar
+                </button>
+             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Pix Payment Modal */}
+      {showPixModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden animate-in fade-in zoom-in duration-300 relative">
+            
+            {/* Botão Fechar */}
+            <button 
+                onClick={() => setShowPixModal(false)}
+                className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors z-10"
+                title="Fechar e alterar forma de pagamento"
+            >
+                <X className="w-5 h-5" />
+            </button>
+
+            <div className="bg-green-600 p-6 text-center relative">
+              <QrCode className="w-12 h-12 text-white mx-auto mb-3" />
+              <h2 className="text-xl font-bold text-white">Pagamento via Pix</h2>
+              <p className="text-green-100 text-sm mt-1">Escaneie o QR Code para pagar</p>
+            </div>
+            
+            <div className="p-8 flex flex-col items-center">
+              <div className="bg-white p-4 rounded-xl border-2 border-gray-100 shadow-inner mb-6">
+                <QRCodeSVG value={pixCode} size={200} level="M" />
+              </div>
+
+              <div className="w-full space-y-4">
+                <div className="relative">
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 block">Pix Copia e Cola</label>
+                  <div className="flex gap-2">
+                    <input 
+                      readOnly 
+                      value={pixCode} 
+                      className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-600 font-mono"
+                    />
+                    <button 
+                      onClick={() => {
+                        navigator.clipboard.writeText(pixCode)
+                        alert('Código Pix copiado!')
+                      }}
+                      className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
+                      title="Copiar código"
+                    >
+                      <Copy className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="text-center text-sm text-gray-500 my-2">
+                    Valor a pagar: <span className="font-bold text-gray-900">R$ {pixValorDisplay.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
+                </div>
+
+                <button
+                  onClick={() => {
+                    alert('Pagamento registrado! Sua emissão será processada.')
+                    navigate('/cotacoes')
+                  }}
+                  className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg shadow-lg transition-all active:scale-[0.98]"
+                >
+                  Já realizei o pagamento
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

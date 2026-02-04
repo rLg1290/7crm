@@ -86,7 +86,10 @@ export default function Sidebar({ collapsed, onToggle, empresaLogo, userName, ae
           </div>
         )}
         {!collapsed && (
-          <div className="text-sm font-semibold text-gray-800 leading-none">{userName || 'Agência'}</div>
+          <div className="flex flex-col min-w-0">
+            <div className="text-sm font-semibold text-gray-800 truncate">{userName}</div>
+            <div className="text-xs text-gray-500 truncate">Agência</div>
+          </div>
         )}
       </div>
       <div className="flex-1 overflow-y-auto py-3">

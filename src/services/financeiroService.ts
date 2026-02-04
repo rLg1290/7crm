@@ -52,6 +52,8 @@ export interface ContasReceber {
   forma_recebimento?: string
   observacoes?: string
   comprovante_url?: string
+  origem?: string
+  origem_id?: string
   created_at: string
   updated_at?: string
 }
@@ -117,6 +119,8 @@ export interface NovaContaReceber {
   forma_recebimento?: string
   observacoes?: string
   comprovante_url?: string
+  origem?: string
+  origem_id?: string
 }
 
 class FinanceiroService {
@@ -248,6 +252,7 @@ class FinanceiroService {
   }): Promise<ContasPagar[]> {
     try {
       // Resolve empresa do usuário para buscar contas da empresa (não apenas do usuário)
+      // Buscar contas vinculadas à empresa (via empresa_id) OU ao usuário (via user_id)
       const empresaId = await this.resolveEmpresaId(userId)
       logger.debug('🔍 Buscando contas a pagar', { userId, empresaId, filtrosSet: Boolean(filtros) })
       
@@ -256,15 +261,26 @@ class FinanceiroService {
         .select('*')
         .order('vencimento', { ascending: true })
 
-      if (!empresaId) {
-        logger.warn('getContasPagar: empresa_id não identificada para o usuário. Retornando lista vazia para manter consistência por empresa_id. Vincule o usuário a uma empresa.')
-        return []
+      // Modificado para usar filtro OR se empresaId existir
+      if (empresaId) {
+        query = query.or(`empresa_id.eq.${empresaId},user_id.eq.${userId}`)
+      } else {
+        query = query.eq('user_id', userId)
       }
 
-      query = query.eq('empresa_id', empresaId)
+      console.log('🔍 [SERVICE] getContasPagar query construída', { filtros })
 
       if (filtros?.status) {
-        query = query.eq('status', filtros.status)
+        // Status check case-insensitive workaround for PostgreSQL
+        if (filtros.status.toUpperCase() === 'PENDENTE') {
+             query = query.ilike('status', 'pendente')
+        } else if (filtros.status.toUpperCase() === 'PAGA') {
+             query = query.ilike('status', 'paga')
+        } else if (filtros.status.toUpperCase() === 'VENCIDA') {
+             query = query.ilike('status', 'vencida')
+        } else {
+             query = query.eq('status', filtros.status)
+        }
       }
       if (filtros?.vencimentoInicio) {
         query = query.gte('vencimento', filtros.vencimentoInicio)
@@ -277,6 +293,8 @@ class FinanceiroService {
       }
 
       const { data, error } = await query
+
+      console.log('✅ [SERVICE] getContasPagar resultado:', { count: data?.length, error, data })
 
       if (error) {
         logger.error('Erro do Supabase ao buscar contas a pagar:', error)
@@ -392,18 +410,37 @@ class FinanceiroService {
     vencimentoInicio?: string
     vencimentoFim?: string
     servico?: string
-  }): Promise<ContasReceber[]> {
+  }, userId?: string): Promise<ContasReceber[]> {
     try {
-      logger.debug('🔍 Buscando contas a receber', { empresaId, filtrosSet: Boolean(filtros) })
+      logger.debug('🔍 Buscando contas a receber', { empresaId, userId, filtrosSet: Boolean(filtros) })
       
       let query = supabase
         .from('contas_receber')
         .select('*')
-        .eq('empresa_id', empresaId)
         .order('vencimento', { ascending: true })
 
+      // Modificado para usar filtro OR se userId for fornecido
+      if (userId && empresaId) {
+         query = query.or(`empresa_id.eq.${empresaId},user_id.eq.${userId}`)
+      } else if (empresaId) {
+         query = query.eq('empresa_id', empresaId)
+      } else if (userId) {
+         query = query.eq('user_id', userId)
+      }
+
+      console.log('🔍 [SERVICE] getContasReceber query construída', { filtros })
+
       if (filtros?.status) {
-        query = query.eq('status', filtros.status)
+        // Status check case-insensitive workaround for PostgreSQL
+        if (filtros.status.toUpperCase() === 'PENDENTE') {
+             query = query.ilike('status', 'pendente')
+        } else if (filtros.status.toUpperCase() === 'RECEBIDA') {
+             query = query.ilike('status', 'recebida')
+        } else if (filtros.status.toUpperCase() === 'VENCIDA') {
+             query = query.ilike('status', 'vencida')
+        } else {
+             query = query.eq('status', filtros.status)
+        }
       }
       if (filtros?.vencimentoInicio) {
         query = query.gte('vencimento', filtros.vencimentoInicio)
@@ -416,6 +453,8 @@ class FinanceiroService {
       }
 
       const { data, error } = await query
+
+      console.log('✅ [SERVICE] getContasReceber resultado:', { count: data?.length, error, data })
 
       if (error) {
         logger.error('Erro do Supabase ao buscar contas a receber:', error)
@@ -439,7 +478,8 @@ class FinanceiroService {
         .insert({
           empresa_id: empresaId,
           ...conta,
-          status: conta.status || 'pendente'
+          status: conta.status || 'pendente',
+          origem: conta.origem || 'MANUAL'
         })
         .select()
         .single()
